@@ -18,6 +18,7 @@ SRCS+= \
 	qcow.c \
 	raw.c \
 	vhd.c \
+	vhdx.c \
 	vmdk.c
 
 # List of schemes to support
@@ -32,8 +33,6 @@ SRCS+=	\
 BINDIR?=/usr/bin
 
 LIBADD=	util
-
-WARNS?=	6
 
 HAS_TESTS=
 SUBDIR.${MK_TESTS}+= tests

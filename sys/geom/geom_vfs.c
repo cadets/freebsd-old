@@ -55,6 +55,7 @@ struct g_vfs_softc {
 	struct bufobj	*sc_bo;
 	int		 sc_active;
 	int		 sc_orphaned;
+	int		 sc_enxio_active;
 };
 
 static struct buf_ops __g_vfs_bufops = {
@@ -139,9 +140,14 @@ g_vfs_done(struct bio *bip)
 
 	cp = bip->bio_from;
 	sc = cp->geom->softc;
-	if (bip->bio_error)
+	if (bip->bio_error != 0 && bip->bio_error != EOPNOTSUPP) {
+		if ((bp->b_xflags & BX_CVTENXIO) != 0)
+			sc->sc_enxio_active = 1;
+		if (sc->sc_enxio_active)
+			bip->bio_error = ENXIO;
 		g_print_bio("g_vfs_done():", bip, "error = %d",
 		    bip->bio_error);
+	}
 	bp->b_error = bip->bio_error;
 	bp->b_ioflags = bip->bio_flags;
 	if (bip->bio_error)
@@ -172,7 +178,7 @@ g_vfs_strategy(struct bufobj *bo, struct buf *bp)
 	 * If the provider has orphaned us, just return ENXIO.
 	 */
 	mtx_lock(&sc->sc_mtx);
-	if (sc->sc_orphaned) {
+	if (sc->sc_orphaned || sc->sc_enxio_active) {
 		mtx_unlock(&sc->sc_mtx);
 		bp->b_error = ENXIO;
 		bp->b_ioflags |= BIO_ERROR;
@@ -254,7 +260,11 @@ g_vfs_open(struct vnode *vp, struct g_consumer **cpp, const char *fsname, int wr
 	sc->sc_bo = bo;
 	gp->softc = sc;
 	cp = g_new_consumer(gp);
-	g_attach(cp, pp);
+	error = g_attach(cp, pp);
+	if (error) {
+		g_wither_geom(gp, ENXIO);
+		return (error);
+	}
 	error = g_access(cp, 1, wr, wr);
 	if (error) {
 		g_wither_geom(gp, ENXIO);

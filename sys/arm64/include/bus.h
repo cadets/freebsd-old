@@ -74,23 +74,34 @@
 
 #define	BUS_SPACE_MAXADDR_24BIT	0xFFFFFFUL
 #define	BUS_SPACE_MAXADDR_32BIT 0xFFFFFFFFUL
+#define	BUS_SPACE_MAXADDR_40BIT	0xFFFFFFFFFFUL
 #define	BUS_SPACE_MAXSIZE_24BIT	0xFFFFFFUL
 #define	BUS_SPACE_MAXSIZE_32BIT	0xFFFFFFFFUL
+#define	BUS_SPACE_MAXSIZE_40BIT	0xFFFFFFFFFFUL
 
-#define	BUS_SPACE_MAXADDR 	0xFFFFFFFFFFFFFFFFUL
-#define	BUS_SPACE_MAXSIZE 	0xFFFFFFFFFFFFFFFFUL
+#define	BUS_SPACE_MAXADDR	0xFFFFFFFFFFFFFFFFUL
+#define	BUS_SPACE_MAXSIZE	0xFFFFFFFFFFFFFFFFUL
 
 #define	BUS_SPACE_MAP_CACHEABLE		0x01
 #define	BUS_SPACE_MAP_LINEAR		0x02
-#define	BUS_SPACE_MAP_PREFETCHABLE     	0x04
+#define	BUS_SPACE_MAP_PREFETCHABLE	0x04
+#define	BUS_SPACE_MAP_NONPOSTED		0x08
 
 #define	BUS_SPACE_UNRESTRICTED	(~0)
 
 #define	BUS_SPACE_BARRIER_READ	0x01
 #define	BUS_SPACE_BARRIER_WRITE	0x02
 
-#if defined(KCSAN) && !defined(KCSAN_RUNTIME)
-#include <sys/_cscan_bus.h>
+#ifndef SAN_RUNTIME
+#if defined(KASAN)
+#define	BUS_SAN_PREFIX	kasan
+#elif defined(KCSAN)
+#define	BUS_SAN_PREFIX	kcsan
+#endif
+#endif
+
+#ifdef BUS_SAN_PREFIX
+#include <sys/bus_san.h>
 #else
 
 struct bus_space {
@@ -131,7 +142,7 @@ struct bus_space {
 			    bus_size_t, u_int32_t *, bus_size_t);
 	void		(*bs_rm_8) (void *, bus_space_handle_t,
 			    bus_size_t, u_int64_t *, bus_size_t);
-					
+
 	/* read region */
 	void		(*bs_rr_1) (void *, bus_space_handle_t,
 			    bus_size_t, u_int8_t *, bus_size_t);
@@ -141,7 +152,7 @@ struct bus_space {
 			    bus_size_t, u_int32_t *, bus_size_t);
 	void		(*bs_rr_8) (void *, bus_space_handle_t,
 			    bus_size_t, u_int64_t *, bus_size_t);
-					
+
 	/* write single */
 	void		(*bs_w_1) (void *, bus_space_handle_t,
 			    bus_size_t, u_int8_t);
@@ -161,7 +172,7 @@ struct bus_space {
 			    bus_size_t, const u_int32_t *, bus_size_t);
 	void		(*bs_wm_8) (void *, bus_space_handle_t,
 			    bus_size_t, const u_int64_t *, bus_size_t);
-					
+
 	/* write region */
 	void		(*bs_wr_1) (void *, bus_space_handle_t,
 			    bus_size_t, const u_int8_t *, bus_size_t);
@@ -217,7 +228,7 @@ struct bus_space {
 			    bus_size_t, u_int32_t *, bus_size_t);
 	void		(*bs_rm_8_s) (void *, bus_space_handle_t,
 			    bus_size_t, u_int64_t *, bus_size_t);
-					
+
 	/* read region stream */
 	void		(*bs_rr_1_s) (void *, bus_space_handle_t,
 			    bus_size_t, u_int8_t *, bus_size_t);
@@ -227,7 +238,7 @@ struct bus_space {
 			    bus_size_t, u_int32_t *, bus_size_t);
 	void		(*bs_rr_8_s) (void *, bus_space_handle_t,
 			    bus_size_t, u_int64_t *, bus_size_t);
-					
+
 	/* write single stream */
 	void		(*bs_w_1_s) (void *, bus_space_handle_t,
 			    bus_size_t, u_int8_t);
@@ -247,7 +258,7 @@ struct bus_space {
 			    bus_size_t, const u_int32_t *, bus_size_t);
 	void		(*bs_wm_8_s) (void *, bus_space_handle_t,
 			    bus_size_t, const u_int64_t *, bus_size_t);
-					
+
 	/* write region stream */
 	void		(*bs_wr_1_s) (void *, bus_space_handle_t,
 			    bus_size_t, const u_int8_t *, bus_size_t);
@@ -257,8 +268,27 @@ struct bus_space {
 			    bus_size_t, const u_int32_t *, bus_size_t);
 	void		(*bs_wr_8_s) (void *, bus_space_handle_t,
 			    bus_size_t, const u_int64_t *, bus_size_t);
-};
 
+	/* peek */
+	int		(*bs_peek_1)(void *, bus_space_handle_t,
+			    bus_size_t , uint8_t *);
+	int		(*bs_peek_2)(void *, bus_space_handle_t,
+			    bus_size_t , uint16_t *);
+	int		(*bs_peek_4)(void *, bus_space_handle_t,
+			    bus_size_t , uint32_t *);
+	int		(*bs_peek_8)(void *, bus_space_handle_t,
+			    bus_size_t , uint64_t *);
+
+	/* poke */
+	int		(*bs_poke_1)(void *, bus_space_handle_t,
+			   bus_size_t, uint8_t);
+	int		(*bs_poke_2)(void *, bus_space_handle_t,
+			   bus_size_t, uint16_t);
+	int		(*bs_poke_4)(void *, bus_space_handle_t,
+			   bus_size_t, uint32_t);
+	int		(*bs_poke_8)(void *, bus_space_handle_t,
+			   bus_size_t, uint64_t);
+};
 
 /*
  * Utility macros; INTERNAL USE ONLY.
@@ -282,9 +312,12 @@ struct bus_space {
 	(*(t)->__bs_opname_s(r,sz))((t)->bs_cookie, h, o)
 #define	__bs_ws_s(sz, t, h, o, v)					\
 	(*(t)->__bs_opname_s(w,sz))((t)->bs_cookie, h, o, v)
+#define	__bs_peek(sz, t, h, o, vp)					\
+	(*(t)->__bs_opname(peek, sz))((t)->bs_cookie, h, o, vp)
+#define	__bs_poke(sz, t, h, o, v)					\
+	(*(t)->__bs_opname(poke, sz))((t)->bs_cookie, h, o, v)
 #define	__bs_nonsingle_s(type, sz, t, h, o, a, c)			\
 	(*(t)->__bs_opname_s(type,sz))((t)->bs_cookie, h, o, a, c)
-
 
 /*
  * Mapping and unmapping operations.
@@ -295,7 +328,6 @@ struct bus_space {
 	(*(t)->bs_unmap)((t)->bs_cookie, (h), (s))
 #define	bus_space_subregion(t, h, o, s, hp)				\
 	(*(t)->bs_subregion)((t)->bs_cookie, (h), (o), (s), (hp))
-
 
 /*
  * Allocation and deallocation operations.
@@ -312,8 +344,6 @@ struct bus_space {
 #define	bus_space_barrier(t, h, o, l, f)				\
 	(*(t)->bs_barrier)((t)->bs_cookie, (h), (o), (l), (f))
 
-
-
 /*
  * Bus read (single) operations.
  */
@@ -322,9 +352,9 @@ struct bus_space {
 #define	bus_space_read_4(t, h, o)	__bs_rs(4,(t),(h),(o))
 #define	bus_space_read_8(t, h, o)	__bs_rs(8,(t),(h),(o))
 
-#define	bus_space_read_stream_1(t, h, o)        __bs_rs_s(1,(t), (h), (o))
-#define	bus_space_read_stream_2(t, h, o)        __bs_rs_s(2,(t), (h), (o))
-#define	bus_space_read_stream_4(t, h, o)        __bs_rs_s(4,(t), (h), (o))
+#define	bus_space_read_stream_1(t, h, o)	__bs_rs_s(1,(t), (h), (o))
+#define	bus_space_read_stream_2(t, h, o)	__bs_rs_s(2,(t), (h), (o))
+#define	bus_space_read_stream_4(t, h, o)	__bs_rs_s(4,(t), (h), (o))
 #define	bus_space_read_stream_8(t, h, o)	__bs_rs_s(8,(t), (h), (o))
 
 /*
@@ -348,7 +378,6 @@ struct bus_space {
 #define	bus_space_read_multi_stream_8(t, h, o, a, c)			\
 	__bs_nonsingle_s(rm,8,(t),(h),(o),(a),(c))
 
-
 /*
  * Bus read region operations.
  */
@@ -370,7 +399,6 @@ struct bus_space {
 #define	bus_space_read_region_stream_8(t, h, o, a, c)			\
 	__bs_nonsingle_s(rr,8,(t),(h),(o),(a),(c))
 
-
 /*
  * Bus write (single) operations.
  */
@@ -383,7 +411,6 @@ struct bus_space {
 #define	bus_space_write_stream_2(t, h, o, v)	__bs_ws_s(2,(t),(h),(o),(v))
 #define	bus_space_write_stream_4(t, h, o, v)	__bs_ws_s(4,(t),(h),(o),(v))
 #define	bus_space_write_stream_8(t, h, o, v)	__bs_ws_s(8,(t),(h),(o),(v))
-
 
 /*
  * Bus write multiple operations.
@@ -406,7 +433,6 @@ struct bus_space {
 #define	bus_space_write_multi_stream_8(t, h, o, a, c)			\
 	__bs_nonsingle_s(wm,8,(t),(h),(o),(a),(c))
 
-
 /*
  * Bus write region operations.
  */
@@ -428,7 +454,6 @@ struct bus_space {
 #define	bus_space_write_region_stream_8(t, h, o, a, c)			\
 	__bs_nonsingle_s(wr,8,(t),(h),(o),(a),(c))
 
-
 /*
  * Set multiple operations.
  */
@@ -440,7 +465,6 @@ struct bus_space {
 	__bs_set(sm,4,(t),(h),(o),(v),(c))
 #define	bus_space_set_multi_8(t, h, o, v, c)				\
 	__bs_set(sm,8,(t),(h),(o),(v),(c))
-
 
 /*
  * Set region operations.
@@ -454,7 +478,6 @@ struct bus_space {
 #define	bus_space_set_region_8(t, h, o, v, c)				\
 	__bs_set(sr,8,(t),(h),(o),(v),(c))
 
-
 /*
  * Copy operations.
  */
@@ -466,6 +489,22 @@ struct bus_space {
 	__bs_copy(4, t, h1, o1, h2, o2, c)
 #define	bus_space_copy_region_8(t, h1, o1, h2, o2, c)				\
 	__bs_copy(8, t, h1, o1, h2, o2, c)
+
+/*
+ * Poke (checked write) operations.
+ */
+#define	bus_space_poke_1(t, h, o, v)	__bs_poke(1, (t), (h), (o), (v))
+#define	bus_space_poke_2(t, h, o, v)	__bs_poke(2, (t), (h), (o), (v))
+#define	bus_space_poke_4(t, h, o, v)	__bs_poke(4, (t), (h), (o), (v))
+#define	bus_space_poke_8(t, h, o, v)	__bs_poke(8, (t), (h), (o), (v))
+
+/*
+ * Peek (checked read) operations.
+ */
+#define	bus_space_peek_1(t, h, o, vp)	__bs_peek(1, (t), (h), (o), (vp))
+#define	bus_space_peek_2(t, h, o, vp)	__bs_peek(2, (t), (h), (o), (vp))
+#define	bus_space_peek_4(t, h, o, vp)	__bs_peek(4, (t), (h), (o), (vp))
+#define	bus_space_peek_8(t, h, o, vp)	__bs_peek(8, (t), (h), (o), (vp))
 
 #endif
 

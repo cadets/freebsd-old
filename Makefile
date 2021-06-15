@@ -5,10 +5,12 @@
 #
 # universe            - *Really* build *everything* (buildworld and
 #                       all kernels on all architectures).  Define
-#                       MAKE_JUST_KERNELS to only build kernels,
-#                       MAKE_JUST_WORLDS to only build userland.
+#                       MAKE_JUST_KERNELS or WITHOUT_WORLDS to only build kernels,
+#                       MAKE_JUST_WORLDS or WITHOUT_KERNELS to only build userland.
 # tinderbox           - Same as universe, but presents a list of failed build
 #                       targets and exits with an error if there were any.
+# worlds	      - Same as universe, except just makes the worlds.
+# kernels	      - Same as universe, except just makes the kernels.
 # buildworld          - Rebuild *everything*, including glue to help do
 #                       upgrades.
 # installworld        - Install everything built by "buildworld".
@@ -22,7 +24,6 @@
 # kernel-toolchain    - Builds the subset of world necessary to build a kernel
 # kernel-toolchains   - Build kernel-toolchain for all universe targets.
 # doxygen             - Build API documentation of the kernel, needs doxygen.
-# update              - Convenient way to update your source tree(s).
 # checkworld          - Run test suite on installed world.
 # check-old           - List obsolete directories/files/libraries.
 # check-old-dirs      - List obsolete directories.
@@ -87,6 +88,17 @@
 # 10.  `reboot'
 # 11.  `make delete-old-libs' (in case no 3rd party program uses them anymore)
 #
+# For individuals wanting to build from source with GCC from ports, first
+# install the appropriate GCC cross toolchain package:
+#   `pkg install ${TARGET_ARCH}-gccN`
+#
+# Once you have installed the necessary cross toolchain, simply pass
+# CROSS_TOOLCHAIN=${TARGET_ARCH}-gccN while building with the above steps,
+# e.g., `make buildworld CROSS_TOOLCHAIN=amd64-gcc6`.
+#
+# The ${TARGET_ARCH}-gccN packages are provided as flavors of the
+# devel/freebsd-gccN ports.
+#
 # See src/UPDATING `COMMON ITEMS' for more complete information.
 #
 # If TARGET=machine (e.g. powerpc, arm64, ...) is specified you can
@@ -103,6 +115,15 @@
 #
 # For more information, see the build(7) manual page.
 #
+
+.if defined(UNIVERSE_TARGET) || defined(MAKE_JUST_WORLDS) || defined(WITHOUT_KERNELS)
+__DO_KERNELS=no
+.endif
+.if defined(MAKE_JUST_KERNELS) || defined(WITHOUT_WORLDS)
+__DO_WORLDS=no
+.endif
+__DO_WORLDS?=yes
+__DO_KERNELS?=yes
 
 # This is included so CC is set to ccache for -V, and COMPILER_TYPE/VERSION
 # can be cached for sub-makes. We can't do this while still running on the
@@ -133,7 +154,7 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	installkernel.debug packagekernel packageworld \
 	reinstallkernel reinstallkernel.debug \
 	installworld kernel-toolchain libraries maninstall \
-	obj objlink showconfig tags toolchain update \
+	obj objlink showconfig tags toolchain \
 	makeman sysent \
 	_worldtmp _legacy _bootstrap-tools _cleanobj _obj \
 	_build-tools _build-metadata _cross-tools _includes _libraries \
@@ -142,8 +163,8 @@ TGTS=	all all-man buildenv buildenvvars buildkernel buildworld \
 	xdev-links native-xtools native-xtools-install stageworld stagekernel \
 	stage-packages stage-packages-kernel stage-packages-world \
 	create-packages-world create-packages-kernel create-packages \
-	packages installconfig real-packages sign-packages package-pkg \
-	print-dir test-system-compiler test-system-linker
+	update-packages packages installconfig real-packages real-update-packages \
+	sign-packages package-pkg print-dir test-system-compiler test-system-linker
 
 # These targets require a TARGET and TARGET_ARCH be defined.
 XTGTS=	native-xtools native-xtools-install xdev xdev-build xdev-install \
@@ -436,8 +457,8 @@ MMAKE=		${MMAKEENV} ${MAKE} \
 		OBJTOP=${MYMAKE:H}/obj \
 		OBJROOT='$${OBJTOP}/' \
 		MAKEOBJDIRPREFIX= \
-		MAN= -DNO_SHARED \
-		-DNO_CPU_CFLAGS -DNO_WERROR \
+		MK_MAN=no -DNO_SHARED \
+		-DNO_CPU_CFLAGS MK_WERROR=no \
 		-DNO_SUBDIR \
 		DESTDIR= PROGNAME=${MYMAKE:T}
 
@@ -468,7 +489,7 @@ kernel-toolchains: .PHONY
 	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=kernel-toolchain universe
 
 kernels: .PHONY
-	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildkernel universe
+	@cd ${.CURDIR}; ${SUB_MAKE} universe -DWITHOUT_WORLDS
 
 worlds: .PHONY
 	@cd ${.CURDIR}; ${SUB_MAKE} UNIVERSE_TARGET=buildworld universe
@@ -483,31 +504,39 @@ worlds: .PHONY
 .if make(universe) || make(universe_kernels) || make(tinderbox) || \
     make(targets) || make(universe-toolchain)
 #
-# Always build architectures supported by clang.  Only build architectures
-# only supported by GCC if a suitable toolchain is present or enabled.
-# In all cases, if the user specifies TARGETS on the command line,
-# honor that most of all.
+# Don't build rarely used, semi-supported architectures unless requested.
 #
+.if defined(EXTRA_TARGETS)
+EXTRA_ARCHES_mips=	mipsel mipshf mipselhf mips64el mips64hf mips64elhf
+EXTRA_ARCHES_mips+=	mipsn32
+# powerpcspe excluded from main list until clang fixed
+EXTRA_ARCHES_powerpc=	powerpcspe powerpc64le
+.endif
 TARGETS?=amd64 arm arm64 i386 mips powerpc riscv
 _UNIVERSE_TARGETS=	${TARGETS}
 TARGET_ARCHES_arm?=	armv6 armv7
 TARGET_ARCHES_arm64?=	aarch64
-TARGET_ARCHES_mips?=	mipsel mips mips64el mips64 mipsn32 mipselhf mipshf mips64elhf mips64hf
-# powerpcspe excluded until clang fixed
-TARGET_ARCHES_powerpc?=	powerpc powerpc64
+TARGET_ARCHES_mips?=	mips mips64 ${EXTRA_ARCHES_mips}
+TARGET_ARCHES_powerpc?=	powerpc powerpc64 ${EXTRA_ARCHES_powerpc}
 TARGET_ARCHES_riscv?=	riscv64 riscv64sf
 .for target in ${TARGETS}
 TARGET_ARCHES_${target}?= ${target}
 .endfor
 
-MAKE_PARAMS_mips?=	CROSS_TOOLCHAIN=mips-gcc6
-
+.if defined(USE_GCC_TOOLCHAINS)
+TOOLCHAINS_amd64=	amd64-gcc6
+TOOLCHAINS_arm64=	aarch64-gcc6
+TOOLCHAINS_i386=	i386-gcc6
 TOOLCHAINS_mips=	mips-gcc6
+TOOLCHAINS_powerpc=	powerpc-gcc6 powerpc64-gcc6
+TOOLCHAIN_powerpc64=	powerpc64-gcc6
+.endif
 
-# Remove architectures only supported by external toolchain from
-# universe if required toolchain packages are missing.
-.for target in mips
-.if ${_UNIVERSE_TARGETS:M${target}}
+# If a target is using an external toolchain, set MAKE_PARAMS to enable use
+# of the toolchain.  If the external toolchain is missing, exclude the target
+# from universe.
+.for target in ${_UNIVERSE_TARGETS}
+.if !empty(TOOLCHAINS_${target})
 .for toolchain in ${TOOLCHAINS_${target}}
 .if !exists(/usr/local/share/toolchains/${toolchain}.mk)
 _UNIVERSE_TARGETS:= ${_UNIVERSE_TARGETS:N${target}}
@@ -517,14 +546,14 @@ universe_${toolchain}_skip: universe_prologue .PHONY
 	@echo ">> ${target} skipped - install ${toolchain} port or package to build"
 .endif
 .endfor
+.for arch in ${TARGET_ARCHES_${target}}
+TOOLCHAIN_${arch}?=	${TOOLCHAINS_${target}:[1]}
+MAKE_PARAMS_${arch}?=	CROSS_TOOLCHAIN=${TOOLCHAIN_${arch}}
+.endfor
 .endif
 .endfor
 
-.if defined(UNIVERSE_TARGET)
-MAKE_JUST_WORLDS=	YES
-.else
 UNIVERSE_TARGET?=	buildworld
-.endif
 KERNSRCDIR?=		${.CURDIR}/sys
 
 targets:	.PHONY
@@ -595,7 +624,7 @@ universe_${target}_worlds: .PHONY
 _need_clang_${target}_${target_arch} != \
 	env TARGET=${target} TARGET_ARCH=${target_arch} \
 	${SUB_MAKE} -C ${.CURDIR} -f Makefile.inc1 test-system-compiler \
-	    ${MAKE_PARAMS_${target}} -V MK_CLANG_BOOTSTRAP 2>/dev/null || \
+	    ${MAKE_PARAMS_${target_arch}} -V MK_CLANG_BOOTSTRAP 2>/dev/null || \
 	    echo unknown
 .export _need_clang_${target}_${target_arch}
 .endif
@@ -603,7 +632,7 @@ _need_clang_${target}_${target_arch} != \
 _need_lld_${target}_${target_arch} != \
 	env TARGET=${target} TARGET_ARCH=${target_arch} \
 	${SUB_MAKE} -C ${.CURDIR} -f Makefile.inc1 test-system-linker \
-	    ${MAKE_PARAMS_${target}} -V MK_LLD_BOOTSTRAP 2>/dev/null || \
+	    ${MAKE_PARAMS_${target_arch}} -V MK_LLD_BOOTSTRAP 2>/dev/null || \
 	    echo unknown
 .export _need_lld_${target}_${target_arch}
 .endif
@@ -619,7 +648,7 @@ _need_lld_${target}_${target_arch} != \
 #      supports all TARGETS though.
 # For now we only pass UNIVERSE_TOOLCHAIN_PATH which will be added at the end
 # of STRICTTMPPATH to ensure that the target-specific binaries come first.
-MAKE_PARAMS_${target}+= \
+MAKE_PARAMS_${target_arch}+= \
 	XCC="${HOST_OBJTOP}/tmp/usr/bin/cc" \
 	XCXX="${HOST_OBJTOP}/tmp/usr/bin/c++" \
 	XCPP="${HOST_OBJTOP}/tmp/usr/bin/cpp" \
@@ -627,13 +656,13 @@ MAKE_PARAMS_${target}+= \
 .endif
 .if defined(_need_lld_${target}_${target_arch}) && \
     ${_need_lld_${target}_${target_arch}} == "yes"
-MAKE_PARAMS_${target}+= \
+MAKE_PARAMS_${target_arch}+= \
 	XLD="${HOST_OBJTOP}/tmp/usr/bin/ld"
 .endif
 .endfor
 .endif	# !make(targets)
 
-.if !defined(MAKE_JUST_KERNELS)
+.if ${__DO_WORLDS} == "yes"
 universe_${target}_done: universe_${target}_worlds .PHONY
 .for target_arch in ${TARGET_ARCHES_${target}}
 universe_${target}_worlds: universe_${target}_${target_arch} .PHONY
@@ -650,29 +679,22 @@ universe_${target}_${target_arch}: universe_${target}_prologue .MAKE .PHONY
 	    ${SUB_MAKE} ${JFLAG} ${UNIVERSE_TARGET} \
 	    TARGET=${target} \
 	    TARGET_ARCH=${target_arch} \
-	    ${MAKE_PARAMS_${target}} \
+	    ${MAKE_PARAMS_${target_arch}} \
 	    > _.${target}.${target_arch}.${UNIVERSE_TARGET} 2>&1 || \
 	    (echo "${target}.${target_arch} ${UNIVERSE_TARGET} failed," \
 	    "check _.${target}.${target_arch}.${UNIVERSE_TARGET} for details" | \
 	    ${MAKEFAIL}))
 	@echo ">> ${target}.${target_arch} ${UNIVERSE_TARGET} completed on `LC_ALL=C date`"
 .endfor
-.endif # !MAKE_JUST_KERNELS
+.endif # ${__DO_WORLDS} == "yes"
 
-.if !defined(MAKE_JUST_WORLDS)
+.if ${__DO_KERNELS} == "yes"
 universe_${target}_done: universe_${target}_kernels .PHONY
 universe_${target}_kernels: universe_${target}_worlds .PHONY
 universe_${target}_kernels: universe_${target}_prologue .MAKE .PHONY
-	@if [ -e "${KERNSRCDIR}/${target}/conf/NOTES" ]; then \
-	  (cd ${KERNSRCDIR}/${target}/conf && env __MAKE_CONF=/dev/null \
-	    ${SUB_MAKE} LINT \
-	    > ${.CURDIR}/_.${target}.makeLINT 2>&1 || \
-	    (echo "${target} 'make LINT' failed," \
-	    "check _.${target}.makeLINT for details"| ${MAKEFAIL})); \
-	fi
 	@cd ${.CURDIR}; ${SUB_MAKE} ${.MAKEFLAGS} TARGET=${target} \
 	    universe_kernels
-.endif # !MAKE_JUST_WORLDS
+.endif # ${__DO_KERNELS} == "yes"
 
 # Tell the user the worlds and kernels have completed
 universe_${target}: universe_${target}_done
@@ -702,6 +724,7 @@ KERNCONFS!=	cd ${KERNSRCDIR}/${TARGET}/conf && \
 universe_kernconfs: universe_kernels_prologue .PHONY
 .for kernel in ${KERNCONFS}
 TARGET_ARCH_${kernel}!=	cd ${KERNSRCDIR}/${TARGET}/conf && \
+	env PATH=${HOST_OBJTOP}/tmp/legacy/bin:${PATH:Q} \
 	config -m ${KERNSRCDIR}/${TARGET}/conf/${kernel} 2> /dev/null | \
 	grep -v WARNING: | cut -f 2
 .if empty(TARGET_ARCH_${kernel})
@@ -714,7 +737,7 @@ universe_kernconf_${TARGET}_${kernel}: .MAKE
 	    ${SUB_MAKE} ${JFLAG} buildkernel \
 	    TARGET=${TARGET} \
 	    TARGET_ARCH=${TARGET_ARCH_${kernel}} \
-	    ${MAKE_PARAMS_${TARGET}} \
+	    ${MAKE_PARAMS_${TARGET_ARCH_${kernel}}} \
 	    KERNCONF=${kernel} \
 	    > _.${TARGET}.${kernel} 2>&1 || \
 	    (echo "${TARGET} ${kernel} kernel failed," \
@@ -740,9 +763,6 @@ universe_epilogue: .PHONY
 	fi
 .endif
 .endif
-
-buildLINT: .PHONY
-	${MAKE} -C ${.CURDIR}/sys/${_TARGET}/conf LINT
 
 .if defined(.PARSEDIR)
 # This makefile does not run in meta mode

@@ -124,7 +124,7 @@ SYSCTL_UINT(_vm, OID_AUTO, v_free_severe,
 static int
 sysctl_vm_loadavg(SYSCTL_HANDLER_ARGS)
 {
-	
+
 #ifdef SCTL_MASK32
 	u_int32_t la[4];
 
@@ -207,7 +207,7 @@ vmtotal(SYSCTL_HANDLER_ARGS)
 		if (p->p_state != PRS_NEW) {
 			FOREACH_THREAD_IN_PROC(p, td) {
 				thread_lock(td);
-				switch (td->td_state) {
+				switch (TD_GET_STATE(td)) {
 				case TDS_INHIBITED:
 					if (TD_IS_SWAPPED(td))
 						total.t_sw++;
@@ -313,12 +313,14 @@ vmtotal(SYSCTL_HANDLER_ARGS)
 SYSCTL_PROC(_vm, VM_TOTAL, vmtotal, CTLTYPE_OPAQUE | CTLFLAG_RD |
     CTLFLAG_MPSAFE, NULL, 0, vmtotal, "S,vmtotal",
     "System virtual memory statistics");
-SYSCTL_NODE(_vm, OID_AUTO, stats, CTLFLAG_RW, 0, "VM meter stats");
-static SYSCTL_NODE(_vm_stats, OID_AUTO, sys, CTLFLAG_RW, 0,
-	"VM meter sys stats");
-static SYSCTL_NODE(_vm_stats, OID_AUTO, vm, CTLFLAG_RW, 0,
-	"VM meter vm stats");
-SYSCTL_NODE(_vm_stats, OID_AUTO, misc, CTLFLAG_RW, 0, "VM meter misc stats");
+SYSCTL_NODE(_vm, OID_AUTO, stats, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "VM meter stats");
+static SYSCTL_NODE(_vm_stats, OID_AUTO, sys, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "VM meter sys stats");
+static SYSCTL_NODE(_vm_stats, OID_AUTO, vm, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "VM meter vm stats");
+SYSCTL_NODE(_vm_stats, OID_AUTO, misc, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "VM meter misc stats");
 
 static int
 sysctl_handle_vmstat(SYSCTL_HANDLER_ARGS)
@@ -501,9 +503,9 @@ vm_domain_stats_init(struct vm_domain *vmd, struct sysctl_oid *parent)
 	struct sysctl_oid *oid;
 
 	vmd->vmd_oid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(parent), OID_AUTO,
-	    vmd->vmd_name, CTLFLAG_RD, NULL, "");
+	    vmd->vmd_name, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "");
 	oid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(vmd->vmd_oid), OID_AUTO,
-	    "stats", CTLFLAG_RD, NULL, "");
+	    "stats", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "");
 	SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(oid), OID_AUTO,
 	    "free_count", CTLFLAG_RD, &vmd->vmd_free_count, 0,
 	    "Free pages");
@@ -550,6 +552,9 @@ vm_domain_stats_init(struct vm_domain *vmd, struct sysctl_oid *parent)
 	SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(oid), OID_AUTO,
 	    "free_severe", CTLFLAG_RD, &vmd->vmd_free_severe, 0,
 	    "Severe free pages");
+	SYSCTL_ADD_UINT(NULL, SYSCTL_CHILDREN(oid), OID_AUTO,
+	    "inactive_pps", CTLFLAG_RD, &vmd->vmd_inactive_pps, 0,
+	    "inactive pages freed/second");
 
 }
 
@@ -560,7 +565,7 @@ vm_stats_init(void *arg __unused)
 	int i;
 
 	oid = SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(_vm), OID_AUTO,
-	    "domain", CTLFLAG_RD, NULL, "");
+	    "domain", CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "");
 	for (i = 0; i < vm_ndomains; i++)
 		vm_domain_stats_init(VM_DOMAIN(i), oid);
 }

@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2004,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2004,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -32,18 +33,18 @@
 
 #include "form.priv.h"
 
-MODULE_ID("$Id: frm_user.c,v 1.15 2010/01/23 21:14:36 tom Exp $")
+MODULE_ID("$Id: frm_user.c,v 1.18 2020/12/12 01:05:20 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnform  
 |   Function      :  int set_form_userptr(FORM *form, void *usrptr)
 |   
 |   Description   :  Set the pointer that is reserved in any form to store
-|                    application relevant informations
+|                    application relevant information.
 |
 |   Return Values :  E_OK         - on success
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
+FORM_EXPORT(int)
 set_form_userptr(FORM *form, void *usrptr)
 {
   T((T_CALLED("set_form_userptr(%p,%p)"), (void *)form, (void *)usrptr));
@@ -57,12 +58,12 @@ set_form_userptr(FORM *form, void *usrptr)
 |   Function      :  void *form_userptr(const FORM *form)
 |   
 |   Description   :  Return the pointer that is reserved in any form to
-|                    store application relevant informations.
+|                    store application relevant information.
 |
 |   Return Values :  Value of pointer. If no such pointer has been set,
 |                    NULL is returned
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(void *)
+FORM_EXPORT(void *)
 form_userptr(const FORM *form)
 {
   T((T_CALLED("form_userptr(%p)"), (const void *)form));

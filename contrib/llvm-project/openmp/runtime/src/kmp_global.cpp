@@ -46,6 +46,9 @@ volatile int __kmp_init_gtid = FALSE;
 volatile int __kmp_init_common = FALSE;
 volatile int __kmp_init_middle = FALSE;
 volatile int __kmp_init_parallel = FALSE;
+volatile int __kmp_init_hidden_helper = FALSE;
+volatile int __kmp_init_hidden_helper_threads = FALSE;
+volatile int __kmp_hidden_helper_team_done = FALSE;
 #if KMP_USE_MONITOR
 volatile int __kmp_init_monitor =
     0; /* 1 - launched, 2 - actually started (Windows* OS only) */
@@ -205,6 +208,13 @@ const char *__kmp_speculative_statsfile = "-";
 int __kmp_display_env = FALSE;
 int __kmp_display_env_verbose = FALSE;
 int __kmp_omp_cancellation = FALSE;
+
+#if KMP_HAVE_MWAIT || KMP_HAVE_UMWAIT
+int __kmp_user_level_mwait = FALSE;
+int __kmp_umwait_enabled = FALSE;
+int __kmp_mwait_enabled = FALSE;
+int __kmp_mwait_hints = 0;
+#endif
 
 /* map OMP 3.0 schedule types with our internal schedule types */
 enum sched_type __kmp_sch_map[kmp_sched_upper - kmp_sched_lower_ext +
@@ -431,7 +441,7 @@ std::atomic<int> __kmp_thread_pool_active_nth = ATOMIC_VAR_INIT(0);
 /* -------------------------------------------------
  * GLOBAL/ROOT STATE */
 KMP_ALIGN_CACHE
-kmp_global_t __kmp_global = {{0}};
+kmp_global_t __kmp_global;
 
 /* ----------------------------------------------- */
 /* GLOBAL SYNCHRONIZATION LOCKS */

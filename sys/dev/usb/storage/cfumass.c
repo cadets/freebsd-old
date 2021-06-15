@@ -2,7 +2,6 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2016 The FreeBSD Foundation
- * All rights reserved.
  *
  * This software was developed by Edward Tomasz Napierala under sponsorship
  * from the FreeBSD Foundation.
@@ -69,7 +68,7 @@ __FBSDID("$FreeBSD$");
 #include <cam/ctl/ctl_ioctl.h>
 #include <cam/ctl/ctl_private.h>
 
-SYSCTL_NODE(_hw_usb, OID_AUTO, cfumass, CTLFLAG_RW, 0,
+SYSCTL_NODE(_hw_usb, OID_AUTO, cfumass, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "CAM Target Layer USB Mass Storage Frontend");
 static int debug = 1;
 SYSCTL_INT(_hw_usb_cfumass, OID_AUTO, debug, CTLFLAG_RWTUN,
@@ -206,7 +205,6 @@ static usb_callback_t		cfumass_t_data_callback;
 static usb_callback_t		cfumass_t_status_callback;
 
 static device_method_t cfumass_methods[] = {
-
 	/* USB interface. */
 	DEVMETHOD(usb_handle_request, cfumass_handle_request),
 
@@ -234,7 +232,6 @@ MODULE_DEPEND(cfumass, usb, 1, 1, 1);
 MODULE_DEPEND(cfumass, usb_template, 1, 1, 1);
 
 static struct usb_config cfumass_config[CFUMASS_T_MAX] = {
-
 	[CFUMASS_T_COMMAND] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -478,7 +475,7 @@ cfumass_terminate(struct cfumass_softc *sc)
 		if (sc->sc_ctl_io != NULL) {
 			CFUMASS_DEBUG(sc, "terminating CTL transfer");
 			ctl_set_data_phase_error(&sc->sc_ctl_io->scsiio);
-			sc->sc_ctl_io->scsiio.be_move_done(sc->sc_ctl_io);
+			ctl_datamove_done(sc->sc_ctl_io, false);
 			sc->sc_ctl_io = NULL;
 		}
 
@@ -733,7 +730,7 @@ cfumass_t_data_callback(struct usb_xfer *xfer, usb_error_t usb_error)
 		    sc->sc_current_residue == 0 ||
 		    io->scsiio.kern_data_resid == 0) {
 			sc->sc_ctl_io = NULL;
-			io->scsiio.be_move_done(io);
+			ctl_datamove_done(io, false);
 			break;
 		}
 		/* FALLTHROUGH */
@@ -890,7 +887,7 @@ cfumass_datamove(union ctl_io *io)
 
 fail:
 	ctl_set_data_phase_error(&io->scsiio);
-	io->scsiio.be_move_done(io);
+	ctl_datamove_done(io, true);
 	sc->sc_ctl_io = NULL;
 }
 

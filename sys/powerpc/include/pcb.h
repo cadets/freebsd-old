@@ -37,6 +37,8 @@
 #ifndef _MACHINE_PCB_H_
 #define	_MACHINE_PCB_H_
 
+#include <sys/endian.h>
+
 #include <machine/setjmp.h>
 
 #ifndef _STANDALONE
@@ -62,8 +64,16 @@ struct pcb {
 #define	PCB_CFSCR	0x40	/* Process had FSCR updated */
 	struct fpu {
 		union {
+#if _BYTE_ORDER == _BIG_ENDIAN
 			double fpr;
 			uint32_t vsr[4];
+#else
+			uint32_t vsr[4];
+			struct {
+				double padding;
+				double fpr;
+			};
+#endif
 		} fpr[32];
 		double	fpscr;	/* FPSCR stored as double for easier access */
 	} pcb_fpu;		/* Floating point processor */
@@ -82,7 +92,7 @@ struct pcb {
 		uint64_t texasr;
 		uint64_t tfiar;
 	} pcb_htm;
-	
+
 	struct ebb {
 		uint64_t ebbhr;
 		uint64_t ebbrr;

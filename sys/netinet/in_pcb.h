@@ -163,22 +163,22 @@ struct in_conninfo {
  * (h) - Protected by the pcbhash lock for the inpcb
  * (s) - Protected by another subsystem's locks
  * (x) - Undefined locking
- * 
+ *
  * Notes on the tcp_hpts:
- * 
+ *
  * First Hpts lock order is
  * 1) INP_WLOCK()
- * 2) HPTS_LOCK() i.e. hpts->pmtx 
+ * 2) HPTS_LOCK() i.e. hpts->pmtx
  *
- * To insert a TCB on the hpts you *must* be holding the INP_WLOCK(). 
- * You may check the inp->inp_in_hpts flag without the hpts lock. 
- * The hpts is the only one that will clear this flag holding 
+ * To insert a TCB on the hpts you *must* be holding the INP_WLOCK().
+ * You may check the inp->inp_in_hpts flag without the hpts lock.
+ * The hpts is the only one that will clear this flag holding
  * only the hpts lock. This means that in your tcp_output()
- * routine when you test for the inp_in_hpts flag to be 1 
- * it may be transitioning to 0 (by the hpts). 
- * That's ok since that will just mean an extra call to tcp_output 
+ * routine when you test for the inp_in_hpts flag to be 1
+ * it may be transitioning to 0 (by the hpts).
+ * That's ok since that will just mean an extra call to tcp_output
  * that most likely will find the call you executed
- * (when the mis-match occured) will have put the TCB back 
+ * (when the mis-match occured) will have put the TCB back
  * on the hpts and it will return. If your
  * call did not add the inp back to the hpts then you will either
  * over-send or the cwnd will block you from sending more.
@@ -189,7 +189,7 @@ struct in_conninfo {
  * the INP_WLOCK() or from destroying your TCB where again
  * you should already have the INP_WLOCK().
  *
- * The inp_hpts_cpu, inp_hpts_cpu_set, inp_input_cpu and 
+ * The inp_hpts_cpu, inp_hpts_cpu_set, inp_input_cpu and
  * inp_input_cpu_set fields are controlled completely by
  * the hpts. Do not ever set these. The inp_hpts_cpu_set
  * and inp_input_cpu_set fields indicate if the hpts has
@@ -243,14 +243,14 @@ struct inpcb {
 					 * fits in the pacing window (i&b). */
 	/*
 	 * Note the next fields are protected by a
-	 * different lock (hpts-lock). This means that 
+	 * different lock (hpts-lock). This means that
 	 * they must correspond in size to the smallest
 	 * protectable bit field (uint8_t on x86, and
 	 * other platfomrs potentially uint32_t?). Also
 	 * since CPU switches can occur at different times the two
 	 * fields can *not* be collapsed into a signal bit field.
 	 */
-#if defined(__amd64__) || defined(__i386__)	
+#if defined(__amd64__) || defined(__i386__)
 	volatile uint8_t inp_in_hpts; /* on output hpts (lock b) */
 	volatile uint8_t inp_in_input; /* on input hpts (lock b) */
 #else
@@ -565,7 +565,7 @@ struct inpcblbgroup {
 	struct epoch_context il_epoch_ctx;
 	uint16_t	il_lport;			/* (c) */
 	u_char		il_vflag;			/* (c) */
-	u_char		il_pad;
+	u_int8_t		il_numa_domain;
 	uint32_t	il_pad2;
 	union in_dependaddr il_dependladdr;		/* (c) */
 #define	il_laddr	il_dependladdr.id46_addr.ia46_addr4
@@ -731,8 +731,8 @@ int	inp_so_options(const struct inpcb *inp);
 /*
  * Flags for inp_flags2.
  */
-#define	INP_2UNUSED1		0x00000001
-#define	INP_2UNUSED2		0x00000002
+#define	INP_MBUF_L_ACKS		0x00000001 /* We need large mbufs for ack compression */
+#define	INP_MBUF_ACKCMP		0x00000002 /* TCP mbuf ack compression ok */
 #define	INP_PCBGROUPWILD	0x00000004 /* in pcbgroup wildcard list */
 #define	INP_REUSEPORT		0x00000008 /* SO_REUSEPORT option is set */
 #define	INP_FREED		0x00000010 /* inp itself is not valid */
@@ -748,6 +748,13 @@ int	inp_so_options(const struct inpcb *inp);
 #define INP_SUPPORTS_MBUFQ	0x00004000 /* Supports the mbuf queue method of LRO */
 #define INP_MBUF_QUEUE_READY	0x00008000 /* The transport is pacing, inputs can be queued */
 #define INP_DONT_SACK_QUEUE	0x00010000 /* If a sack arrives do not wake me */
+#define INP_2PCP_SET		0x00020000 /* If the Eth PCP should be set explicitly */
+#define INP_2PCP_BIT0		0x00040000 /* Eth PCP Bit 0 */
+#define INP_2PCP_BIT1		0x00080000 /* Eth PCP Bit 1 */
+#define INP_2PCP_BIT2		0x00100000 /* Eth PCP Bit 2 */
+#define INP_2PCP_BASE	INP_2PCP_BIT0
+#define INP_2PCP_MASK	(INP_2PCP_BIT0 | INP_2PCP_BIT1 | INP_2PCP_BIT2)
+#define INP_2PCP_SHIFT		18         /* shift PCP field in/out of inp_flags2 */
 /*
  * Flags passed to in_pcblookup*() functions.
  */
@@ -756,7 +763,7 @@ int	inp_so_options(const struct inpcb *inp);
 #define	INPLOOKUP_WLOCKPCB	0x00000004	/* Return inpcb write-locked. */
 
 #define	INPLOOKUP_MASK	(INPLOOKUP_WILDCARD | INPLOOKUP_RLOCKPCB | \
-			    INPLOOKUP_WLOCKPCB)
+	    INPLOOKUP_WLOCKPCB)
 
 #define	sotoinpcb(so)	((struct inpcb *)(so)->so_pcb)
 
@@ -824,6 +831,9 @@ void	in_pcbgroup_update_mbuf(struct inpcb *, struct mbuf *);
 void	in_pcbpurgeif0(struct inpcbinfo *, struct ifnet *);
 int	in_pcballoc(struct socket *, struct inpcbinfo *);
 int	in_pcbbind(struct inpcb *, struct sockaddr *, struct ucred *);
+int	in_pcb_lport_dest(struct inpcb *inp, struct sockaddr *lsa,
+	    u_short *lportp, struct sockaddr *fsa, u_short fport,
+	    struct ucred *cred, int lookupflags);
 int	in_pcb_lport(struct inpcb *, struct in_addr *, u_short *,
 	    struct ucred *, int);
 int	in_pcbbind_setup(struct inpcb *, struct sockaddr *, in_addr_t *,
@@ -842,6 +852,7 @@ int	in_pcbinshash(struct inpcb *);
 int	in_pcbinshash_mbuf(struct inpcb *, struct mbuf *);
 int	in_pcbladdr(struct inpcb *, struct in_addr *, struct in_addr *,
 	    struct ucred *);
+int	in_pcblbgroup_numa(struct inpcb *, int arg);
 struct inpcb *
 	in_pcblookup_local(struct inpcbinfo *,
 	    struct in_addr, u_short, int, struct ucred *);
@@ -874,7 +885,7 @@ in_pcboutput_txrtlmt_locked(struct inpcb *, struct ifnet *,
 int	in_pcbattach_txrtlmt(struct inpcb *, struct ifnet *, uint32_t, uint32_t,
 	    uint32_t, struct m_snd_tag **);
 void	in_pcbdetach_txrtlmt(struct inpcb *);
-void    in_pcbdetach_tag(struct ifnet *ifp, struct m_snd_tag *mst);
+void    in_pcbdetach_tag(struct m_snd_tag *);
 int	in_pcbmodify_txrtlmt(struct inpcb *, uint32_t);
 int	in_pcbquery_txrtlmt(struct inpcb *, uint32_t *);
 int	in_pcbquery_txrlevel(struct inpcb *, uint32_t *);

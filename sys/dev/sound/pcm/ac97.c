@@ -602,6 +602,7 @@ ac97_initmixer(struct ac97_info *codec)
 	ac97_patch codec_patch;
 	const char *cname, *vname;
 	char desc[80];
+	device_t pdev;
 	u_int8_t model, step;
 	unsigned i, j, k, bit, old;
 	u_int32_t id;
@@ -641,9 +642,14 @@ ac97_initmixer(struct ac97_info *codec)
 		return ENODEV;
 	}
 
+	pdev = codec->dev;
+	while (strcmp(device_get_name(device_get_parent(pdev)), "pci") != 0) {
+		/* find the top-level PCI device handler */
+		pdev = device_get_parent(pdev);
+	}
 	codec->id = id;
-	codec->subvendor = (u_int32_t)pci_get_subdevice(codec->dev) << 16;
-	codec->subvendor |= (u_int32_t)pci_get_subvendor(codec->dev) &
+	codec->subvendor = (u_int32_t)pci_get_subdevice(pdev) << 16;
+	codec->subvendor |= (u_int32_t)pci_get_subvendor(pdev) &
 	    0x0000ffff;
 	codec->noext = 0;
 	codec_patch = NULL;
@@ -919,7 +925,8 @@ ac97_init_sysctl(struct ac97_info *codec)
 		return;
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(codec->dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(codec->dev)),
-            OID_AUTO, "eapd", CTLTYPE_INT | CTLFLAG_RW,
+            OID_AUTO, "eapd",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
 	    codec, sizeof(codec), sysctl_hw_snd_ac97_eapd,
 	    "I", "AC97 External Amplifier");
 }

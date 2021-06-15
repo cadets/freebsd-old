@@ -6,32 +6,16 @@ _LIBARCHIVEDIR=	${SRCTOP}/contrib/libarchive
 
 LIB=	archive
 
-LIBADD=	z bz2 lzma bsdxml zstd
-CFLAGS+= -DHAVE_BZLIB_H=1 -DHAVE_LIBLZMA=1 -DHAVE_LZMA_H=1 -DHAVE_ZSTD_H=1 -DHAVE_LIBZSTD=1
-
 # FreeBSD SHLIB_MAJOR value is managed as part of the FreeBSD system.
 # It has no real relation to the libarchive version number.
 SHLIB_MAJOR= 7
 
-CFLAGS+=	-DPLATFORM_CONFIG_H=\"${.CURDIR}/config_freebsd.h\"
 CFLAGS+=	-I${.OBJDIR}
 CFLAGS+=	-I${SRCTOP}/sys/contrib/zstd/lib
-
-.if ${MK_OPENSSL} != "no"
-CFLAGS+=	-DWITH_OPENSSL
-LIBADD+=	crypto
-.else
-LIBADD+=	md
-.endif
-
-.if ${MK_ICONV} != "no"
-# TODO: This can be changed back to CFLAGS once iconv works correctly
-# with statically linked binaries.
-SHARED_CFLAGS+=	-DHAVE_ICONV=1 -DHAVE_ICONV_H=1 -DICONV_CONST=
-.endif
+.include "Makefile.inc"
 
 .if ${MACHINE_ARCH:Marm*} != "" || ${MACHINE_ARCH:Mmips*} != "" || \
-	${MACHINE_ARCH:Msparc64*} != "" || ${MACHINE_ARCH:Mpowerpc*} != ""
+	${MACHINE_ARCH:Mpowerpc*} != ""
 NO_WCAST_ALIGN=	yes
 .if ${MACHINE_ARCH:M*64*} == ""
 CFLAGS+=	-DPPMD_32BIT
@@ -87,6 +71,7 @@ SRCS=	archive_acl.c					\
 	archive_read_set_options.c			\
 	archive_read_support_filter_all.c		\
 	archive_read_support_filter_bzip2.c		\
+	archive_read_support_filter_by_code.c		\
 	archive_read_support_filter_compress.c		\
 	archive_read_support_filter_gzip.c		\
 	archive_read_support_filter_grzip.c		\

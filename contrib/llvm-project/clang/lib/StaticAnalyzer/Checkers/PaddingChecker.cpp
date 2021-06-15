@@ -248,8 +248,9 @@ public:
       FieldInfo RetVal;
       RetVal.Field = FD;
       auto &Ctx = FD->getASTContext();
-      std::tie(RetVal.Size, RetVal.Align) =
-          Ctx.getTypeInfoInChars(FD->getType());
+      auto Info = Ctx.getTypeInfoInChars(FD->getType());
+      RetVal.Size = Info.Width;
+      RetVal.Align = Info.Align;
       assert(llvm::isPowerOf2_64(RetVal.Align.getQuantity()));
       if (auto Max = FD->getMaxAlignment())
         RetVal.Align = std::max(Ctx.toCharUnitsFromBits(Max), RetVal.Align);
@@ -306,7 +307,7 @@ public:
       const SmallVector<const FieldDecl *, 20> &OptimalFieldsOrder) const {
     if (!PaddingBug)
       PaddingBug =
-          llvm::make_unique<BugType>(this, "Excessive Padding", "Performance");
+          std::make_unique<BugType>(this, "Excessive Padding", "Performance");
 
     SmallString<100> Buf;
     llvm::raw_svector_ostream Os(Buf);
@@ -335,7 +336,8 @@ public:
 
     PathDiagnosticLocation CELoc =
         PathDiagnosticLocation::create(RD, BR->getSourceManager());
-    auto Report = llvm::make_unique<BugReport>(*PaddingBug, Os.str(), CELoc);
+    auto Report =
+        std::make_unique<BasicBugReport>(*PaddingBug, Os.str(), CELoc);
     Report->setDeclWithIssue(RD);
     Report->addRange(RD->getSourceRange());
     BR->emitReport(std::move(Report));
@@ -352,6 +354,6 @@ void ento::registerPaddingChecker(CheckerManager &Mgr) {
         Checker, "AllowedPad", "a non-negative value");
 }
 
-bool ento::shouldRegisterPaddingChecker(const LangOptions &LO) {
+bool ento::shouldRegisterPaddingChecker(const CheckerManager &mgr) {
   return true;
 }

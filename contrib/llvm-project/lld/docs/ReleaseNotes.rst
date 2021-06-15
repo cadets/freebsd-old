@@ -1,19 +1,22 @@
-=======================
-lld 9.0.0 Release Notes
-=======================
+========================
+lld 12.0.0 Release Notes
+========================
 
 .. contents::
     :local:
 
+.. warning::
+   These are in-progress notes for the upcoming LLVM 12.0.0 release.
+   Release notes for previous releases can be found on
+   `the Download Page <https://releases.llvm.org/download.html>`_.
+
 Introduction
 ============
 
-lld is a high-performance linker that supports ELF (Unix), COFF
-(Windows), Mach-O (macOS), MinGW and WebAssembly. lld is
-command-line-compatible with GNU linkers and Microsoft link.exe and is
-significantly faster than the system default linkers.
-
-lld 9 has lots of feature improvements and bug fixes.
+This document contains the release notes for the lld linker, release 12.0.0.
+Here we describe the status of lld, including major improvements
+from the previous release. All lld releases may be downloaded
+from the `LLVM releases web site <https://llvm.org/releases/>`_.
 
 Non-comprehensive list of changes in this release
 =================================================
@@ -21,211 +24,125 @@ Non-comprehensive list of changes in this release
 ELF Improvements
 ----------------
 
-* ld.lld now has typo suggestions for flags:
-  ``$ ld.lld --call-shared`` now prints
-  ``unknown argument '--call-shared', did you mean '--call_shared'``.
-  (`r361518 <https://reviews.llvm.org/rL361518>`_)
+* ``--dependency-file`` has been added. (Similar to ``cc -M -MF``.)
+  (`D82437 <https://reviews.llvm.org/D82437>`_)
+* ``--error-handling-script`` has been added to allow for user-defined handlers upon
+  missing libraries. (`D87758 <https://reviews.llvm.org/D87758>`_)
+* ``--exclude-libs`` can now localize defined version symbols and bitcode referenced libcall symbols.
+  (`D94280 <https://reviews.llvm.org/D94280>`_)
+* ``--gdb-index`` now works with DWARF v5 and ``--icf={safe,all}``.
+  (`D85579 <https://reviews.llvm.org/D85579>`_)
+  (`D89751 <https://reviews.llvm.org/D89751>`_)
+* ``--gdb-index --emit-relocs`` can now be used together.
+  (`D94354 <https://reviews.llvm.org/D94354>`_)
+* ``--icf={safe,all}`` conservatively no longer fold text sections with LSDA.
+  Previously ICF on ``-fexceptions`` code could be unsafe.
+  (`D84610 <https://reviews.llvm.org/D84610>`_)
+* ``--icf={safe,all}`` can now fold two sections with relocations referencing aliased symbols.
+  (`D88830 <https://reviews.llvm.org/D88830>`_)
+* ``--lto-pseudo-probe-for-profiling`` has been added.
+  (`D95056 <https://reviews.llvm.org/D95056>`_)
+* ``--no-lto-whole-program-visibility`` has been added.
+  (`D92060 <https://reviews.llvm.org/D92060>`_)
+* ``--oformat-binary`` has been fixed to respect LMA.
+  (`D85086 <https://reviews.llvm.org/D85086>`_)
+* ``--reproduce`` includes ``--lto-sample-profile``, ``--just-symbols``, ``--call-graph-ordering-file``, ``--retain-symbols-file`` files.
+* ``-r --gc-sections`` is now supported.
+  (`D84131 <https://reviews.llvm.org/D84131>`_)
+* A ``-u`` specified symbol will no longer change the binding to ``STB_WEAK``.
+  (`D88945 <https://reviews.llvm.org/D88945>`_)
+* ``--wrap`` support has been improved.
+  + If ``foo`` is not referenced, there is no longer an undefined symbol ``__wrap_foo``.
+  + If ``__real_foo`` is not referenced, there is no longer an undefined symbol ``foo``.
+* ``SHF_LINK_ORDER`` sections can now have zero ``sh_link`` values.
+* ``SHF_LINK_ORDER`` and non-``SHF_LINK_ORDER`` sections can now be mixed within an input section description.
+  (`D84001 <https://reviews.llvm.org/D84001>`_)
+* ``LOG2CEIL`` is now supported in linker scripts.
+  (`D84054 <https://reviews.llvm.org/D84054>`_)
+* ``DEFINED`` has been fixed to check whether the symbol is defined.
+  (`D83758 <https://reviews.llvm.org/D83758>`_)
+* An input section description may now have multiple ``SORT_*``.
+  The matched sections are ordered by radix sort with the keys being ``(SORT*, --sort-section, input order)``.
+  (`D91127 <https://reviews.llvm.org/D91127>`_)
+* Users can now provide a GNU style linker script to convert ``.ctors`` into ``.init_array``.
+  (`D91187 <https://reviews.llvm.org/D91187>`_)
+* An empty output section can now be discarded even if it is assigned to a program header.
+  (`D92301 <https://reviews.llvm.org/D92301>`_)
+* Non-``SHF_ALLOC`` sections now have larger file offsets than ``SHF_ALLOC`` sections.
+  (`D85867 <https://reviews.llvm.org/D85867>`_)
+* Some symbol versioning improvements.
+  + Defined ``foo@@v1`` now resolve undefined ``foo@v1`` (`D92259 <https://reviews.llvm.org/D92259>`_)
+  + Undefined ``foo@v1`` now gets an error (`D92260 <https://reviews.llvm.org/D92260>`_)
+* The AArch64 port now has support for ``STO_AARCH64_VARIANT_PCS`` and ``DT_AARCH64_VARIANT_PCS``.
+  (`D93045 <https://reviews.llvm.org/D93045>`_)
+* The AArch64 port now has support for ``R_AARCH64_LD64_GOTPAGE_LO15``.
+* The PowerPC64 port now detects missing R_PPC64_TLSGD/R_PPC64_TLSLD and disables TLS relaxation.
+  This allows linking with object files produced by very old IBM XL compilers.
+  (`D92959 <https://reviews.llvm.org/D92959>`_)
+* Many PowerPC PC-relative relocations are now supported.
+* ``R_PPC_ADDR24`` and ``R_PPC64_ADDR16_HIGH`` are now supported.
+* powerpcle is now supported. Tested with FreeBSD loader and freestanding.
+  (`D93917 <https://reviews.llvm.org/D93917>`_)
+* RISC-V: the first ``SHT_RISCV_ATTRIBUTES`` section is now retained.
+  (`D86309 <https://reviews.llvm.org/D86309>`_)
+* LTO pipeline now defaults to the new PM if the CMake variable ``ENABLE_EXPERIMENTAL_NEW_PASS_MANAGER`` is on.
+  (`D92885 <https://reviews.llvm.org/D92885>`_)
 
-* ``--allow-shlib-undefined`` and ``--no-allow-shlib-undefined``
-  options are added. ``--no-allow-shlib-undefined`` is the default for
-  executables.
-  (`r352826 <https://reviews.llvm.org/rL352826>`_)
+Breaking changes
+----------------
 
-* ``-nmagic`` and ``-omagic`` options are fully supported.
-  (`r360593 <https://reviews.llvm.org/rL360593>`_)
-
-* Segment layout has changed. PT_GNU_RELRO, which was previously
-  placed in the middle of readable/writable PT_LOAD segments, is now
-  placed at the beginning of them. This change permits lld-produced
-  ELF files to be read correctly by GNU strip older than 2.31, which
-  has a bug to discard a PT_GNU_RELRO in the former layout.
-
-* ``-z common-page-size`` is supported.
-  (`r360593 <https://reviews.llvm.org/rL360593>`_)
-
-* Diagnostics messages have improved. A new flag ``--vs-diagnostics``
-  alters the format of diagnostic output to enable source hyperlinks
-  in Microsoft Visual Studio IDE.
-
-* Linker script compatibility with GNU BFD linker has generally improved.
-
-* The clang ``--dependent-library`` form of autolinking is supported.
-
-  This feature is added to implement the Windows-style autolinking for
-  Unix. On Unix, in order to use a library, you usually have to
-  include a header file provided by the library and then explicitly
-  link the library with the linker ``-l`` option. On Windows, header
-  files usually contain pragmas that list needed libraries. Compilers
-  copy that information to object files, so that linkers can
-  automatically link needed libraries. ``--dependent-library`` is
-  added for implementing that Windows semantics on Unix.
-  (`r360984 <https://reviews.llvm.org/rL360984>`_)
-
-* AArch64 BTI and PAC are supported.
-  (`r362793 <https://reviews.llvm.org/rL362793>`_)
-
-* lld now supports replacing ``JAL`` with ``JALX`` instructions in case
-  of MIPS-microMIPS cross-mode jumps.
-  (`r354311 <https://reviews.llvm.org/rL354311>`_)
-
-* lld now creates LA25 thunks for MIPS R6 code.
-  (`r354312 <https://reviews.llvm.org/rL354312>`_)
-
-* Put MIPS-specific .reginfo, .MIPS.options, and .MIPS.abiflags sections
-  into corresponding PT_MIPS_REGINFO, PT_MIPS_OPTIONS, and PT_MIPS_ABIFLAGS
-  segments.
-
-* The quality of RISC-V and PowerPC ports have greatly improved. Many
-  applications can now be linked by lld. PowerPC64 is now almost
-  production ready.
-
-* The Linux kernel for arm32_7, arm64, ppc64le and x86_64 can now be
-  linked by lld.
-
-* x86-64 TLSDESC is supported.
-  (`r361911 <https://reviews.llvm.org/rL361911>`_,
-  `r362078 <https://reviews.llvm.org/rL362078>`_)
-
-* DF_STATIC_TLS flag is set for i386 and x86-64 when needed.
-  (`r353293 <https://reviews.llvm.org/rL353293>`_,
-  `r353378 <https://reviews.llvm.org/rL353378>`_)
-
-* The experimental partitioning feature is added to allow a program to
-  be split into multiple pieces.
-
-  The feature allows you to semi-automatically split a single program
-  into multiple ELF files called "partitions". Since all partitions
-  share the same memory address space and don't use PLT/GOT, split
-  programs run as fast as regular programs.
-
-  With the mechanism, you can start a program only with a "main"
-  partition and load remaining partitions on-demand. For example, you
-  can split a web browser into a main partition and a PDF reader
-  sub-partition and load the PDF reader partition only when a user
-  tries to open a PDF file.
-
-  See `the documentation <Partitions.html>`_ for more information.
-
-* If "-" is given as an output filename, lld writes the final result
-  to the standard output. Previously, it created a file "-" in the
-  current directory.
-  (`r351852 <https://reviews.llvm.org/rL351852>`_)
-
-* ``-z ifunc-noplt`` option is added to reduce IFunc function call
-  overhead in a freestanding environment such as the OS kernel.
-
-  Functions resolved by the IFunc mechanism are usually dispatched via
-  PLT and thus slower than regular functions because of the cost of
-  indirection. With ``-z ifunc-noplt``, you can eliminate it by doing
-  text relocations at load-time. You need a special loader to utilize
-  this feature. This feature is added for the FreeBSD kernel but can
-  be used by any operating systems.
-  (`r360685 <https://reviews.llvm.org/rL360685>`_)
-
-* ``--undefined-glob`` option is added. The new option is an extension
-  to ``--undefined`` to take a glob pattern instead of a single symbol
-  name.
-  (`r363396 <https://reviews.llvm.org/rL363396>`_)
-
+* A COMMON symbol can now cause the fetch of an archive providing a ``STB_GLOBAL`` definition.
+  This behavior follows GNU ld newer than December 1999.
+  If you see ``duplicate symbol`` errors with the new behavior, check out `PR49226 <https://bugs.llvm.org//show_bug.cgi?id=49226>`_.
+  (`D86142 <https://reviews.llvm.org/D86142>`_)
 
 COFF Improvements
 -----------------
 
-* Like the ELF driver, lld-link now has typo suggestions for flags.
-  (`r361518 <https://reviews.llvm.org/rL361518>`_)
-
-* lld-link now correctly reports duplicate symbol errors for object
-  files that were compiled with ``/Gy``.
-  (`r352590 <https://reviews.llvm.org/rL352590>`_)
-
-* lld-link now correctly reports duplicate symbol errors when several
-  resource (.res) input files define resources with the same type,
-  name and language.  This can be demoted to a warning using
-  ``/force:multipleres``.
-  (`r359829 <https://reviews.llvm.org/rL359829>`_)
-
-* lld-link now rejects more than one resource object input files,
-  matching link.exe. Previously, lld-link would silently ignore all
-  but one.  If you hit this: Don't pass resource object files to the
-  linker, instead pass res files to the linker directly. Don't put
-  resource files in static libraries, pass them on the command line.
-  (`r359749 <https://reviews.llvm.org/rL359749>`_)
-
-* Having more than two ``/natvis:`` now works correctly; it used to not
-  work for larger binaries before.
-  (`r359515 <https://reviews.llvm.org/rL359515>`_)
-
-* Undefined symbols are now printed only in demangled form. Pass
-  ``/demangle:no`` to see raw symbol names instead.
-  (`r355878 <https://reviews.llvm.org/rL355878>`_)
-
-* Several speed and memory usage improvements.
-
-* lld-link now supports resource object files created by GNU windres and
-  MS cvtres, not only llvm-cvtres.
-
-* The generated thunks for delayimports now share the majority of code
-  among thunks, significantly reducing the overhead of using delayimport.
-  (`r365823 <https://reviews.llvm.org/rL365823>`_)
-
-* ``IMAGE_REL_ARM{,64}_REL32`` relocations are supported.
-  (`r352325 <https://reviews.llvm.org/rL352325>`_)
-
-* Range extension thunks for AArch64 are now supported, so lld can
-  create large executables for Windows/ARM64.
-  (`r352929 <https://reviews.llvm.org/rL352929>`_)
-
-* The following flags have been added:
-  ``/functionpadmin`` (`r354716 <https://reviews.llvm.org/rL354716>`_),
-  ``/swaprun:`` (`r359192 <https://reviews.llvm.org/rL359192>`_),
-  ``/threads:no`` (`r355029 <https://reviews.llvm.org/rL355029>`_),
-  ``/filealign`` (`r361634 <https://reviews.llvm.org/rL361634>`_)
-
-WebAssembly Improvements
-------------------------
-
-* Imports from custom module names are supported.
-  (`r352828 <https://reviews.llvm.org/rL352828>`_)
-
-* Symbols that are in llvm.used are now exported by default.
-  (`r353364 <https://reviews.llvm.org/rL353364>`_)
-
-* Initial support for PIC and dynamic linking has landed.
-  (`r357022 <https://reviews.llvm.org/rL357022>`_)
-
-* wasm-ld now add ``__start_``/``__stop_`` symbols for data sections.
-  (`r361236 <https://reviews.llvm.org/rL361236>`_)
-
-* wasm-ld now doesn't report an error on archives without a symbol index.
-  (`r364338 <https://reviews.llvm.org/rL364338>`_)
-
-* The following flags have been added:
-  ``--emit-relocs`` (`r361635 <https://reviews.llvm.org/rL361635>`_),
-  ``--wrap`` (`r361639 <https://reviews.llvm.org/rL361639>`_),
-  ``--trace`` and ``--trace-symbol``
-  (`r353264 <https://reviews.llvm.org/rL353264>`_).
-
+* Error out clearly if creating a DLL with too many exported symbols.
+  (`D86701 <https://reviews.llvm.org/D86701>`_)
 
 MinGW Improvements
 ------------------
 
-* lld now correctly links crtend.o as the last object file, handling
-  terminators for the sections such as .eh_frame properly, fixing
-  DWARF exception handling with libgcc and gcc's crtend.o.
+* Enabled dynamicbase by default. (`D86654 <https://reviews.llvm.org/D86654>`_)
 
-* lld now also handles DWARF unwind info generated by GCC, when linking
-  with libgcc.
+* Tolerate mismatches between COMDAT section sizes with different amount of
+  padding (produced by binutils) by inspecting the aux section definition.
+  (`D86659 <https://reviews.llvm.org/D86659>`_)
 
-* PDB output can be requested without manually specifying the PDB file
-  name, with the new option ``-pdb=`` with an empty value to the option.
-  (The old existing syntax ``-pdb <filename>`` was more cumbersome to use
-  with an empty parameter value.)
+* Support setting the subsystem version via the subsystem argument.
+  (`D88804 <https://reviews.llvm.org/D88804>`_)
 
-* ``--no-insert-timestamp`` option is added as an alias to ``/timestamp:0``.
-  (`r353145 <https://reviews.llvm.org/rL353145>`_)
+* Implemented the GNU -wrap option.
+  (`D89004 <https://reviews.llvm.org/D89004>`_,
+  `D91689 <https://reviews.llvm.org/D91689>`_)
 
-* Many more GNU ld options are now supported, which e.g. allows the lld
-  MinGW frontend to be called by GCC.
+* Handle the ``--demangle`` and ``--no-demangle`` options.
+  (`D93950 <https://reviews.llvm.org/D93950>`_)
 
-* The following options are added: ``--exclude-all-symbols``,
-  ``--appcontainer``, ``--undefined``
+
+Mach-O Improvements
+------------------
+
+We've gotten the new implementation of LLD for Mach-O to the point where it is
+able to link large x86_64 programs, and we'd love to get some alpha testing on
+it. The new Darwin back-end can be invoked as follows:
+
+.. code-block::
+   clang -fuse-ld=lld.darwinnew /path/to/file.c
+
+To reach this point, we implemented numerous features, and it's easier to list
+the major features we *haven't* yet completed:
+
+* LTO support
+* Stack unwinding for exceptions
+* Support for arm64, arm, and i386 architectures
+
+If you stumble upon an issue and it doesn't fall into one of these categories,
+please file a bug report!
+
+
+WebAssembly Improvements
+------------------------
+

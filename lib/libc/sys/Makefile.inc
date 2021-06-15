@@ -45,6 +45,7 @@ NOASM+= getdirentries.o
 PSEUDO+= _getdirentries.o
 
 SRCS+= brk.c
+SRCS+= closefrom.c
 SRCS+= pipe.c
 SRCS+= shm_open.c
 SRCS+= vadvise.c
@@ -79,6 +80,7 @@ INTERPOSED = \
 	sendmsg \
 	sendto \
 	setcontext \
+	sigaction \
 	sigprocmask \
 	sigsuspend \
 	sigtimedwait \
@@ -89,13 +91,6 @@ INTERPOSED = \
 	wait6 \
 	write \
 	writev
-
-.if ${MACHINE_CPUARCH} == "sparc64"
-SRCS+=	sigaction.c
-NOASM+=	sigaction.o
-.else
-INTERPOSED+= sigaction
-.endif
 
 SRCS+=	${INTERPOSED:S/$/.c/}
 NOASM+=	${INTERPOSED:S/$/.o/}
@@ -183,6 +178,7 @@ MAN+=	abort2.2 \
 	cpuset_getaffinity.2 \
 	cpuset_getdomain.2 \
 	dup.2 \
+	eventfd.2 \
 	execve.2 \
 	_exit.2 \
 	extattr_get_file.2 \
@@ -255,6 +251,7 @@ MAN+=	abort2.2 \
 	mq_receive.2 \
 	mq_send.2 \
 	mq_setattr.2 \
+	mq_unlink.2 \
 	msgctl.2 \
 	msgget.2 \
 	msgrcv.2 \
@@ -317,6 +314,7 @@ MAN+=	sctp_generic_recvmsg.2 \
 	shutdown.2 \
 	sigaction.2 \
 	sigaltstack.2 \
+	sigfastblock.2 \
 	sigpending.2 \
 	sigprocmask.2 \
 	sigqueue.2 \
@@ -357,6 +355,8 @@ MAN+=	sctp_generic_recvmsg.2 \
 	write.2 \
 	_umtx_op.2
 
+MLINKS+=aio_read.2 aio_readv.2
+MLINKS+=aio_write.2 aio_writev.2
 MLINKS+=accept.2 accept4.2
 MLINKS+=access.2 eaccess.2 \
 	access.2 faccessat.2
@@ -376,12 +376,15 @@ MLINKS+=chown.2 fchown.2 \
 	chown.2 lchown.2
 MLINKS+=clock_gettime.2 clock_getres.2 \
 	clock_gettime.2 clock_settime.2
+MLINKS+=closefrom.2 close_range.2
 MLINKS+=nanosleep.2 clock_nanosleep.2
 MLINKS+=cpuset.2 cpuset_getid.2 \
 	cpuset.2 cpuset_setid.2
 MLINKS+=cpuset_getaffinity.2 cpuset_setaffinity.2
 MLINKS+=cpuset_getdomain.2 cpuset_setdomain.2
 MLINKS+=dup.2 dup2.2
+MLINKS+=eventfd.2 eventfd_read.3 \
+	eventfd.2 eventfd_write.3
 MLINKS+=execve.2 fexecve.2
 MLINKS+=extattr_get_file.2 extattr.2 \
 	extattr_get_file.2 extattr_delete_fd.2 \

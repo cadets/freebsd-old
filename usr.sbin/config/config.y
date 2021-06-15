@@ -18,7 +18,6 @@
 %token	HINTS
 %token	IDENT
 %token	MAXUSERS
-%token	PROFILE
 %token	OPTIONS
 %token	NOOPTION
 %token	MAKEOPTIONS
@@ -155,8 +154,11 @@ Config_spec:
 		machinearch = $2;
 	      } |
 	ARCH Save_id Save_id {
-		if (machinename != NULL &&
-		    !(eq($2, machinename) && eq($3, machinearch)))
+		/*
+		 * Allow the machinearch to change with a second machine directive,
+		 * but still enforce no changes to the machinename.
+		 */
+		if (machinename != NULL && !eq($2, machinename))
 		    errx(1, "%s:%d: only one machine directive is allowed",
 			yyfile, yyline);
 		machinename = $2;
@@ -189,7 +191,6 @@ Config_spec:
 	System_spec
 		|
 	MAXUSERS NUMBER { maxusers = $2; } |
-	PROFILE NUMBER { profiling = $2; } |
 	ENV ID { newenvvar($2, true); } |
 	ENVVAR ENVLINE { newenvvar($2, false); } |
 	HINTS ID {

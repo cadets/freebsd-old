@@ -34,7 +34,6 @@
 #include <linux/compiler.h>
 #include <sys/types.h>
 #include <machine/atomic.h>
-
 #define	ATOMIC_LONG_INIT(x)	{ .counter = (x) }
 
 typedef struct {
@@ -108,6 +107,20 @@ atomic_long_add_unless(atomic_long_t *v, long a, long u)
 			break;
 	}
 	return (c != u);
+}
+
+static inline long
+atomic_long_fetch_add_unless(atomic_long_t *v, long a, long u)
+{
+	long c = atomic_long_read(v);
+
+	for (;;) {
+		if (unlikely(c == u))
+			break;
+		if (likely(atomic_fcmpset_long(&v->counter, &c, c + a)))
+			break;
+	}
+	return (c);
 }
 
 static inline long

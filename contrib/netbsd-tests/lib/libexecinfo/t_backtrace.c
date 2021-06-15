@@ -1,4 +1,4 @@
-/*	$NetBSD: t_backtrace.c,v 1.16 2014/11/04 00:20:19 justin Exp $	*/
+/*	$NetBSD: t_backtrace.c,v 1.17 2020/09/09 20:04:10 christos Exp $	*/
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -29,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: t_backtrace.c,v 1.16 2014/11/04 00:20:19 justin Exp $");
+__RCSID("$NetBSD: t_backtrace.c,v 1.17 2020/09/09 20:04:10 christos Exp $");
 
 #include <atf-c.h>
 #include <string.h>
@@ -47,7 +47,7 @@ void myfunc2(size_t ncalls);
 void myfunc1(size_t origcalls, volatile size_t ncalls);
 void myfunc(size_t ncalls);
 
-volatile int prevent_inline;
+static volatile int prevent_inline;
 
 void
 myfunc3(size_t ncalls)
@@ -151,6 +151,11 @@ ATF_TC_HEAD(backtrace_fmt_basic, tc)
 
 ATF_TC_BODY(backtrace_fmt_basic, tc)
 {
+#if defined(__amd64__)
+	if (atf_tc_get_config_var_as_bool_wd(tc, "ci", false))
+		atf_tc_skip("https://bugs.freebsd.org/246537");
+#endif
+
 	myfunc(12);
 
 	if (prevent_inline)

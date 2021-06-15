@@ -46,6 +46,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysctl.h>
 #include <sys/ctype.h>
 #include <sys/linker.h>
+#include <sys/mount.h>
 #include <sys/power.h>
 #include <sys/sbuf.h>
 #include <sys/sched.h>
@@ -121,6 +122,7 @@ static device_t	acpi_add_child(device_t bus, u_int order, const char *name,
 static int	acpi_print_child(device_t bus, device_t child);
 static void	acpi_probe_nomatch(device_t bus, device_t child);
 static void	acpi_driver_added(device_t dev, driver_t *driver);
+static void	acpi_child_deleted(device_t dev, device_t child);
 static int	acpi_read_ivar(device_t dev, device_t child, int index,
 			uintptr_t *result);
 static int	acpi_write_ivar(device_t dev, device_t child, int index,
@@ -149,9 +151,9 @@ static ACPI_STATUS acpi_device_scan_cb(ACPI_HANDLE h, UINT32 level,
 		    void *context, void **retval);
 static ACPI_STATUS acpi_device_scan_children(device_t bus, device_t dev,
 		    int max_depth, acpi_scan_cb_t user_fn, void *arg);
-static int	acpi_set_powerstate(device_t child, int state);
 static int	acpi_isa_pnp_probe(device_t bus, device_t child,
 		    struct isa_pnp_id *ids);
+static void	acpi_platform_osc(device_t dev);
 static void	acpi_probe_children(device_t bus);
 static void	acpi_probe_order(ACPI_HANDLE handle, int *order);
 static ACPI_STATUS acpi_probe_child(ACPI_HANDLE handle, UINT32 level,
@@ -161,7 +163,6 @@ static ACPI_STATUS acpi_sleep_disable(struct acpi_softc *sc);
 static ACPI_STATUS acpi_EnterSleepState(struct acpi_softc *sc, int state);
 static void	acpi_shutdown_final(void *arg, int howto);
 static void	acpi_enable_fixed_events(struct acpi_softc *sc);
-static BOOLEAN	acpi_has_hid(ACPI_HANDLE handle);
 static void	acpi_resync_clock(struct acpi_softc *sc);
 static int	acpi_wake_sleep_prep(ACPI_HANDLE handle, int sstate);
 static int	acpi_wake_run_prep(ACPI_HANDLE handle, int sstate);
@@ -199,6 +200,7 @@ static device_method_t acpi_methods[] = {
     DEVMETHOD(bus_print_child,		acpi_print_child),
     DEVMETHOD(bus_probe_nomatch,	acpi_probe_nomatch),
     DEVMETHOD(bus_driver_added,		acpi_driver_added),
+    DEVMETHOD(bus_child_deleted,	acpi_child_deleted),
     DEVMETHOD(bus_read_ivar,		acpi_read_ivar),
     DEVMETHOD(bus_write_ivar,		acpi_write_ivar),
     DEVMETHOD(bus_get_resource_list,	acpi_get_rlist),
@@ -237,7 +239,8 @@ static driver_t acpi_driver = {
 };
 
 static devclass_t acpi_devclass;
-DRIVER_MODULE(acpi, nexus, acpi_driver, acpi_devclass, acpi_modevent, 0);
+EARLY_DRIVER_MODULE(acpi, nexus, acpi_driver, acpi_devclass, acpi_modevent, 0,
+    BUS_PASS_BUS + BUS_PASS_ORDER_MIDDLE);
 MODULE_VERSION(acpi, 1);
 
 ACPI_SERIAL_DECL(acpi, "ACPI root bus");
@@ -250,7 +253,8 @@ static struct rman acpi_rman_io, acpi_rman_mem;
 /* Holds the description of the acpi0 device. */
 static char acpi_desc[ACPI_OEM_ID_SIZE + ACPI_OEM_TABLE_ID_SIZE + 2];
 
-SYSCTL_NODE(_debug, OID_AUTO, acpi, CTLFLAG_RD, NULL, "ACPI debugging");
+SYSCTL_NODE(_debug, OID_AUTO, acpi, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
+    "ACPI debugging");
 static char acpi_ca_version[12];
 SYSCTL_STRING(_debug_acpi, OID_AUTO, acpi_ca_version, CTLFLAG_RD,
 	      acpi_ca_version, 0, "Version of Intel ACPI-CA");
@@ -269,7 +273,8 @@ TUNABLE_STR("hw.acpi.remove_interface", acpi_remove_interface,
 static int acpi_debug_objects;
 TUNABLE_INT("debug.acpi.enable_debug_objects", &acpi_debug_objects);
 SYSCTL_PROC(_debug_acpi, OID_AUTO, enable_debug_objects,
-    CTLFLAG_RW | CTLTYPE_INT, NULL, 0, acpi_debug_objects_sysctl, "I",
+    CTLFLAG_RW | CTLTYPE_INT | CTLFLAG_NEEDGIANT, NULL, 0,
+    acpi_debug_objects_sysctl, "I",
     "Enable Debug objects");
 
 /* Allow the interpreter to ignore common mistakes in BIOS. */
@@ -550,29 +555,35 @@ acpi_attach(device_t dev)
      */
     sysctl_ctx_init(&sc->acpi_sysctl_ctx);
     sc->acpi_sysctl_tree = SYSCTL_ADD_NODE(&sc->acpi_sysctl_ctx,
-			       SYSCTL_STATIC_CHILDREN(_hw), OID_AUTO,
-			       device_get_name(dev), CTLFLAG_RD, 0, "");
+        SYSCTL_STATIC_CHILDREN(_hw), OID_AUTO, device_get_name(dev),
+	CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "supported_sleep_state", CTLTYPE_STRING | CTLFLAG_RD,
+	OID_AUTO, "supported_sleep_state",
+	CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
 	0, 0, acpi_supported_sleep_state_sysctl, "A",
 	"List supported ACPI sleep states.");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "power_button_state", CTLTYPE_STRING | CTLFLAG_RW,
+	OID_AUTO, "power_button_state",
+	CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	&sc->acpi_power_button_sx, 0, acpi_sleep_state_sysctl, "A",
 	"Power button ACPI sleep state.");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "sleep_button_state", CTLTYPE_STRING | CTLFLAG_RW,
+	OID_AUTO, "sleep_button_state",
+	CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	&sc->acpi_sleep_button_sx, 0, acpi_sleep_state_sysctl, "A",
 	"Sleep button ACPI sleep state.");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "lid_switch_state", CTLTYPE_STRING | CTLFLAG_RW,
+	OID_AUTO, "lid_switch_state",
+	CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	&sc->acpi_lid_switch_sx, 0, acpi_sleep_state_sysctl, "A",
 	"Lid ACPI sleep state. Set to S3 if you want to suspend your laptop when close the Lid.");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "standby_state", CTLTYPE_STRING | CTLFLAG_RW,
+	OID_AUTO, "standby_state",
+	CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	&sc->acpi_standby_sx, 0, acpi_sleep_state_sysctl, "A", "");
     SYSCTL_ADD_PROC(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
-	OID_AUTO, "suspend_state", CTLTYPE_STRING | CTLFLAG_RW,
+	OID_AUTO, "suspend_state",
+	CTLTYPE_STRING | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 	&sc->acpi_suspend_sx, 0, acpi_sleep_state_sysctl, "A", "");
     SYSCTL_ADD_INT(&sc->acpi_sysctl_ctx, SYSCTL_CHILDREN(sc->acpi_sysctl_tree),
 	OID_AUTO, "sleep_delay", CTLFLAG_RW, &sc->acpi_sleep_delay, 0,
@@ -673,6 +684,8 @@ acpi_attach(device_t dev)
 
     /* Register ACPI again to pass the correct argument of pm_func. */
     power_pm_register(POWER_PM_TYPE_ACPI, acpi_pm_func, sc);
+
+    acpi_platform_osc(dev);
 
     if (!acpi_disabled("bus")) {
 	EVENTHANDLER_REGISTER(dev_lookup, acpi_lookup, NULL, 1000);
@@ -872,14 +885,12 @@ acpi_child_location_str_method(device_t cbdev, device_t child, char *buf,
 }
 
 /* PnP information for devctl(8) */
-static int
-acpi_child_pnpinfo_str_method(device_t cbdev, device_t child, char *buf,
-    size_t buflen)
+int
+acpi_pnpinfo_str(ACPI_HANDLE handle, char *buf, size_t buflen)
 {
-    struct acpi_device *dinfo = device_get_ivars(child);
     ACPI_DEVICE_INFO *adinfo;
 
-    if (ACPI_FAILURE(AcpiGetObjectInfo(dinfo->ad_handle, &adinfo))) {
+    if (ACPI_FAILURE(AcpiGetObjectInfo(handle, &adinfo))) {
 	snprintf(buf, buflen, "unknown");
 	return (0);
     }
@@ -895,6 +906,27 @@ acpi_child_pnpinfo_str_method(device_t cbdev, device_t child, char *buf,
     AcpiOsFree(adinfo);
 
     return (0);
+}
+
+static int
+acpi_child_pnpinfo_str_method(device_t cbdev, device_t child, char *buf,
+    size_t buflen)
+{
+    struct acpi_device *dinfo = device_get_ivars(child);
+
+    return (acpi_pnpinfo_str(dinfo->ad_handle, buf, buflen));
+}
+
+/*
+ * Handle device deletion.
+ */
+static void
+acpi_child_deleted(device_t dev, device_t child)
+{
+    struct acpi_device *dinfo = device_get_ivars(child);
+
+    if (acpi_get_device(dinfo->ad_handle) == child)
+	AcpiDetachData(dinfo->ad_handle, acpi_fake_objhandler);
 }
 
 /*
@@ -1090,7 +1122,7 @@ static int
 acpi_parse_pxm(device_t dev)
 {
 #ifdef NUMA
-#if defined(__i386__) || defined(__amd64__)
+#if defined(__i386__) || defined(__amd64__) || defined(__aarch64__)
 	ACPI_HANDLE handle;
 	ACPI_STATUS status;
 	int pxm;
@@ -1678,7 +1710,7 @@ acpi_device_id_probe(device_t bus, device_t dev, char **ids, char **match)
 	rv = acpi_MatchHid(h, ids[i]);
 	if (rv == ACPI_MATCHHID_NOMATCH)
 	    continue;
-	
+
 	if (match != NULL) {
 	    *match = ids[i];
 	}
@@ -1782,10 +1814,8 @@ acpi_device_scan_cb(ACPI_HANDLE h, UINT32 level, void *arg, void **retval)
 	return (status);
 
     /* Remove the old child and its connection to the handle. */
-    if (old_dev != NULL) {
+    if (old_dev != NULL)
 	device_delete_child(device_get_parent(old_dev), old_dev);
-	AcpiDetachData(h, acpi_fake_objhandler);
-    }
 
     /* Recreate the handle association if the user created a device. */
     if (dev != NULL)
@@ -1819,7 +1849,7 @@ acpi_device_scan_children(device_t bus, device_t dev, int max_depth,
  * Even though ACPI devices are not PCI, we use the PCI approach for setting
  * device power states since it's close enough to ACPI.
  */
-static int
+int
 acpi_set_powerstate(device_t child, int state)
 {
     ACPI_HANDLE h;
@@ -1915,6 +1945,34 @@ acpi_enable_pcie(void)
 		alloc++;
 	}
 #endif
+}
+
+static void
+acpi_platform_osc(device_t dev)
+{
+	ACPI_HANDLE sb_handle;
+	ACPI_STATUS status;
+	uint32_t cap_set[2];
+
+	/* 0811B06E-4A27-44F9-8D60-3CBBC22E7B48 */
+	static uint8_t acpi_platform_uuid[ACPI_UUID_LENGTH] = {
+		0x6e, 0xb0, 0x11, 0x08, 0x27, 0x4a, 0xf9, 0x44,
+		0x8d, 0x60, 0x3c, 0xbb, 0xc2, 0x2e, 0x7b, 0x48
+	};
+
+	if (ACPI_FAILURE(AcpiGetHandle(ACPI_ROOT_OBJECT, "\\_SB_", &sb_handle)))
+		return;
+
+	cap_set[1] = 0x10;	/* APEI Support */
+	status = acpi_EvaluateOSC(sb_handle, acpi_platform_uuid, 1,
+	    nitems(cap_set), cap_set, cap_set, false);
+	if (ACPI_FAILURE(status)) {
+		if (status == AE_NOT_FOUND)
+			return;
+		device_printf(dev, "_OSC failed: %s\n",
+		    AcpiFormatException(status));
+		return;
+	}
 }
 
 /*
@@ -2215,6 +2273,8 @@ acpi_DeviceIsPresent(device_t dev)
 	h = acpi_get_handle(dev);
 	if (h == NULL)
 		return (FALSE);
+
+#ifdef ACPI_EARLY_EPYC_WAR
 	/*
 	 * Certain Treadripper boards always returns 0 for FreeBSD because it
 	 * only returns non-zero for the OS string "Windows 2015". Otherwise it
@@ -2223,6 +2283,7 @@ acpi_DeviceIsPresent(device_t dev)
 	 */
 	if (acpi_MatchHid(h, "AMDI0020") || acpi_MatchHid(h, "AMDI0010"))
 		return (TRUE);
+#endif
 
 	status = acpi_GetInteger(h, "_STA", &s);
 
@@ -2264,7 +2325,7 @@ acpi_BatteryIsPresent(device_t dev)
 /*
  * Returns true if a device has at least one valid device ID.
  */
-static BOOLEAN
+BOOLEAN
 acpi_has_hid(ACPI_HANDLE h)
 {
     ACPI_DEVICE_INFO	*devinfo;
@@ -2575,8 +2636,8 @@ acpi_AppendBufferResource(ACPI_BUFFER *buf, ACPI_RESOURCE *res)
     return (AE_OK);
 }
 
-UINT8
-acpi_DSMQuery(ACPI_HANDLE h, uint8_t *uuid, int revision)
+UINT64
+acpi_DSMQuery(ACPI_HANDLE h, const uint8_t *uuid, int revision)
 {
     /*
      * ACPI spec 9.1.1 defines this.
@@ -2588,7 +2649,8 @@ acpi_DSMQuery(ACPI_HANDLE h, uint8_t *uuid, int revision)
      */
     ACPI_BUFFER buf;
     ACPI_OBJECT *obj;
-    UINT8 ret = 0;
+    UINT64 ret = 0;
+    int i;
 
     if (!ACPI_SUCCESS(acpi_EvaluateDSM(h, uuid, revision, 0, NULL, &buf))) {
 	ACPI_INFO(("Failed to enumerate DSM functions\n"));
@@ -2606,12 +2668,13 @@ acpi_DSMQuery(ACPI_HANDLE h, uint8_t *uuid, int revision)
      */
     switch (obj->Type) {
     case ACPI_TYPE_BUFFER:
-	ret = *(uint8_t *)obj->Buffer.Pointer;
+	for (i = 0; i < MIN(obj->Buffer.Length, sizeof(ret)); i++)
+	    ret |= (((uint64_t)obj->Buffer.Pointer[i]) << (i * 8));
 	break;
     case ACPI_TYPE_INTEGER:
 	ACPI_BIOS_WARNING((AE_INFO,
 	    "Possibly buggy BIOS with ACPI_TYPE_INTEGER for function enumeration\n"));
-	ret = obj->Integer.Value & 0xFF;
+	ret = obj->Integer.Value;
 	break;
     default:
 	ACPI_WARNING((AE_INFO, "Unexpected return type %u\n", obj->Type));
@@ -2627,8 +2690,17 @@ acpi_DSMQuery(ACPI_HANDLE h, uint8_t *uuid, int revision)
  * check the type of the returned object.
  */
 ACPI_STATUS
-acpi_EvaluateDSM(ACPI_HANDLE handle, uint8_t *uuid, int revision,
-    uint64_t function, union acpi_object *package, ACPI_BUFFER *out_buf)
+acpi_EvaluateDSM(ACPI_HANDLE handle, const uint8_t *uuid, int revision,
+    UINT64 function, ACPI_OBJECT *package, ACPI_BUFFER *out_buf)
+{
+	return (acpi_EvaluateDSMTyped(handle, uuid, revision, function,
+	    package, out_buf, ACPI_TYPE_ANY));
+}
+
+ACPI_STATUS
+acpi_EvaluateDSMTyped(ACPI_HANDLE handle, const uint8_t *uuid, int revision,
+    UINT64 function, ACPI_OBJECT *package, ACPI_BUFFER *out_buf,
+    ACPI_OBJECT_TYPE type)
 {
     ACPI_OBJECT arg[4];
     ACPI_OBJECT_LIST arglist;
@@ -2640,7 +2712,7 @@ acpi_EvaluateDSM(ACPI_HANDLE handle, uint8_t *uuid, int revision,
 
     arg[0].Type = ACPI_TYPE_BUFFER;
     arg[0].Buffer.Length = ACPI_UUID_LENGTH;
-    arg[0].Buffer.Pointer = uuid;
+    arg[0].Buffer.Pointer = __DECONST(uint8_t *, uuid);
     arg[1].Type = ACPI_TYPE_INTEGER;
     arg[1].Integer.Value = revision;
     arg[2].Type = ACPI_TYPE_INTEGER;
@@ -2657,7 +2729,7 @@ acpi_EvaluateDSM(ACPI_HANDLE handle, uint8_t *uuid, int revision,
     arglist.Count = 4;
     buf.Pointer = NULL;
     buf.Length = ACPI_ALLOCATE_BUFFER;
-    status = AcpiEvaluateObject(handle, "_DSM", &arglist, &buf);
+    status = AcpiEvaluateObjectTyped(handle, "_DSM", &arglist, &buf, type);
     if (ACPI_FAILURE(status))
 	return (status);
 
@@ -3013,6 +3085,7 @@ acpi_EnterSleepState(struct acpi_softc *sc, int state)
 
     EVENTHANDLER_INVOKE(power_suspend_early);
     stop_all_proc();
+    suspend_all_fs();
     EVENTHANDLER_INVOKE(power_suspend);
 
 #ifdef EARLY_AP_STARTUP
@@ -3172,6 +3245,7 @@ backout:
     }
 #endif
 
+    resume_all_fs();
     resume_all_proc();
 
     EVENTHANDLER_INVOKE(power_resume);
@@ -3193,7 +3267,6 @@ acpi_resync_clock(struct acpi_softc *sc)
     /*
      * Warm up timecounter again and reset system clock.
      */
-    (void)timecounter->tc_get_timecount(timecounter);
     (void)timecounter->tc_get_timecount(timecounter);
     inittodr(time_second + sc->acpi_sleep_delay);
 }
@@ -3352,7 +3425,7 @@ acpi_wake_sysctl_walk(device_t dev)
 	if (ACPI_SUCCESS(status)) {
 	    SYSCTL_ADD_PROC(device_get_sysctl_ctx(child),
 		SYSCTL_CHILDREN(device_get_sysctl_tree(child)), OID_AUTO,
-		"wake", CTLTYPE_INT | CTLFLAG_RW, child, 0,
+		"wake", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, child, 0,
 		acpi_wake_set_sysctl, "I", "Device set to wake the system");
 	}
     }
@@ -4125,10 +4198,14 @@ acpi_debug_sysctl(SYSCTL_HANDLER_ARGS)
     return (error);
 }
 
-SYSCTL_PROC(_debug_acpi, OID_AUTO, layer, CTLFLAG_RW | CTLTYPE_STRING,
-	    "debug.acpi.layer", 0, acpi_debug_sysctl, "A", "");
-SYSCTL_PROC(_debug_acpi, OID_AUTO, level, CTLFLAG_RW | CTLTYPE_STRING,
-	    "debug.acpi.level", 0, acpi_debug_sysctl, "A", "");
+SYSCTL_PROC(_debug_acpi, OID_AUTO, layer,
+    CTLFLAG_RW | CTLTYPE_STRING | CTLFLAG_NEEDGIANT, "debug.acpi.layer", 0,
+    acpi_debug_sysctl, "A",
+    "");
+SYSCTL_PROC(_debug_acpi, OID_AUTO, level,
+    CTLFLAG_RW | CTLTYPE_STRING | CTLFLAG_NEEDGIANT, "debug.acpi.level", 0,
+    acpi_debug_sysctl, "A",
+    "");
 #endif /* ACPI_DEBUG */
 
 static int

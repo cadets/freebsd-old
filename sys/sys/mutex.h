@@ -106,6 +106,7 @@ void	__mtx_unlock_sleep(volatile uintptr_t *c, uintptr_t v, int opts,
 void	__mtx_lock_sleep(volatile uintptr_t *c, uintptr_t v);
 void	__mtx_unlock_sleep(volatile uintptr_t *c, uintptr_t v);
 #endif
+void	mtx_wait_unlocked(struct mtx *m);
 
 #ifdef SMP
 #if LOCK_DEBUG > 0
@@ -269,7 +270,7 @@ void	_thread_lock(struct thread *);
 		spinlock_exit();					\
 		_ret = 0;						\
 	} else {							\
-		LOCKSTAT_PROFILE_OBTAIN_LOCK_SUCCESS(spin__acquire,	\
+		LOCKSTAT_PROFILE_OBTAIN_SPIN_LOCK_SUCCESS(spin__acquire,	\
 		    mp, 0, 0, file, line);				\
 		_ret = 1;						\
 	}								\
@@ -327,7 +328,7 @@ void	_thread_lock(struct thread *);
 	if (mtx_recursed((mp)))						\
 		(mp)->mtx_recurse--;					\
 	else {								\
-		LOCKSTAT_PROFILE_RELEASE_LOCK(spin__release, mp);	\
+		LOCKSTAT_PROFILE_RELEASE_SPIN_LOCK(spin__release, mp);	\
 		_mtx_release_lock_quick((mp));				\
 	}								\
 	spinlock_exit();						\
@@ -337,7 +338,7 @@ void	_thread_lock(struct thread *);
 	if (mtx_recursed((mp)))						\
 		(mp)->mtx_recurse--;					\
 	else {								\
-		LOCKSTAT_PROFILE_RELEASE_LOCK(spin__release, mp);	\
+		LOCKSTAT_PROFILE_RELEASE_SPIN_LOCK(spin__release, mp);	\
 		(mp)->mtx_lock = MTX_UNOWNED;				\
 	}								\
 	spinlock_exit();						\

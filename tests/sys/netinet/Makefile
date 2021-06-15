@@ -5,11 +5,15 @@ PACKAGE=	tests
 TESTSDIR=	${TESTSBASE}/sys/netinet
 BINDIR=		${TESTSDIR}
 
+TESTS_SUBDIRS+=	libalias
+
 ATF_TESTS_C=	ip_reass_test \
 		so_reuseport_lb_test \
-		socket_afinet
+		socket_afinet \
+		tcp_connect_port_test
 
-ATF_TESTS_SH=	fibs_test redirect
+ATF_TESTS_SH=	carp fibs fibs_test redirect divert forward output lpm arp
+TEST_METADATA.output+=	required_programs="python"
 
 PROGS=	udp_dontroute tcp_user_cookie
 
@@ -18,7 +22,5 @@ ${PACKAGE}FILES+=		redirect.py
 ${PACKAGE}FILESMODE_redirect.py=0555
 
 MAN=
-
-WARNS?=	6
 
 .include <bsd.test.mk>

@@ -2,7 +2,7 @@
  * Copyright (c) 2010 Isilon Systems, Inc.
  * Copyright (c) 2010 iX Systems, Inc.
  * Copyright (c) 2010 Panasas, Inc.
- * Copyright (c) 2013-2018 Mellanox Technologies, Ltd.
+ * Copyright (c) 2013-2021 Mellanox Technologies, Ltd.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -51,6 +51,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/rwlock.h>
 #include <sys/mman.h>
 #include <sys/stack.h>
+#include <sys/time.h>
 #include <sys/user.h>
 
 #include <vm/vm.h>
@@ -66,6 +67,7 @@ __FBSDID("$FreeBSD$");
 #endif
 
 #include <linux/kobject.h>
+#include <linux/cpu.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -86,16 +88,24 @@ __FBSDID("$FreeBSD$");
 #include <linux/compat.h>
 #include <linux/poll.h>
 #include <linux/smp.h>
+#include <linux/wait_bit.h>
 
 #if defined(__i386__) || defined(__amd64__)
 #include <asm/smp.h>
 #endif
 
-SYSCTL_NODE(_compat, OID_AUTO, linuxkpi, CTLFLAG_RW, 0, "LinuxKPI parameters");
+SYSCTL_NODE(_compat, OID_AUTO, linuxkpi, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "LinuxKPI parameters");
 
 int linuxkpi_debug;
 SYSCTL_INT(_compat_linuxkpi, OID_AUTO, debug, CTLFLAG_RWTUN,
     &linuxkpi_debug, 0, "Set to enable pr_debug() prints. Clear to disable.");
+
+static struct timeval lkpi_net_lastlog;
+static int lkpi_net_curpps;
+static int lkpi_net_maxpps = 99;
+SYSCTL_INT(_compat_linuxkpi, OID_AUTO, net_ratelimit, CTLFLAG_RWTUN,
+    &lkpi_net_maxpps, 0, "Limit number of LinuxKPI net messages per second.");
 
 MALLOC_DEFINE(M_KMALLOC, "linux", "Linux kmalloc compat");
 
@@ -106,9 +116,11 @@ MALLOC_DEFINE(M_KMALLOC, "linux", "Linux kmalloc compat");
 #undef cdev
 #define	RB_ROOT(head)	(head)->rbh_root
 
+static void linux_destroy_dev(struct linux_cdev *);
 static void linux_cdev_deref(struct linux_cdev *ldev);
 static struct vm_area_struct *linux_cdev_handle_find(void *handle);
 
+cpumask_t cpu_online_mask;
 struct kobject linux_class_root;
 struct device linux_root_device;
 struct class linux_class_misc;
@@ -117,6 +129,9 @@ struct list_head pci_devices;
 spinlock_t pci_lock;
 
 unsigned long linux_timer_hz_mask;
+
+wait_queue_head_t linux_bit_waitq;
+wait_queue_head_t linux_var_waitq;
 
 int
 panic_cmp(struct rb_node *one, struct rb_node *two)
@@ -201,7 +216,6 @@ kobject_add_complete(struct kobject *kobj, struct kobject *parent)
 		}
 		if (error)
 			sysfs_remove_dir(kobj);
-
 	}
 	return (error);
 }
@@ -418,22 +432,15 @@ linux_kq_unlock(void *arg)
 }
 
 static void
-linux_kq_lock_owned(void *arg)
+linux_kq_assert_lock(void *arg, int what)
 {
 #ifdef INVARIANTS
 	spinlock_t *s = arg;
 
-	mtx_assert(&s->m, MA_OWNED);
-#endif
-}
-
-static void
-linux_kq_lock_unowned(void *arg)
-{
-#ifdef INVARIANTS
-	spinlock_t *s = arg;
-
-	mtx_assert(&s->m, MA_NOTOWNED);
+	if (what == LA_LOCKED)
+		mtx_assert(&s->m, MA_OWNED);
+	else
+		mtx_assert(&s->m, MA_NOTOWNED);
 #endif
 }
 
@@ -453,8 +460,7 @@ linux_file_alloc(void)
 	/* setup fields needed by kqueue support */
 	spin_lock_init(&filp->f_kqlock);
 	knlist_init(&filp->f_selinfo.si_note, &filp->f_kqlock,
-	    linux_kq_lock, linux_kq_unlock,
-	    linux_kq_lock_owned, linux_kq_lock_unowned);
+	    linux_kq_lock, linux_kq_unlock, linux_kq_assert_lock);
 
 	return (filp);
 }
@@ -524,14 +530,14 @@ linux_cdev_pager_populate(vm_object_t vm_obj, vm_pindex_t pidx, int fault_type,
 	struct vm_area_struct *vmap;
 	int err;
 
-	linux_set_current(curthread);
-
 	/* get VM area structure */
 	vmap = linux_cdev_handle_find(vm_obj->handle);
 	MPASS(vmap != NULL);
 	MPASS(vmap->vm_private_data == vm_obj->handle);
 
 	VM_OBJECT_WUNLOCK(vm_obj);
+
+	linux_set_current(curthread);
 
 	down_write(&vmap->vm_mm->mmap_sem);
 	if (unlikely(vmap->vm_ops == NULL)) {
@@ -714,15 +720,19 @@ linux_get_fop(struct linux_file *filp, const struct file_operations **fop,
 	ldev = filp->f_cdev;
 	*fop = filp->f_op;
 	if (ldev != NULL) {
-		for (siref = ldev->siref;;) {
-			if ((siref & LDEV_SI_DTR) != 0) {
-				ldev = &dummy_ldev;
-				siref = ldev->siref;
-				*fop = ldev->ops;
-				MPASS((ldev->siref & LDEV_SI_DTR) == 0);
-			} else if (atomic_fcmpset_int(&ldev->siref, &siref,
-			    siref + LDEV_SI_REF)) {
-				break;
+		if (ldev->kobj.ktype == &linux_cdev_static_ktype) {
+			refcount_acquire(&ldev->refs);
+		} else {
+			for (siref = ldev->siref;;) {
+				if ((siref & LDEV_SI_DTR) != 0) {
+					ldev = &dummy_ldev;
+					*fop = ldev->ops;
+					siref = ldev->siref;
+					MPASS((ldev->siref & LDEV_SI_DTR) == 0);
+				} else if (atomic_fcmpset_int(&ldev->siref,
+				    &siref, siref + LDEV_SI_REF)) {
+					break;
+				}
 			}
 		}
 	}
@@ -735,8 +745,13 @@ linux_drop_fop(struct linux_cdev *ldev)
 
 	if (ldev == NULL)
 		return;
-	MPASS((ldev->siref & ~LDEV_SI_DTR) != 0);
-	atomic_subtract_int(&ldev->siref, LDEV_SI_REF);
+	if (ldev->kobj.ktype == &linux_cdev_static_ktype) {
+		linux_cdev_deref(ldev);
+	} else {
+		MPASS(ldev->kobj.ktype == &linux_cdev_ktype);
+		MPASS((ldev->siref & ~LDEV_SI_DTR) != 0);
+		atomic_subtract_int(&ldev->siref, LDEV_SI_REF);
+	}
 }
 
 #define	OPW(fp,td,code) ({			\
@@ -1007,7 +1022,6 @@ linux_poll_wakeup_state(atomic_t *v, const uint8_t *pstate)
 	return (c);
 }
 
-
 static int
 linux_poll_wakeup_callback(wait_queue_t *wq, unsigned int wq_state, int flags, void *key)
 {
@@ -1221,7 +1235,7 @@ linux_file_kqfilter(struct file *file, struct knote *kn)
 static int
 linux_file_mmap_single(struct file *fp, const struct file_operations *fop,
     vm_ooffset_t *offset, vm_size_t size, struct vm_object **object,
-    int nprot, struct thread *td)
+    int nprot, bool is_shared, struct thread *td)
 {
 	struct task_struct *task;
 	struct vm_area_struct *vmap;
@@ -1256,6 +1270,8 @@ linux_file_mmap_single(struct file *fp, const struct file_operations *fop,
 	vmap->vm_pgoff = *offset / PAGE_SIZE;
 	vmap->vm_pfn = 0;
 	vmap->vm_flags = vmap->vm_page_prot = (nprot & VM_PROT_ALL);
+	if (is_shared)
+		vmap->vm_flags |= VM_SHARED;
 	vmap->vm_ops = NULL;
 	vmap->vm_file = get_file(filp);
 	vmap->vm_mm = mm;
@@ -1489,6 +1505,7 @@ static int
 linux_file_close(struct file *file, struct thread *td)
 {
 	struct linux_file *filp;
+	int (*release)(struct inode *, struct linux_file *);
 	const struct file_operations *fop;
 	struct linux_cdev *ldev;
 	int error;
@@ -1506,14 +1523,20 @@ linux_file_close(struct file *file, struct thread *td)
 	linux_set_current(td);
 	linux_poll_wait_dequeue(filp);
 	linux_get_fop(filp, &fop, &ldev);
-	if (fop->release != NULL)
-		error = -OPW(file, td, fop->release(filp->f_vnode, filp));
+	/*
+	 * Always use the real release function, if any, to avoid
+	 * leaking device resources:
+	 */
+	release = filp->f_op->release;
+	if (release != NULL)
+		error = -OPW(file, td, release(filp->f_vnode, filp));
 	funsetown(&filp->f_sigio);
 	if (filp->f_vnode != NULL)
 		vdrop(filp->f_vnode);
 	linux_drop_fop(ldev);
-	if (filp->f_cdev != NULL)
-		linux_cdev_deref(filp->f_cdev);
+	ldev = filp->f_cdev;
+	if (ldev != NULL)
+		linux_cdev_deref(ldev);
 	kfree(filp);
 
 	return (error);
@@ -1583,21 +1606,21 @@ linux_file_ioctl(struct file *fp, u_long cmd, void *data, struct ucred *cred,
 
 static int
 linux_file_mmap_sub(struct thread *td, vm_size_t objsize, vm_prot_t prot,
-    vm_prot_t *maxprotp, int *flagsp, struct file *fp,
+    vm_prot_t maxprot, int flags, struct file *fp,
     vm_ooffset_t *foff, const struct file_operations *fop, vm_object_t *objp)
 {
 	/*
 	 * Character devices do not provide private mappings
 	 * of any kind:
 	 */
-	if ((*maxprotp & VM_PROT_WRITE) == 0 &&
+	if ((maxprot & VM_PROT_WRITE) == 0 &&
 	    (prot & VM_PROT_WRITE) != 0)
 		return (EACCES);
-	if ((*flagsp & (MAP_PRIVATE | MAP_COPY)) != 0)
+	if ((flags & (MAP_PRIVATE | MAP_COPY)) != 0)
 		return (EINVAL);
 
 	return (linux_file_mmap_single(fp, fop, foff, objsize, objp,
-	    (int)prot, td));
+	    (int)prot, (flags & MAP_SHARED) ? true : false, td));
 }
 
 static int
@@ -1655,7 +1678,7 @@ linux_file_mmap(struct file *fp, vm_map_t map, vm_offset_t *addr, vm_size_t size
 	maxprot &= cap_maxprot;
 
 	linux_get_fop(filp, &fop, &ldev);
-	error = linux_file_mmap_sub(td, size, prot, &maxprot, &flags, fp,
+	error = linux_file_mmap_sub(td, size, prot, maxprot, flags, fp,
 	    &foff, fop, &object);
 	if (error != 0)
 		goto out;
@@ -1684,7 +1707,7 @@ linux_file_stat(struct file *fp, struct stat *sb, struct ucred *active_cred,
 	vp = filp->f_vnode;
 
 	vn_lock(vp, LK_SHARED | LK_RETRY);
-	error = vn_stat(vp, sb, td->td_ucred, NOCRED, td);
+	error = VOP_STAT(vp, sb, td->td_ucred, NOCRED, td);
 	VOP_UNLOCK(vp);
 
 	return (error);
@@ -1824,7 +1847,6 @@ iounmap(void *addr)
 	kfree(vmmap);
 }
 
-
 void *
 vmap(struct page **pages, unsigned int count, unsigned long flags, int prot)
 {
@@ -1854,8 +1876,8 @@ vunmap(void *addr)
 	kfree(vmmap);
 }
 
-char *
-kvasprintf(gfp_t gfp, const char *fmt, va_list ap)
+static char *
+devm_kvasprintf(struct device *dev, gfp_t gfp, const char *fmt, va_list ap)
 {
 	unsigned int len;
 	char *p;
@@ -1865,9 +1887,32 @@ kvasprintf(gfp_t gfp, const char *fmt, va_list ap)
 	len = vsnprintf(NULL, 0, fmt, aq);
 	va_end(aq);
 
-	p = kmalloc(len + 1, gfp);
+	if (dev != NULL)
+		p = devm_kmalloc(dev, len + 1, gfp);
+	else
+		p = kmalloc(len + 1, gfp);
 	if (p != NULL)
 		vsnprintf(p, len + 1, fmt, ap);
+
+	return (p);
+}
+
+char *
+kvasprintf(gfp_t gfp, const char *fmt, va_list ap)
+{
+
+	return (devm_kvasprintf(NULL, gfp, fmt, ap));
+}
+
+char *
+lkpi_devm_kasprintf(struct device *dev, gfp_t gfp, const char *fmt, ...)
+{
+	va_list ap;
+	char *p;
+
+	va_start(ap, fmt);
+	p = devm_kvasprintf(dev, gfp, fmt, ap);
+	va_end(ap);
 
 	return (p);
 }
@@ -1890,20 +1935,31 @@ linux_timer_callback_wrapper(void *context)
 {
 	struct timer_list *timer;
 
-	linux_set_current(curthread);
-
 	timer = context;
+
+	if (linux_set_current_flags(curthread, M_NOWAIT)) {
+		/* try again later */
+		callout_reset(&timer->callout, 1,
+		    &linux_timer_callback_wrapper, timer);
+		return;
+	}
+
 	timer->function(timer->data);
 }
 
-void
+int
 mod_timer(struct timer_list *timer, int expires)
 {
+	int ret;
 
 	timer->expires = expires;
-	callout_reset(&timer->callout,
+	ret = callout_reset(&timer->callout,
 	    linux_timer_jiffies_until(expires),
 	    &linux_timer_callback_wrapper, timer);
+
+	MPASS(ret == 0 || ret == 1);
+
+	return (ret == 1);
 }
 
 void
@@ -1933,9 +1989,47 @@ del_timer(struct timer_list *timer)
 	return (1);
 }
 
+int
+del_timer_sync(struct timer_list *timer)
+{
+
+	if (callout_drain(&(timer)->callout) == -1)
+		return (0);
+	return (1);
+}
+
+/* greatest common divisor, Euclid equation */
+static uint64_t
+lkpi_gcd_64(uint64_t a, uint64_t b)
+{
+	uint64_t an;
+	uint64_t bn;
+
+	while (b != 0) {
+		an = b;
+		bn = a % b;
+		a = an;
+		b = bn;
+	}
+	return (a);
+}
+
+uint64_t lkpi_nsec2hz_rem;
+uint64_t lkpi_nsec2hz_div = 1000000000ULL;
+uint64_t lkpi_nsec2hz_max;
+
+uint64_t lkpi_usec2hz_rem;
+uint64_t lkpi_usec2hz_div = 1000000ULL;
+uint64_t lkpi_usec2hz_max;
+
+uint64_t lkpi_msec2hz_rem;
+uint64_t lkpi_msec2hz_div = 1000ULL;
+uint64_t lkpi_msec2hz_max;
+
 static void
 linux_timer_init(void *arg)
 {
+	uint64_t gcd;
 
 	/*
 	 * Compute an internal HZ value which can divide 2**32 to
@@ -1946,6 +2040,27 @@ linux_timer_init(void *arg)
 	while (linux_timer_hz_mask < (unsigned long)hz)
 		linux_timer_hz_mask *= 2;
 	linux_timer_hz_mask--;
+
+	/* compute some internal constants */
+
+	lkpi_nsec2hz_rem = hz;
+	lkpi_usec2hz_rem = hz;
+	lkpi_msec2hz_rem = hz;
+
+	gcd = lkpi_gcd_64(lkpi_nsec2hz_rem, lkpi_nsec2hz_div);
+	lkpi_nsec2hz_rem /= gcd;
+	lkpi_nsec2hz_div /= gcd;
+	lkpi_nsec2hz_max = -1ULL / lkpi_nsec2hz_rem;
+
+	gcd = lkpi_gcd_64(lkpi_usec2hz_rem, lkpi_usec2hz_div);
+	lkpi_usec2hz_rem /= gcd;
+	lkpi_usec2hz_div /= gcd;
+	lkpi_usec2hz_max = -1ULL / lkpi_usec2hz_rem;
+
+	gcd = lkpi_gcd_64(lkpi_msec2hz_rem, lkpi_msec2hz_div);
+	lkpi_msec2hz_rem /= gcd;
+	lkpi_msec2hz_div /= gcd;
+	lkpi_msec2hz_max = -1ULL / lkpi_msec2hz_rem;
 }
 SYSINIT(linux_timer, SI_SUB_DRIVERS, SI_ORDER_FIRST, linux_timer_init, NULL);
 
@@ -2098,8 +2213,8 @@ linux_completion_done(struct completion *c)
 static void
 linux_cdev_deref(struct linux_cdev *ldev)
 {
-
-	if (refcount_release(&ldev->refs))
+	if (refcount_release(&ldev->refs) &&
+	    ldev->kobj.ktype == &linux_cdev_ktype)
 		kfree(ldev);
 }
 
@@ -2119,16 +2234,55 @@ linux_cdev_release(struct kobject *kobj)
 static void
 linux_cdev_static_release(struct kobject *kobj)
 {
-	struct linux_cdev *cdev;
-	struct kobject *parent;
+	struct cdev *cdev;
+	struct linux_cdev *ldev;
 
-	cdev = container_of(kobj, struct linux_cdev, kobj);
-	parent = kobj->parent;
-	linux_destroy_dev(cdev);
-	kobject_put(parent);
+	ldev = container_of(kobj, struct linux_cdev, kobj);
+	cdev = ldev->cdev;
+	if (cdev != NULL) {
+		destroy_dev(cdev);
+		ldev->cdev = NULL;
+	}
+	kobject_put(kobj->parent);
+}
+
+int
+linux_cdev_device_add(struct linux_cdev *ldev, struct device *dev)
+{
+	int ret;
+
+	if (dev->devt != 0) {
+		/* Set parent kernel object. */
+		ldev->kobj.parent = &dev->kobj;
+
+		/*
+		 * Unlike Linux we require the kobject of the
+		 * character device structure to have a valid name
+		 * before calling this function:
+		 */
+		if (ldev->kobj.name == NULL)
+			return (-EINVAL);
+
+		ret = cdev_add(ldev, dev->devt, 1);
+		if (ret)
+			return (ret);
+	}
+	ret = device_add(dev);
+	if (ret != 0 && dev->devt != 0)
+		cdev_del(ldev);
+	return (ret);
 }
 
 void
+linux_cdev_device_del(struct linux_cdev *ldev, struct device *dev)
+{
+	device_del(dev);
+
+	if (dev->devt != 0)
+		cdev_del(ldev);
+}
+
+static void
 linux_destroy_dev(struct linux_cdev *ldev)
 {
 
@@ -2136,6 +2290,8 @@ linux_destroy_dev(struct linux_cdev *ldev)
 		return;
 
 	MPASS((ldev->siref & LDEV_SI_DTR) == 0);
+	MPASS(ldev->kobj.ktype == &linux_cdev_ktype);
+
 	atomic_set_int(&ldev->siref, LDEV_SI_DTR);
 	while ((atomic_load_int(&ldev->siref) & ~LDEV_SI_DTR) != 0)
 		pause("ldevdtr", hz / 4);
@@ -2156,48 +2312,58 @@ static void
 linux_handle_ifnet_link_event(void *arg, struct ifnet *ifp, int linkstate)
 {
 	struct notifier_block *nb;
+	struct netdev_notifier_info ni;
 
 	nb = arg;
+	ni.dev = (struct net_device *)ifp;
 	if (linkstate == LINK_STATE_UP)
-		nb->notifier_call(nb, NETDEV_UP, ifp);
+		nb->notifier_call(nb, NETDEV_UP, &ni);
 	else
-		nb->notifier_call(nb, NETDEV_DOWN, ifp);
+		nb->notifier_call(nb, NETDEV_DOWN, &ni);
 }
 
 static void
 linux_handle_ifnet_arrival_event(void *arg, struct ifnet *ifp)
 {
 	struct notifier_block *nb;
+	struct netdev_notifier_info ni;
 
 	nb = arg;
-	nb->notifier_call(nb, NETDEV_REGISTER, ifp);
+	ni.dev = (struct net_device *)ifp;
+	nb->notifier_call(nb, NETDEV_REGISTER, &ni);
 }
 
 static void
 linux_handle_ifnet_departure_event(void *arg, struct ifnet *ifp)
 {
 	struct notifier_block *nb;
+	struct netdev_notifier_info ni;
 
 	nb = arg;
-	nb->notifier_call(nb, NETDEV_UNREGISTER, ifp);
+	ni.dev = (struct net_device *)ifp;
+	nb->notifier_call(nb, NETDEV_UNREGISTER, &ni);
 }
 
 static void
 linux_handle_iflladdr_event(void *arg, struct ifnet *ifp)
 {
 	struct notifier_block *nb;
+	struct netdev_notifier_info ni;
 
 	nb = arg;
-	nb->notifier_call(nb, NETDEV_CHANGEADDR, ifp);
+	ni.dev = (struct net_device *)ifp;
+	nb->notifier_call(nb, NETDEV_CHANGEADDR, &ni);
 }
 
 static void
 linux_handle_ifaddr_event(void *arg, struct ifnet *ifp)
 {
 	struct notifier_block *nb;
+	struct netdev_notifier_info ni;
 
 	nb = arg;
-	nb->notifier_call(nb, NETDEV_CHANGEIFADDR, ifp);
+	ni.dev = (struct net_device *)ifp;
+	nb->notifier_call(nb, NETDEV_CHANGEIFADDR, &ni);
 }
 
 int
@@ -2297,7 +2463,8 @@ linux_irq_handler(void *ent)
 {
 	struct irq_ent *irqe;
 
-	linux_set_current(curthread);
+	if (linux_set_current_flags(curthread, M_NOWAIT))
+		return;
 
 	irqe = ent;
 	irqe->handler(irqe->irq, irqe->arg);
@@ -2417,6 +2584,14 @@ linux_dump_stack(void)
 #endif
 }
 
+int
+linuxkpi_net_ratelimit(void)
+{
+
+	return (ppsratecheck(&lkpi_net_lastlog, &lkpi_net_curpps,
+	   lkpi_net_maxpps));
+}
+
 #if defined(__i386__) || defined(__amd64__)
 bool linux_cpu_has_clflush;
 #endif
@@ -2441,8 +2616,8 @@ linux_compat_init(void *arg)
 	kobject_init(&linux_root_device.kobj, &linux_dev_ktype);
 	kobject_set_name(&linux_root_device.kobj, "device");
 	linux_root_device.kobj.oidp = SYSCTL_ADD_NODE(NULL,
-	    SYSCTL_CHILDREN(rootoid), OID_AUTO, "device", CTLFLAG_RD, NULL,
-	    "device");
+	    SYSCTL_CHILDREN(rootoid), OID_AUTO, "device",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "device");
 	linux_root_device.bsddev = root_bus;
 	linux_class_misc.name = "misc";
 	class_register(&linux_class_misc);
@@ -2452,6 +2627,10 @@ linux_compat_init(void *arg)
 	mtx_init(&vmmaplock, "IO Map lock", NULL, MTX_DEF);
 	for (i = 0; i < VMMAP_HASH_SIZE; i++)
 		LIST_INIT(&vmmaphead[i]);
+	init_waitqueue_head(&linux_bit_waitq);
+	init_waitqueue_head(&linux_var_waitq);
+
+	CPU_COPY(&all_cpus, &cpu_online_mask);
 }
 SYSINIT(linux_compat, SI_SUB_DRIVERS, SI_ORDER_SECOND, linux_compat_init, NULL);
 

@@ -35,7 +35,8 @@
 local lfs = require("lfs")
 local unistd = require("posix.unistd")
 
-local maxsyscall = 0
+local savesyscall = -1
+local maxsyscall = -1
 local generated_tag = "@" .. "generated"
 
 -- Default configuration; any of these may get replaced by a configuration file
@@ -143,12 +144,13 @@ local known_abi_flags = {
 local known_flags = {
 	STD		= 0x00000001,
 	OBSOL		= 0x00000002,
-	UNIMPL		= 0x00000004,
-	NODEF		= 0x00000008,
-	NOARGS		= 0x00000010,
-	NOPROTO		= 0x00000020,
-	NOSTD		= 0x00000040,
-	NOTSTATIC	= 0x00000080,
+	RESERVED	= 0x00000004,
+	UNIMPL		= 0x00000008,
+	NODEF		= 0x00000010,
+	NOARGS		= 0x00000020,
+	NOPROTO		= 0x00000040,
+	NOSTD		= 0x00000080,
+	NOTSTATIC	= 0x00000100,
 
 	-- Compat flags start from here.  We have plenty of space.
 }
@@ -442,6 +444,11 @@ local pattern_table = {
 		dump_prevline = true,
 		pattern = "^#",
 		process = function(line)
+			if line:find("^#%s*if") then
+				savesyscall = maxsyscall
+			elseif line:find("^#%s*else") then
+				maxsyscall = savesyscall
+			end
 			line = line .. "\n"
 			write_line('sysent', line)
 			write_line('sysdcl', line)
@@ -641,7 +648,7 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 ]], funcname, sysnum))
 
 	if #funcargs > 0 then
-		write_line("systracetmp", "\t\tswitch(ndx) {\n")
+		write_line("systracetmp", "\t\tswitch (ndx) {\n")
 		write_line("systrace", string.format(
 		    "\t\tstruct %s *p = params;\n", argalias))
 
@@ -664,7 +671,7 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 
 			if isptrtype(argtype) then
 				write_line("systrace", string.format(
-				    "\t\tuarg[%d] = (%s) p->%s; /* %s */\n",
+				    "\t\tuarg[%d] = (%s)p->%s; /* %s */\n",
 				    idx - 1, config["ptr_intptr_t_cast"],
 				    argname, argtype))
 			elseif argtype == "union l_semun" then
@@ -734,12 +741,14 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 		    config['syscallprefix'], funcalias, auditev))
 	end
 
-	write_line("sysent", string.format("\t{ %s, (sy_call_t *)", argssize))
+	write_line("sysent",
+	    string.format("\t{ .sy_narg = %s, .sy_call = (sy_call_t *)", argssize))
 	local column = 8 + 2 + #argssize + 15
 
 	if flags & known_flags["NOSTD"] ~= 0 then
 		write_line("sysent", string.format(
-		    "lkmressys, AUE_NULL, NULL, 0, 0, %s, SY_THR_ABSENT },",
+		    "lkmressys, .sy_auevent = AUE_NULL, " ..
+		    ".sy_flags = %s, .sy_thrcnt = SY_THR_ABSENT },",
 		    sysflags))
 		column = column + #"lkmressys" + #"AUE_NULL" + 3
 	else
@@ -748,12 +757,12 @@ local function handle_noncompat(sysnum, thr_flag, flags, sysflags, rettype,
 		    funcname:find("^linux") or
 		    funcname:find("^cloudabi") then
 			write_line("sysent", string.format(
-			    "%s, %s, NULL, 0, 0, %s, %s },",
+			    "%s, .sy_auevent = %s, .sy_flags = %s, .sy_thrcnt = %s },",
 			    funcname, auditev, sysflags, thr_flag))
 			column = column + #funcname + #auditev + #sysflags + 3
 		else
 			write_line("sysent", string.format(
-			    "sys_%s, %s, NULL, 0, 0, %s, %s },",
+			    "sys_%s, .sy_auevent = %s, .sy_flags = %s, .sy_thrcnt = %s },",
 			    funcname, auditev, sysflags, thr_flag))
 			column = column + #funcname + #auditev + #sysflags + 7
 		end
@@ -775,7 +784,8 @@ end
 
 local function handle_obsol(sysnum, funcname, comment)
 	write_line("sysent",
-	    "\t{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },")
+	    "\t{ .sy_narg = 0, .sy_call = (sy_call_t *)nosys, " ..
+	    ".sy_auevent = AUE_NULL, .sy_flags = 0, .sy_thrcnt = SY_THR_ABSENT },")
 	align_sysent_comment(34)
 
 	write_line("sysent", string.format("/* %d = obsolete %s */\n",
@@ -843,13 +853,15 @@ local function handle_compat(sysnum, thr_flag, flags, sysflags, rettype,
 
 	if flags & known_flags['NOSTD'] ~= 0 then
 		write_line("sysent", string.format(
-		    "\t{ %s, (sy_call_t *)%s, %s, NULL, 0, 0, 0, SY_THR_ABSENT },",
+		    "\t{ .sy_narg = %s, .sy_call = (sy_call_t *)%s, " ..
+		    ".sy_auevent = %s, .sy_flags = 0, " ..
+		    ".sy_thrcnt = SY_THR_ABSENT },",
 		    "0", "lkmressys", "AUE_NULL"))
 		align_sysent_comment(8 + 2 + #"0" + 15 + #"lkmressys" +
 		    #"AUE_NULL" + 3)
 	else
 		write_line("sysent", string.format(
-		    "\t{ %s(%s,%s), %s, NULL, 0, 0, %s, %s },",
+		    "\t{ %s(%s,%s), .sy_auevent = %s, .sy_flags = %s, .sy_thrcnt = %s },",
 		    wrap, argssize, funcname, auditev, sysflags, thr_flag))
 		align_sysent_comment(8 + 9 + #argssize + 1 + #funcname +
 		    #auditev + #sysflags + 4)
@@ -883,13 +895,19 @@ local function handle_unimpl(sysnum, sysstart, sysend, comment)
 	sysnum = sysstart
 	while sysnum <= sysend do
 		write_line("sysent", string.format(
-		    "\t{ 0, (sy_call_t *)nosys, AUE_NULL, NULL, 0, 0, 0, SY_THR_ABSENT },\t\t\t/* %d = %s */\n",
+		    "\t{ .sy_narg = 0, .sy_call = (sy_call_t *)nosys, " ..
+		    ".sy_auevent = AUE_NULL, .sy_flags = 0, " ..
+		    ".sy_thrcnt = SY_THR_ABSENT },\t\t\t/* %d = %s */\n",
 		    sysnum, comment))
 		write_line("sysnames", string.format(
 		    "\t\"#%d\",\t\t\t/* %d = %s */\n",
 		    sysnum, sysnum, comment))
 		sysnum = sysnum + 1
 	end
+end
+
+local function handle_reserved(sysnum, sysstart, sysend, comment)
+	handle_unimpl(sysnum, sysstart, sysend, "reserved for local use")
 end
 
 process_syscall_def = function(line)
@@ -916,6 +934,16 @@ process_syscall_def = function(line)
 		sysnum = nil
 		sysstart = tonumber(sysstart)
 		sysend = tonumber(sysend)
+		if sysstart ~= maxsyscall + 1 then
+			abort(1, "syscall number out of sync, missing " ..
+			    maxsyscall + 1)
+		end
+	else
+		sysnum = tonumber(sysnum)
+		if sysnum ~= maxsyscall + 1 then
+			abort(1, "syscall number out of sync, missing " ..
+			    maxsyscall + 1)
+		end
 	end
 
 	-- Split flags
@@ -926,8 +954,8 @@ process_syscall_def = function(line)
 		flags = flags | known_flags[flag]
 	end
 
-	if (flags & known_flags["UNIMPL"]) == 0 and sysnum == nil then
-		abort(1, "Range only allowed with UNIMPL: " .. line)
+	if (flags & get_mask({"RESERVED", "UNIMPL"})) == 0 and sysnum == nil then
+		abort(1, "Range only allowed with RESERVED and UNIMPL: " .. line)
 	end
 
 	if (flags & known_flags["NOTSTATIC"]) ~= 0 then
@@ -1091,17 +1119,18 @@ process_syscall_def = function(line)
 		    argalias)
 	elseif flags & known_flags["OBSOL"] ~= 0 then
 		handle_obsol(sysnum, funcname, funcomment)
+	elseif flags & known_flags["RESERVED"] ~= 0 then
+		handle_reserved(sysnum, sysstart, sysend)
 	elseif flags & known_flags["UNIMPL"] ~= 0 then
 		handle_unimpl(sysnum, sysstart, sysend, funcomment)
-		if sysend ~= nil and sysend > maxsyscall then
-			maxsyscall = sysend
-		end
 	else
 		abort(1, "Bad flags? " .. line)
 	end
 
-	if sysnum ~= nil and tonumber(sysnum) > maxsyscall then
-		maxsyscall = tonumber(sysnum)
+	if sysend ~= nil then
+		maxsyscall = sysend
+	elseif sysnum ~= nil then
+		maxsyscall = sysnum
 	end
 end
 
@@ -1256,7 +1285,7 @@ write_line("systrace", string.format([[/*
 static void
 systrace_args(int sysnum, void *params, uint64_t *uarg, int *n_args)
 {
-	int64_t *iarg  = (int64_t *) uarg;
+	int64_t *iarg = (int64_t *)uarg;
 	switch (sysnum) {
 ]], generated_tag, config['os_id_keyword']))
 
@@ -1287,9 +1316,9 @@ for _, v in pairs(compat_options) do
 		write_line("sysinc", string.format([[
 
 #ifdef %s
-#define %s(n, name) n, (sy_call_t *)__CONCAT(%s,name)
+#define %s(n, name) .sy_narg = n, .sy_call = (sy_call_t *)__CONCAT(%s, name)
 #else
-#define %s(n, name) 0, (sy_call_t *)nosys
+#define %s(n, name) .sy_narg = 0, .sy_call = (sy_call_t *)nosys
 #endif
 ]], v["definition"], v["flag"]:lower(), v["prefix"], v["flag"]:lower()))
 	end

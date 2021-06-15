@@ -148,6 +148,12 @@
 #define FILE_ATTRIBUTE_DIRECTORY 0x10
 #endif
 
+#undef minimum
+#define minimum(a, b)	((a)<(b)?(a):(b))
+
+/* Stack overflow check */
+#define MAX_COMPRESS_DEPTH 1024
+
 /* Fields common to all headers */
 struct rar_header
 {
@@ -337,7 +343,7 @@ static int read_symlink_stored(struct archive_read *, struct archive_entry *,
 static int read_data_stored(struct archive_read *, const void **, size_t *,
                             int64_t *);
 static int read_data_compressed(struct archive_read *, const void **, size_t *,
-                          int64_t *);
+                          int64_t *, size_t);
 static int rar_br_preparation(struct archive_read *, struct rar_br *);
 static int parse_codes(struct archive_read *);
 static void free_codes(struct archive_read *);
@@ -1023,7 +1029,7 @@ archive_read_format_rar_read_data(struct archive_read *a, const void **buff,
   case COMPRESS_METHOD_NORMAL:
   case COMPRESS_METHOD_GOOD:
   case COMPRESS_METHOD_BEST:
-    ret = read_data_compressed(a, buff, size, offset);
+    ret = read_data_compressed(a, buff, size, offset, 0);
     if (ret != ARCHIVE_OK && ret != ARCHIVE_WARN) {
       __archive_ppmd7_functions.Ppmd7_Free(&rar->ppmd7_context);
       rar->start_new_table = 1;
@@ -1722,6 +1728,13 @@ read_exttime(const char *p, struct rar *rar, const char *endp)
   struct tm *tm;
   time_t t;
   long nsec;
+#if defined(HAVE_LOCALTIME_R) || defined(HAVE__LOCALTIME64_S)
+  struct tm tmbuf;
+#endif
+#if defined(HAVE__LOCALTIME64_S)
+  errno_t terr;
+  __time64_t tmptime;
+#endif
 
   if (p + 2 > endp)
     return (-1);
@@ -1753,7 +1766,18 @@ read_exttime(const char *p, struct rar *rar, const char *endp)
         rem = (((unsigned)(unsigned char)*p) << 16) | (rem >> 8);
         p++;
       }
+#if defined(HAVE_LOCALTIME_R)
+      tm = localtime_r(&t, &tmbuf);
+#elif defined(HAVE__LOCALTIME64_S)
+      tmptime = t;
+      terr = _localtime64_s(&tmbuf, &tmptime);
+      if (terr)
+        tm = NULL;
+      else
+        tm = &tmbuf;
+#else
       tm = localtime(&t);
+#endif
       nsec = tm->tm_sec + rem / NS_UNIT;
       if (rmode & 4)
       {
@@ -1862,8 +1886,11 @@ read_data_stored(struct archive_read *a, const void **buff, size_t *size,
 
 static int
 read_data_compressed(struct archive_read *a, const void **buff, size_t *size,
-               int64_t *offset)
+               int64_t *offset, size_t looper)
 {
+  if (looper++ > MAX_COMPRESS_DEPTH)
+    return (ARCHIVE_FATAL);
+
   struct rar *rar;
   int64_t start, end, actualend;
   size_t bs;
@@ -1961,7 +1988,7 @@ read_data_compressed(struct archive_read *a, const void **buff, size_t *size,
         {
           case 0:
             rar->start_new_table = 1;
-            return read_data_compressed(a, buff, size, offset);
+            return read_data_compressed(a, buff, size, offset, looper);
 
           case 2:
             rar->ppmd_eod = 1;/* End Of ppmd Data. */
@@ -2452,8 +2479,11 @@ create_code(struct archive_read *a, struct huffman_code *code,
       if (add_value(a, code, j, codebits, i) != ARCHIVE_OK)
         return (ARCHIVE_FATAL);
       codebits++;
-      if (--symbolsleft <= 0) { break; break; }
+      if (--symbolsleft <= 0)
+        break;
     }
+    if (symbolsleft <= 0)
+      break;
     codebits <<= 1;
   }
   return (ARCHIVE_OK);
@@ -2463,7 +2493,8 @@ static int
 add_value(struct archive_read *a, struct huffman_code *code, int value,
           int codebits, int length)
 {
-  int repeatpos, lastnode, bitpos, bit, repeatnode, nextnode;
+  int lastnode, bitpos, bit;
+  /* int repeatpos, repeatnode, nextnode; */
 
   free(code->table);
   code->table = NULL;
@@ -2473,6 +2504,9 @@ add_value(struct archive_read *a, struct huffman_code *code, int value,
   if(length < code->minlength)
     code->minlength = length;
 
+  /*
+   * Dead code, repeatpos was is -1
+   *
   repeatpos = -1;
   if (repeatpos == 0 || (repeatpos >= 0
     && (((codebits >> (repeatpos - 1)) & 3) == 0
@@ -2482,6 +2516,7 @@ add_value(struct archive_read *a, struct huffman_code *code, int value,
                       "Invalid repeat position");
     return (ARCHIVE_FATAL);
   }
+  */
 
   lastnode = 0;
   for (bitpos = length - 1; bitpos >= 0; bitpos--)
@@ -2497,9 +2532,12 @@ add_value(struct archive_read *a, struct huffman_code *code, int value,
       return (ARCHIVE_FATAL);
     }
 
+    /*
+     * Dead code, repeatpos was -1, bitpos >=0
+     *
     if (bitpos == repeatpos)
     {
-      /* Open branch check */
+      * Open branch check *
       if (!(code->tree[lastnode].branches[bit] < 0))
       {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
@@ -2518,16 +2556,17 @@ add_value(struct archive_read *a, struct huffman_code *code, int value,
         return (ARCHIVE_FATAL);
       }
 
-      /* Set branches */
+      * Set branches *
       code->tree[lastnode].branches[bit] = repeatnode;
       code->tree[repeatnode].branches[bit] = repeatnode;
       code->tree[repeatnode].branches[bit^1] = nextnode;
       lastnode = nextnode;
 
-      bitpos++; /* terminating bit already handled, skip it */
+      bitpos++; * terminating bit already handled, skip it *
     }
     else
     {
+    */
       /* Open branch check */
       if (code->tree[lastnode].branches[bit] < 0)
       {
@@ -2541,7 +2580,7 @@ add_value(struct archive_read *a, struct huffman_code *code, int value,
 
       /* set to branch */
       lastnode = code->tree[lastnode].branches[bit];
-    }
+ /* } */
   }
 
   if (!(code->tree[lastnode].branches[0] == -1
@@ -2625,11 +2664,15 @@ make_table_recurse(struct archive_read *a, struct huffman_code *code, int node,
       table[i].value = code->tree[node].branches[0];
     }
   }
+  /*
+   * Dead code, node >= 0
+   *
   else if (node < 0)
   {
     for(i = 0; i < currtablesize; i++)
       table[i].length = -1;
   }
+   */
   else
   {
     if(depth == maxdepth)
@@ -2661,6 +2704,10 @@ expand(struct archive_read *a, int64_t end)
       0, 1, 1, 1, 1, 2, 2,
       2, 2, 3, 3, 3, 3, 4,
       4, 4, 4, 5, 5, 5, 5 };
+  static const int lengthb_min = minimum(
+    (int)(sizeof(lengthbases)/sizeof(lengthbases[0])),
+    (int)(sizeof(lengthbits)/sizeof(lengthbits[0]))
+  );
   static const unsigned int offsetbases[] =
     {       0,       1,       2,       3,       4,       6,
             8,      12,      16,      24,      32,      48,
@@ -2678,6 +2725,10 @@ expand(struct archive_read *a, int64_t end)
       11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16,
       16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
       18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18 };
+  static const int offsetb_min = minimum(
+    (int)(sizeof(offsetbases)/sizeof(offsetbases[0])),
+    (int)(sizeof(offsetbits)/sizeof(offsetbits[0]))
+  );
   static const unsigned char shortbases[] =
     { 0, 4, 8, 16, 32, 64, 128, 192 };
   static const unsigned char shortbits[] =
@@ -2757,9 +2808,7 @@ expand(struct archive_read *a, int64_t end)
 
       if ((lensymbol = read_next_symbol(a, &rar->lengthcode)) < 0)
         goto bad_data;
-      if (lensymbol > (int)(sizeof(lengthbases)/sizeof(lengthbases[0])))
-        goto bad_data;
-      if (lensymbol > (int)(sizeof(lengthbits)/sizeof(lengthbits[0])))
+      if (lensymbol > lengthb_min)
         goto bad_data;
       len = lengthbases[lensymbol] + 2;
       if (lengthbits[lensymbol] > 0) {
@@ -2791,9 +2840,7 @@ expand(struct archive_read *a, int64_t end)
     }
     else
     {
-      if (symbol-271 > (int)(sizeof(lengthbases)/sizeof(lengthbases[0])))
-        goto bad_data;
-      if (symbol-271 > (int)(sizeof(lengthbits)/sizeof(lengthbits[0])))
+      if (symbol-271 > lengthb_min)
         goto bad_data;
       len = lengthbases[symbol-271]+3;
       if(lengthbits[symbol-271] > 0) {
@@ -2805,9 +2852,7 @@ expand(struct archive_read *a, int64_t end)
 
       if ((offssymbol = read_next_symbol(a, &rar->offsetcode)) < 0)
         goto bad_data;
-      if (offssymbol > (int)(sizeof(offsetbases)/sizeof(offsetbases[0])))
-        goto bad_data;
-      if (offssymbol > (int)(sizeof(offsetbits)/sizeof(offsetbits[0])))
+      if (offssymbol > offsetb_min)
         goto bad_data;
       offs = offsetbases[offssymbol]+1;
       if(offsetbits[offssymbol] > 0)

@@ -51,7 +51,7 @@
 #endif
 
 /* Local Prototypes */
-static void	ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype);
+static u8	ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype);
 
 static int	ixl_isc_txd_encap(void *arg, if_pkt_info_t pi);
 static void	ixl_isc_txd_flush(void *arg, uint16_t txqid, qidx_t pidx);
@@ -720,7 +720,7 @@ ixl_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 	rxr->rx_packets++;
 
 	if ((if_getcapenable(vsi->ifp) & IFCAP_RXCSUM) != 0)
-		ixl_rx_checksum(ri, status, error, ptype);
+		rxr->csum_errs += ixl_rx_checksum(ri, status, error, ptype);
 	ri->iri_flowid = le32toh(cur->wb.qword0.hi_dword.rss);
 	ri->iri_rsstype = ixl_ptype_to_hash(ptype);
 	ri->iri_vtag = vtag;
@@ -737,7 +737,7 @@ ixl_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
  *  doesn't spend time verifying the checksum.
  *
  *********************************************************************/
-static void
+static u8
 ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype)
 {
 	struct i40e_rx_ptype_decoded decoded;
@@ -746,7 +746,7 @@ ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype)
 
 	/* No L3 or L4 checksum was calculated */
 	if (!(status & (1 << I40E_RX_DESC_STATUS_L3L4P_SHIFT)))
-		return;
+		return (0);
 
 	decoded = decode_rx_desc_ptype(ptype);
 
@@ -756,7 +756,7 @@ ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype)
 		if (status &
 		    (1 << I40E_RX_DESC_STATUS_IPV6EXADD_SHIFT)) {
 			ri->iri_csum_flags = 0;
-			return;
+			return (1);
 		}
 	}
 
@@ -764,17 +764,19 @@ ixl_rx_checksum(if_rxd_info_t ri, u32 status, u32 error, u8 ptype)
 
 	/* IPv4 checksum error */
 	if (error & (1 << I40E_RX_DESC_ERROR_IPE_SHIFT))
-		return;
+		return (1);
 
 	ri->iri_csum_flags |= CSUM_L3_VALID;
 	ri->iri_csum_flags |= CSUM_L4_CALC;
 
 	/* L4 checksum error */
 	if (error & (1 << I40E_RX_DESC_ERROR_L4E_SHIFT))
-		return;
+		return (1);
 
 	ri->iri_csum_flags |= CSUM_L4_VALID;
 	ri->iri_csum_data |= htons(0xffff);
+
+	return (0);
 }
 
 /* Set Report Status queue fields to 0 */
@@ -850,7 +852,7 @@ ixl_add_vsi_sysctls(device_t dev, struct ixl_vsi *vsi,
 	tree = device_get_sysctl_tree(dev);
 	child = SYSCTL_CHILDREN(tree);
 	vsi->vsi_node = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, sysctl_name,
-				   CTLFLAG_RD, NULL, "VSI Number");
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "VSI Number");
 	vsi_list = SYSCTL_CHILDREN(vsi->vsi_node);
 
 	ixl_add_sysctls_eth_stats(ctx, vsi_list, &vsi->eth_stats);
@@ -892,12 +894,11 @@ ixl_add_sysctls_eth_stats(struct sysctl_ctx_list *ctx,
 }
 
 void
-ixl_add_queues_sysctls(device_t dev, struct ixl_vsi *vsi)
+ixl_vsi_add_queues_stats(struct ixl_vsi *vsi, struct sysctl_ctx_list *ctx)
 {
-	struct sysctl_ctx_list *ctx = device_get_sysctl_ctx(dev);
 	struct sysctl_oid_list *vsi_list, *queue_list;
 	struct sysctl_oid *queue_node;
-	char queue_namebuf[32];
+	char queue_namebuf[IXL_QUEUE_NAME_LEN];
 
 	struct ixl_rx_queue *rx_que;
 	struct ixl_tx_queue *tx_que;
@@ -909,9 +910,10 @@ ixl_add_queues_sysctls(device_t dev, struct ixl_vsi *vsi)
 	/* Queue statistics */
 	for (int q = 0; q < vsi->num_rx_queues; q++) {
 		bzero(queue_namebuf, sizeof(queue_namebuf));
-		snprintf(queue_namebuf, QUEUE_NAME_LEN, "rxq%02d", q);
+		snprintf(queue_namebuf, sizeof(queue_namebuf), "rxq%02d", q);
 		queue_node = SYSCTL_ADD_NODE(ctx, vsi_list,
-		    OID_AUTO, queue_namebuf, CTLFLAG_RD, NULL, "RX Queue #");
+		    OID_AUTO, queue_namebuf, CTLFLAG_RD | CTLFLAG_MPSAFE,
+		    NULL, "RX Queue #");
 		queue_list = SYSCTL_CHILDREN(queue_node);
 
 		rx_que = &(vsi->rx_queues[q]);
@@ -936,9 +938,10 @@ ixl_add_queues_sysctls(device_t dev, struct ixl_vsi *vsi)
 	}
 	for (int q = 0; q < vsi->num_tx_queues; q++) {
 		bzero(queue_namebuf, sizeof(queue_namebuf));
-		snprintf(queue_namebuf, QUEUE_NAME_LEN, "txq%02d", q);
+		snprintf(queue_namebuf, sizeof(queue_namebuf), "txq%02d", q);
 		queue_node = SYSCTL_ADD_NODE(ctx, vsi_list,
-		    OID_AUTO, queue_namebuf, CTLFLAG_RD, NULL, "TX Queue #");
+		    OID_AUTO, queue_namebuf, CTLFLAG_RD | CTLFLAG_MPSAFE,
+		    NULL, "TX Queue #");
 		queue_list = SYSCTL_CHILDREN(queue_node);
 
 		tx_que = &(vsi->tx_queues[q]);

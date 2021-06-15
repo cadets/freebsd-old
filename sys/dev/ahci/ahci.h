@@ -214,6 +214,13 @@
 #define		AHCI_CAP2_SADM	0x00000010
 #define		AHCI_CAP2_DESO	0x00000020
 
+#define AHCI_BOHC                   0x28
+#define		AHCI_BOHC_BOS	0x00000001
+#define		AHCI_BOHC_OOS	0x00000002
+#define		AHCI_BOHC_SOOE	0x00000004
+#define		AHCI_BOHC_OOC	0x00000008
+#define		AHCI_BOHC_BB	0x00000010
+
 #define AHCI_VSCAP                  0xa4
 #define AHCI_OFFSET                 0x100
 #define AHCI_STEP                   0x80
@@ -303,13 +310,8 @@
 #define 	AHCI_P_DEVSLP_DM    0x0e000000
 #define 	AHCI_P_DEVSLP_DM_SHIFT 25
 
-/* Just to be sure, if building as module. */
-#if MAXPHYS < 512 * 1024
-#undef MAXPHYS
-#define MAXPHYS				512 * 1024
-#endif
 /* Pessimistic prognosis on number of required S/G entries */
-#define AHCI_SG_ENTRIES	(roundup(btoc(MAXPHYS) + 1, 8))
+#define AHCI_SG_ENTRIES		MIN(roundup(btoc(maxphys) + 1, 8), 65528)
 /* Command list. 32 commands. First, 1Kbyte aligned. */
 #define AHCI_CL_OFFSET              0
 #define AHCI_CL_SIZE                32
@@ -337,7 +339,7 @@ struct ahci_cmd_tab {
     u_int8_t                    cfis[64];
     u_int8_t                    acmd[32];
     u_int8_t                    reserved[32];
-    struct ahci_dma_prd         prd_tab[AHCI_SG_ENTRIES];
+    struct ahci_dma_prd         prd_tab[];
 } __packed;
 
 struct ahci_cmd_list {
@@ -387,6 +389,7 @@ struct ahci_slot {
     struct ahci_channel		*ch;		/* Channel */
     u_int8_t			slot;           /* Number of this slot */
     enum ahci_slot_states	state;          /* Slot state */
+    u_int			ct_offset;	/* cmd_tab offset */
     union ccb			*ccb;		/* CCB occupying slot */
     struct ata_dmaslot          dma;            /* DMA data of this slot */
     struct callout              timeout;        /* Execution timeout */
@@ -617,6 +620,7 @@ enum ahci_err_type {
 #define AHCI_Q_MRVL_SR_DEL	0x00200000
 #define AHCI_Q_NOCCS		0x00400000
 #define AHCI_Q_NOAUX		0x00800000
+#define AHCI_Q_IOMMU_BUSWIDE	0x01000000
 
 #define AHCI_Q_BIT_STRING	\
 	"\020"			\
@@ -643,7 +647,8 @@ enum ahci_err_type {
 	"\025NOMSIX"		\
 	"\026MRVL_SR_DEL"	\
 	"\027NOCCS"		\
-	"\030NOAUX"
+	"\030NOAUX"		\
+	"\031IOMMU_BUSWIDE"
 
 int ahci_attach(device_t dev);
 int ahci_detach(device_t dev);
@@ -672,4 +677,3 @@ struct ahci_channel * ahci_getch(device_t dev, int n);
 void ahci_putch(struct ahci_channel *ch);
 
 extern devclass_t ahci_devclass;
-

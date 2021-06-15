@@ -196,7 +196,6 @@ mouse_get_vendor_desc(const struct usb_device_request *req, uint16_t *plen)
 	if ((req->bmRequestType == 0x81) && (req->bRequest == 0x06) &&
 	    (req->wValue[0] == 0x00) && (req->wValue[1] == 0x22) &&
 	    (req->wIndex[1] == 0) && (req->wIndex[0] == 0)) {
-
 		*plen = sizeof(mouse_hid_descriptor);
 		return (mouse_hid_descriptor);
 	}
@@ -253,7 +252,7 @@ mouse_init(void *arg __unused)
 
 	parent = SYSCTL_ADD_NODE(&mouse_ctx_list,
 	    SYSCTL_STATIC_CHILDREN(_hw_usb_templates), OID_AUTO,
-	    parent_name, CTLFLAG_RW,
+	    parent_name, CTLFLAG_RW | CTLFLAG_MPSAFE,
 	    0, "USB Mouse device side template");
 	SYSCTL_ADD_U16(&mouse_ctx_list, SYSCTL_CHILDREN(parent), OID_AUTO,
 	    "vendor_id", CTLFLAG_RWTUN,

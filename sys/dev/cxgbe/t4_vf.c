@@ -231,6 +231,7 @@ static int
 get_params__post_init(struct adapter *sc)
 {
 	int rc;
+	uint32_t param, val;
 
 	rc = -t4vf_get_sge_params(sc);
 	if (rc != 0) {
@@ -251,10 +252,6 @@ get_params__post_init(struct adapter *sc)
 		    sc->params.rss.mode);
 		return (EINVAL);
 	}
-
-	rc = t4_read_chip_settings(sc);
-	if (rc != 0)
-		return (rc);
 
 	/*
 	 * Grab our Virtual Interface resource allocation, extract the
@@ -281,6 +278,18 @@ get_params__post_init(struct adapter *sc)
 		return (EINVAL);
 	}
 	sc->params.portvec = sc->params.vfres.pmask;
+
+	param = FW_PARAM_PFVF(MAX_PKTS_PER_ETH_TX_PKTS_WR);
+	rc = -t4vf_query_params(sc, 1, &param, &val);
+	if (rc == 0)
+		sc->params.max_pkts_per_eth_tx_pkts_wr = val;
+	else
+		sc->params.max_pkts_per_eth_tx_pkts_wr = 14;
+
+	rc = t4_verify_chip_settings(sc);
+	if (rc != 0)
+		return (rc);
+	t4_init_rx_buf_info(sc);
 
 	return (0);
 }
@@ -473,7 +482,7 @@ static int
 t4vf_attach(device_t dev)
 {
 	struct adapter *sc;
-	int rc = 0, i, j, rqidx, tqidx;
+	int rc = 0, i, j, rqidx, tqidx, n, p, pmask;
 	struct make_dev_args mda;
 	struct intrs_and_queues iaq;
 	struct sge *s;
@@ -610,8 +619,10 @@ t4vf_attach(device_t dev)
 	 * First pass over all the ports - allocate VIs and initialize some
 	 * basic parameters like mac address, port type, etc.
 	 */
+	pmask = sc->params.vfres.pmask;
 	for_each_port(sc, i) {
 		struct port_info *pi;
+		uint8_t mac[ETHER_ADDR_LEN];
 
 		pi = malloc(sizeof(*pi), M_CXGBE, M_ZERO | M_WAITOK);
 		sc->port[i] = pi;
@@ -636,6 +647,15 @@ t4vf_attach(device_t dev)
 			sc->port[i] = NULL;
 			goto done;
 		}
+
+		/* Prefer the MAC address set by the PF, if there is one. */
+		n = 1;
+		p = ffs(pmask) - 1;
+		MPASS(p >= 0);
+		rc = t4vf_get_vf_mac(sc, p, &n, mac);
+		if (rc == 0 && n == 1)
+			t4_os_set_hw_addr(pi, mac);
+		pmask &= ~(1 << p);
 
 		/* No t4_link_start. */
 
@@ -676,13 +696,16 @@ t4vf_attach(device_t dev)
 	s->neq += sc->params.nports;	/* ctrl queues: 1 per port */
 	s->niq = s->nrxq + 1;		/* 1 extra for firmware event queue */
 
+	s->iqmap_sz = s->niq;
+	s->eqmap_sz = s->neq;
+
 	s->rxq = malloc(s->nrxq * sizeof(struct sge_rxq), M_CXGBE,
 	    M_ZERO | M_WAITOK);
 	s->txq = malloc(s->ntxq * sizeof(struct sge_txq), M_CXGBE,
 	    M_ZERO | M_WAITOK);
-	s->iqmap = malloc(s->niq * sizeof(struct sge_iq *), M_CXGBE,
+	s->iqmap = malloc(s->iqmap_sz * sizeof(struct sge_iq *), M_CXGBE,
 	    M_ZERO | M_WAITOK);
-	s->eqmap = malloc(s->neq * sizeof(struct sge_eq *), M_CXGBE,
+	s->eqmap = malloc(s->eqmap_sz * sizeof(struct sge_eq *), M_CXGBE,
 	    M_ZERO | M_WAITOK);
 
 	sc->irq = malloc(sc->intr_count * sizeof(struct irq), M_CXGBE,
@@ -702,6 +725,7 @@ t4vf_attach(device_t dev)
 
 		for_each_vi(pi, j, vi) {
 			vi->pi = pi;
+			vi->adapter = sc;
 			vi->qsize_rxq = t4_qsize_rxq;
 			vi->qsize_txq = t4_qsize_txq;
 
@@ -870,6 +894,7 @@ t4vf_ioctl(struct cdev *dev, unsigned long cmd, caddr_t data, int fflag,
 					txq->txpkts1_wrs = 0;
 					txq->txpkts0_pkts = 0;
 					txq->txpkts1_pkts = 0;
+					txq->txpkts_flush = 0;
 					mp_ring_reset_stats(txq->r);
 				}
 			}

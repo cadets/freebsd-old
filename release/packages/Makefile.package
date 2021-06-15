@@ -2,8 +2,8 @@
 # $FreeBSD$
 #
 
-acct_COMMENT= 		Accounting Utilties
-acct_DESC= 		Accounting Utilties
+acct_COMMENT= 		System Accounting Utilities
+acct_DESC= 		System Accounting Utilities
 acpi_COMMENT= 		ACPI Utilities
 acpi_DESC= 		ACPI Utilities
 amd_COMMENT= 		AMD Utilities
@@ -57,6 +57,8 @@ kernel_COMMENT= 	FreeBSD Kernel
 kernel_DESC= 		FreeBSD Kernel
 manuals_COMMENT= 	Manual Pages
 manuals_DESC= 		Manual Pages
+openssl_COMMENT=	OpenSSL Library and Utility
+openssl_DESC=		OpenSSL Library and Utility
 rc_COMMENT= 		RC Scripts
 rc_DESC= 		RC Scripts
 rcmds_COMMENT= 		Remote Command Utilities

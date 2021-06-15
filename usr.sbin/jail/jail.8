@@ -25,7 +25,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 6, 2019
+.Dd April 4, 2021
 .Dt JAIL 8
 .Os
 .Sh NAME
@@ -49,7 +49,6 @@
 .Nm
 .Op Fl qv
 .Op Fl f Ar conf_file
-.Op Fl e Ar separator
 .Op Fl rR
 .Op Cm * | Ar jail ...
 .Nm
@@ -59,7 +58,11 @@
 .Op Fl U Ar username
 .Op Fl n Ar jailname
 .Op Fl s Ar securelevel
-.Op Ar path hostname [ Ar ip Ns [ Ns Ar ,... Ns ]] Ar command ...
+.Ar path hostname ip Ns [ Ns Ar ,... Ns ] Ar command ...
+.Nm
+.Op Fl f Ar conf_file
+.Fl e
+.Ar separator
 .Sh DESCRIPTION
 The
 .Nm
@@ -584,6 +587,13 @@ and resource limits.
 The jail root may bind to ports lower than 1024.
 .It Va allow.unprivileged_proc_debug
 Unprivileged processes in the jail may use debugging facilities.
+.It Va allow.suser
+The value of the jail's
+.Va security.bsd.suser_enabled
+sysctl.
+The super-user will be disabled automatically if its parent system has it
+disabled.
+The super-user is enabled by default.
 .El
 .El
 .Pp
@@ -723,6 +733,11 @@ not be created or removed, as appropriate.
 .Pp
 The pseudo-parameters are:
 .Bl -tag -width indent
+.It Va exec.prepare
+Command(s) to run in the system environment to prepare a jail for creation.
+These commands are executed before assigning IP addresses and mounting
+filesystems, so they may be used to create a new jail filesystem if it does
+not already exist.
 .It Va exec.prestart
 Command(s) to run in the system environment before a jail is created.
 .It Va exec.created
@@ -757,6 +772,11 @@ A typical command to run is
 .Dq sh /etc/rc.shutdown jail .
 .It Va exec.poststop
 Command(s) to run in the system environment after a jail is removed.
+.It Va exec.release
+Command(s) to run in the system environment after all other actions are done.
+These commands are executed after unmounting filesystems and removing IP
+addresses, so they may be used to remove a jail filesystem if it is no longer
+needed.
 .It Va exec.clean
 Run commands in a clean environment.
 The environment is discarded except for
@@ -1254,6 +1274,7 @@ Changes to these variables by a jailed process do not affect the host
 environment, only the jail environment.
 These variables are
 .Va kern.securelevel ,
+.Va security.bsd.suser_enabled ,
 .Va kern.hostname ,
 .Va kern.domainname ,
 .Va kern.hostid ,

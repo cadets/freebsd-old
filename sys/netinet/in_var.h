@@ -436,8 +436,7 @@ inm_rele_locked(struct in_multi_head *inmh, struct in_multi *inm)
 #define MCAST_NOTSMEMBER	2	/* This host excluded source */
 #define MCAST_MUTED		3	/* [deprecated] */
 
-struct	rtentry;
-struct	route;
+struct rib_head;
 struct	ip_moptions;
 
 struct in_multi *inm_lookup_locked(struct ifnet *, const struct in_addr);
@@ -450,8 +449,7 @@ void	inm_print(const struct in_multi *);
 int	inm_record_source(struct in_multi *inm, const in_addr_t);
 void	inm_release_deferred(struct in_multi *);
 void	inm_release_list_deferred(struct in_multi_head *);
-struct	in_multi *
-in_addmulti(struct in_addr *, struct ifnet *);
+void	inm_release_wait(void *);
 int	in_joingroup(struct ifnet *, const struct in_addr *,
 	    /*const*/ struct in_mfilter *, struct in_multi **);
 int	in_joingroup_locked(struct ifnet *, const struct in_addr *,
@@ -461,19 +459,21 @@ int	in_leavegroup_locked(struct in_multi *,
 	    /*const*/ struct in_mfilter *);
 int	in_control(struct socket *, u_long, caddr_t, struct ifnet *,
 	    struct thread *);
-int	in_addprefix(struct in_ifaddr *, int);
+int	in_addprefix(struct in_ifaddr *);
 int	in_scrubprefix(struct in_ifaddr *, u_int);
 void	in_ifscrub_all(void);
+int	in_handle_ifaddr_route(int, struct in_ifaddr *);
 void	ip_input(struct mbuf *);
 void	ip_direct_input(struct mbuf *);
 void	in_ifadown(struct ifaddr *ifa, int);
 struct	mbuf	*ip_tryforward(struct mbuf *);
 void	*in_domifattach(struct ifnet *);
 void	in_domifdetach(struct ifnet *, void *);
+struct rib_head *in_inithead(uint32_t fibnum);
+#ifdef VIMAGE
+void	in_detachhead(struct rib_head *rh);
+#endif
 
-
-/* XXX */
-void	 in_rtalloc_ign(struct route *ro, u_long ignflags, u_int fibnum);
 #endif /* _KERNEL */
 
 /* INET6 stuff */

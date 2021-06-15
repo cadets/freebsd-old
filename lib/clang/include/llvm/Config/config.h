@@ -2,6 +2,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Include this header only under the llvm source tree.
+// This is a private header.
+
 /* Exported configuration */
 #include "llvm/Config/llvm-config.h"
 
@@ -56,6 +59,12 @@
 /* Define if dladdr() is available on this platform. */
 #define HAVE_DLADDR 1
 
+/* Define to 1 if we can register EH frames on this platform. */
+#define HAVE_REGISTER_FRAME 1
+
+/* Define to 1 if we can deregister EH frames on this platform. */
+#define HAVE_DEREGISTER_FRAME 1
+
 /* Define to 1 if you have the <errno.h> header file. */
 #define HAVE_ERRNO_H 1
 
@@ -98,6 +107,9 @@
 /* Define to 1 if you have the `pfm' library (-lpfm). */
 /* #undef HAVE_LIBPFM */
 
+/* Define to 1 if the `perf_branch_entry' struct has field cycles. */
+/* #undef LIBPFM_HAS_FIELD_CYCLES */
+
 /* Define to 1 if you have the `psapi' library (-lpsapi). */
 /* #undef HAVE_LIBPSAPI */
 
@@ -105,13 +117,10 @@
 #define HAVE_LIBPTHREAD 1
 
 /* Define to 1 if you have the `pthread_getname_np' function. */
-/* #undef HAVE_PTHREAD_GETNAME_NP */
+#define HAVE_PTHREAD_GETNAME_NP 1
 
 /* Define to 1 if you have the `pthread_setname_np' function. */
-/* #undef HAVE_PTHREAD_SETNAME_NP */
-
-/* Define to 1 if you have the `z' library (-lz). */
-#define HAVE_LIBZ 1
+#define HAVE_PTHREAD_SETNAME_NP 1
 
 /* Define to 1 if you have the <link.h> header file. */
 #define HAVE_LINK_H 1
@@ -161,12 +170,6 @@
 /* Define to 1 if you have the `setenv' function. */
 #define HAVE_SETENV 1
 
-/* Define to 1 if you have the `sched_getaffinity' function. */
-/* #undef HAVE_SCHED_GETAFFINITY */
-
-/* Define to 1 if you have the `CPU_COUNT' macro. */
-/* #undef HAVE_CPU_COUNT */
-
 /* Define to 1 if you have the `setrlimit' function. */
 #define HAVE_SETRLIMIT 1
 
@@ -213,7 +216,7 @@
 #define HAVE_SYS_TYPES_H 1
 
 /* Define if the setupterm() function is supported this platform. */
-#define HAVE_TERMINFO 1
+#define LLVM_ENABLE_TERMINFO 1
 
 /* Define if the xar_open() function is supported this platform. */
 /* #undef HAVE_LIBXAR */
@@ -226,9 +229,6 @@
 
 /* Define to 1 if you have the <valgrind/valgrind.h> header file. */
 /* #undef HAVE_VALGRIND_VALGRIND_H */
-
-/* Define to 1 if you have the <zlib.h> header file. */
-#define HAVE_ZLIB_H 1
 
 /* Have host's _alloca */
 /* #undef HAVE__ALLOCA */
@@ -322,10 +322,10 @@
 #define PACKAGE_NAME "LLVM"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "LLVM 9.0.1"
+#define PACKAGE_STRING "LLVM 12.0.0"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "9.0.1"
+#define PACKAGE_VERSION "12.0.0"
 
 /* Define to the vendor of this package. */
 /* #undef PACKAGE_VENDOR */
@@ -344,9 +344,6 @@
 
 /* Whether GlobalISel rule coverage is being collected */
 #define LLVM_GISEL_COV_ENABLED 0
-
-/* Define if we have z3 and want to build it */
-/* #undef LLVM_WITH_Z3 */
 
 /* Define to the default GlobalISel coverage file prefix */
 /* #undef LLVM_GISEL_COV_PREFIX */

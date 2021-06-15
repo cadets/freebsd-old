@@ -286,6 +286,17 @@ bintime2timespec(const struct bintime *_bt, struct timespec *_ts)
 	    (uint32_t)(_bt->frac >> 32)) >> 32;
 }
 
+static __inline uint64_t
+bintime2ns(const struct bintime *_bt)
+{
+	uint64_t ret;
+
+	ret = (uint64_t)(_bt->sec) * (uint64_t)1000000000;
+	ret += (((uint64_t)1000000000 *
+		 (uint32_t)(_bt->frac >> 32)) >> 32);
+	return (ret);
+}
+
 static __inline void
 timespec2bintime(const struct timespec *_ts, struct bintime *_bt)
 {
@@ -463,8 +474,12 @@ struct clockinfo {
 /* These macros are also in time.h. */
 #ifndef CLOCK_REALTIME
 #define	CLOCK_REALTIME	0
+#endif
+#ifndef CLOCK_VIRTUAL
 #define	CLOCK_VIRTUAL	1
 #define	CLOCK_PROF	2
+#endif
+#ifndef CLOCK_MONOTONIC
 #define	CLOCK_MONOTONIC	4
 #define	CLOCK_UPTIME	5		/* FreeBSD-specific. */
 #define	CLOCK_UPTIME_PRECISE	7	/* FreeBSD-specific. */
@@ -488,7 +503,7 @@ struct clockinfo {
 #define	CPUCLOCK_WHICH_TID	1
 #endif
 
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_STANDALONE)
 
 /*
  * Kernel to clock driver interface.
@@ -596,7 +611,7 @@ int	tvtohz(struct timeval *tv);
 	(((sbt2) >= sbt_timethreshold) ?				\
 	    ((*(sbt) = getsbinuptime()), 1) : ((*(sbt) = sbinuptime()), 0))
 
-#else /* !_KERNEL */
+#else /* !_KERNEL && !_STANDALONE */
 #include <time.h>
 
 #include <sys/cdefs.h>

@@ -49,9 +49,16 @@ bectl_create_setup()
 	atf_check test -n "$zpool"
 
 	kldload -n -q zfs || atf_skip "ZFS module not loaded on the current system"
+	if ! getconf MIN_HOLE_SIZE "$(pwd)"; then
+		echo "getconf MIN_HOLE_SIZE $(pwd) failed; sparse files " \
+		    "probably not supported by file system"
+		mount
+		atf_skip "Test's work directory does not support sparse files;" \
+		    "try with a different TMPDIR?"
+	fi
 	atf_check mkdir -p ${mnt}
 	atf_check truncate -s 1G ${disk}
-	atf_check zpool create -o altroot=${mnt} ${zpool} ${disk}
+	atf_check zpool create -R ${mnt} ${zpool} ${disk}
 	atf_check zfs create -o mountpoint=none ${zpool}/ROOT
 	atf_check zfs create -o mountpoint=/ -o canmount=noauto \
 	    ${zpool}/ROOT/default
@@ -93,6 +100,16 @@ bectl_create_head()
 }
 bectl_create_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -104,6 +121,10 @@ bectl_create_body()
 	# of recursive and non-recursive boot environments.
 	atf_check zfs create -o mountpoint=/usr -o canmount=noauto \
 	    ${zpool}/ROOT/default/usr
+
+	# BE datasets with spaces are not bootable, PR 254441.
+	atf_check -e not-empty -s not-exit:0 \
+		bectl -r ${zpool}/ROOT create "foo bar"
 
 	# Test standard creation, creation of a snapshot, and creation from a
 	# snapshot.
@@ -143,6 +164,16 @@ bectl_destroy_head()
 }
 bectl_destroy_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -223,6 +254,16 @@ bectl_export_import_head()
 }
 bectl_export_import_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -251,6 +292,16 @@ bectl_list_head()
 }
 bectl_list_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -286,6 +337,16 @@ bectl_mount_head()
 }
 bectl_mount_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -320,6 +381,16 @@ bectl_rename_head()
 }
 bectl_rename_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -343,9 +414,20 @@ bectl_jail_head()
 
 	atf_set "descr" "Check bectl rename"
 	atf_set "require.user" root
+	atf_set "require.progs" jail
 }
 bectl_jail_body()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	cwd=$(realpath .)
 	zpool=$(make_zpool_name)
 	disk=${cwd}/disk.img
@@ -416,6 +498,16 @@ bectl_jail_body()
 # attempts to destroy the zpool.
 bectl_jail_cleanup()
 {
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "i386" ]; then
+		atf_skip "https://bugs.freebsd.org/249055"
+	fi
+
+	if [ "$(atf_config_get ci false)" = "true" ] && \
+		[ "$(uname -p)" = "armv7" ]; then
+		atf_skip "https://bugs.freebsd.org/249229"
+	fi
+
 	zpool=$(get_zpool_name)
 	for bootenv in "default" "target" "1234"; do
 		# mountpoint of the boot environment

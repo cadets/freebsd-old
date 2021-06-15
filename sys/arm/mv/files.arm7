@@ -4,11 +4,9 @@ arm/mv/armadaxp/armadaxp.c	standard
 
 arm/mv/gpio.c			optional	gpio
 arm/mv/mv_common.c		standard
-arm/mv/mv_localbus.c		standard
 arm/mv/mv_armv7_machdep.c	standard
 arm/mv/mv_pci_ctrl.c		optional	pci | fdt
 arm/mv/mv_pci.c			optional	pci
-arm/mv/mv_ts.c			standard
 arm/mv/timer.c			standard
 
 arm/mv/mpic.c			standard
@@ -34,4 +32,5 @@ dev/uart/uart_dev_ns8250.c	optional	uart
 dev/uart/uart_dev_snps.c	optional	uart
 dev/usb/controller/ehci_mv.c	optional	ehci
 dev/usb/controller/generic_xhci.c	optional	xhci
+dev/usb/controller/generic_xhci_fdt.c	optional	xhci
 dev/ahci/ahci_mv_fdt.c		optional	ahci

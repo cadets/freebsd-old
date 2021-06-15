@@ -38,8 +38,7 @@ SRCS+=		libusb10_io.c
 CFLAGS+=	-DCOMPAT_32BIT
 .endif
 
-FILES=		libusb-0.1.pc libusb-1.0.pc libusb-2.0.pc
-FILESDIR=	${LIBDATADIR}/pkgconfig
+PCFILES=	libusb-0.1.pc libusb-1.0.pc libusb-2.0.pc
 
 #
 # Cross platform support
@@ -68,6 +67,7 @@ CFLAGS+=	-I ../../sys
 MLINKS += libusb.3 libusb_get_version.3
 MLINKS += libusb.3 libusb_init.3
 MLINKS += libusb.3 libusb_exit.3
+MLINKS += libusb.3 libusb_has_capability.3
 MLINKS += libusb.3 libusb_strerror.3
 MLINKS += libusb.3 libusb_error_name.3
 MLINKS += libusb.3 libusb_set_debug.3

@@ -452,6 +452,12 @@ pmcstat_print_log(void)
 			    ev.pl_u.pl_c.pl_pid,
 			    ev.pl_u.pl_c.pl_value);
 			break;
+		case PMCLOG_TYPE_PROC_CREATE:
+			PMCSTAT_PRINT_ENTRY("create","%d %x \"%s\"",
+			    ev.pl_u.pl_pc.pl_pid,
+			    ev.pl_u.pl_pc.pl_flags,
+			    ev.pl_u.pl_pc.pl_pcomm);
+			break;
 		case PMCLOG_TYPE_PROCEXEC:
 			PMCSTAT_PRINT_ENTRY("exec","0x%x %d %p \"%s\"",
 			    ev.pl_u.pl_x.pl_pmcid,
@@ -477,6 +483,17 @@ pmcstat_print_log(void)
 		case PMCLOG_TYPE_SYSEXIT:
 			PMCSTAT_PRINT_ENTRY("exit","%d",
 			    ev.pl_u.pl_se.pl_pid);
+			break;
+		case PMCLOG_TYPE_THR_CREATE:
+			PMCSTAT_PRINT_ENTRY("thr-create","%d %d %x \"%s\"",
+			    ev.pl_u.pl_tc.pl_tid,
+			    ev.pl_u.pl_tc.pl_pid,
+			    ev.pl_u.pl_tc.pl_flags,
+			    ev.pl_u.pl_tc.pl_tdname);
+			break;
+		case PMCLOG_TYPE_THR_EXIT:
+			PMCSTAT_PRINT_ENTRY("thr-exit","%d",
+			    ev.pl_u.pl_tc.pl_tid);
 			break;
 		default:
 			fprintf(args.pa_printfile, "unknown event (type %d).\n",
@@ -612,6 +629,12 @@ pmcstat_keypress_log(void)
 	c = wgetch(w);
 	wprintw(w, "Key: %c => ", c);
 	switch (c) {
+	case 'A':
+		if (args.pa_flags & FLAG_SKIP_TOP_FN_RES)
+			args.pa_flags &= ~FLAG_SKIP_TOP_FN_RES;
+		else
+			args.pa_flags |= FLAG_SKIP_TOP_FN_RES;
+		break;
 	case 'c':
 		wprintw(w, "enter mode 'd' or 'a' => ");
 		c = wgetch(w);
@@ -622,6 +645,12 @@ pmcstat_keypress_log(void)
 			args.pa_topmode = PMCSTAT_TOP_ACCUM;
 			wprintw(w, "switching to accumulation mode");
 		}
+		break;
+	case 'I':
+		if (args.pa_flags & FLAG_SHOW_OFFSET)
+			args.pa_flags &= ~FLAG_SHOW_OFFSET;
+		else
+			args.pa_flags |= FLAG_SHOW_OFFSET;
 		break;
 	case 'm':
 		pmcstat_mergepmc = !pmcstat_mergepmc;

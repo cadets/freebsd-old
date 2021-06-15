@@ -42,7 +42,7 @@
 /* Per hook statistics counters */
 struct ng_car_hookstats {
 	u_int64_t passed_pkts;	/* Counter for passed packets */
-	u_int64_t droped_pkts;	/* Counter for droped packets */
+	u_int64_t dropped_pkts;	/* Counter for dropped packets */
 	u_int64_t green_pkts;	/* Counter for green packets */
 	u_int64_t yellow_pkts;	/* Counter for yellow packets */
 	u_int64_t red_pkts;	/* Counter for red packets */
@@ -50,7 +50,7 @@ struct ng_car_hookstats {
 };
 #define NG_CAR_HOOKSTATS	{				\
 	  { "passed",		&ng_parse_uint64_type	},	\
-	  { "droped",		&ng_parse_uint64_type	},	\
+	  { "dropped",		&ng_parse_uint64_type	},	\
 	  { "green",		&ng_parse_uint64_type	},	\
 	  { "yellow",		&ng_parse_uint64_type	},	\
 	  { "red",		&ng_parse_uint64_type	},	\
@@ -103,8 +103,7 @@ struct ng_car_hookconf {
 enum {
     NG_CAR_ACTION_FORWARD = 1,
     NG_CAR_ACTION_DROP,
-    NG_CAR_ACTION_MARK,
-    NG_CAR_ACTION_SET_TOS
+    NG_CAR_ACTION_MARK
 };
 
 /* operation modes (mode) */
@@ -115,7 +114,7 @@ enum {
     NG_CAR_SHAPE
 };
 
-/* mode options (opt) */
+/* mode options (bits in opt) */
 #define NG_CAR_COLOR_AWARE	1
 #define NG_CAR_COUNT_PACKETS	2
 

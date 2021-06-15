@@ -2,7 +2,6 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2012 The FreeBSD Foundation
- * All rights reserved.
  *
  * This software was developed by Edward Tomasz Napierala under sponsorship
  * from the FreeBSD Foundation.
@@ -69,6 +68,7 @@ usage(void)
 {
 
 	fprintf(stderr, "usage: ctld [-d][-u][-f config-file]\n");
+	fprintf(stderr, "       ctld -t [-u][-f config-file]\n");
 	exit(1);
 }
 
@@ -304,7 +304,7 @@ auth_name_new(struct auth_group *ag, const char *name)
 	if (an == NULL)
 		log_err(1, "calloc");
 	an->an_auth_group = ag;
-	an->an_initator_name = checked_strdup(name);
+	an->an_initiator_name = checked_strdup(name);
 	TAILQ_INSERT_TAIL(&ag->ag_names, an, an_next);
 	return (an);
 }
@@ -314,7 +314,7 @@ auth_name_delete(struct auth_name *an)
 {
 	TAILQ_REMOVE(&an->an_auth_group->ag_names, an, an_next);
 
-	free(an->an_initator_name);
+	free(an->an_initiator_name);
 	free(an);
 }
 
@@ -332,7 +332,7 @@ auth_name_find(const struct auth_group *ag, const char *name)
 	const struct auth_name *auth_name;
 
 	TAILQ_FOREACH(auth_name, &ag->ag_names, an_next) {
-		if (strcmp(auth_name->an_initator_name, name) == 0)
+		if (strcmp(auth_name->an_initiator_name, name) == 0)
 			return (auth_name);
 	}
 
@@ -362,7 +362,7 @@ auth_portal_new(struct auth_group *ag, const char *portal)
 	if (ap == NULL)
 		log_err(1, "calloc");
 	ap->ap_auth_group = ag;
-	ap->ap_initator_portal = checked_strdup(portal);
+	ap->ap_initiator_portal = checked_strdup(portal);
 	mask = str = checked_strdup(portal);
 	net = strsep(&mask, "/");
 	if (net[0] == '[')
@@ -414,7 +414,7 @@ auth_portal_delete(struct auth_portal *ap)
 {
 	TAILQ_REMOVE(&ap->ap_auth_group->ag_portals, ap, ap_next);
 
-	free(ap->ap_initator_portal);
+	free(ap->ap_initiator_portal);
 	free(ap);
 }
 
@@ -624,6 +624,8 @@ portal_group_new(struct conf *conf, const char *name)
 	TAILQ_INIT(&pg->pg_ports);
 	pg->pg_conf = conf;
 	pg->pg_tag = 0;		/* Assigned later in conf_apply(). */
+	pg->pg_dscp = -1;
+	pg->pg_pcp = -1;
 	TAILQ_INSERT_TAIL(&conf->conf_portal_groups, pg, pg_next);
 
 	return (pg);
@@ -929,7 +931,7 @@ void
 isns_register(struct isns *isns, struct isns *oldisns)
 {
 	struct conf *conf = isns->i_conf;
-	int s;
+	int error, s;
 	char hostname[256];
 
 	if (TAILQ_EMPTY(&conf->conf_targets) ||
@@ -941,8 +943,10 @@ isns_register(struct isns *isns, struct isns *oldisns)
 		set_timeout(0, false);
 		return;
 	}
-	gethostname(hostname, sizeof(hostname));
-
+	error = gethostname(hostname, sizeof(hostname));
+	if (error != 0)
+		log_err(1, "gethostname");
+ 
 	if (oldisns == NULL || TAILQ_EMPTY(&oldisns->i_conf->conf_targets))
 		oldisns = isns;
 	isns_do_deregister(oldisns, s, hostname);
@@ -955,7 +959,7 @@ void
 isns_check(struct isns *isns)
 {
 	struct conf *conf = isns->i_conf;
-	int s, res;
+	int error, s, res;
 	char hostname[256];
 
 	if (TAILQ_EMPTY(&conf->conf_targets) ||
@@ -967,8 +971,10 @@ isns_check(struct isns *isns)
 		set_timeout(0, false);
 		return;
 	}
-	gethostname(hostname, sizeof(hostname));
-
+	error = gethostname(hostname, sizeof(hostname));
+	if (error != 0)
+		log_err(1, "gethostname");
+ 
 	res = isns_do_check(isns, s, hostname);
 	if (res < 0) {
 		isns_do_deregister(isns, s, hostname);
@@ -982,7 +988,7 @@ void
 isns_deregister(struct isns *isns)
 {
 	struct conf *conf = isns->i_conf;
-	int s;
+	int error, s;
 	char hostname[256];
 
 	if (TAILQ_EMPTY(&conf->conf_targets) ||
@@ -992,8 +998,10 @@ isns_deregister(struct isns *isns)
 	s = isns_do_connect(isns);
 	if (s < 0)
 		return;
-	gethostname(hostname, sizeof(hostname));
-
+	error = gethostname(hostname, sizeof(hostname));
+	if (error != 0)
+		log_err(1, "gethostname");
+ 
 	isns_do_deregister(isns, s, hostname);
 	close(s);
 	set_timeout(0, false);
@@ -1672,10 +1680,10 @@ conf_print(struct conf *conf)
 			    auth->a_mutual_user, auth->a_mutual_secret);
 		TAILQ_FOREACH(auth_name, &ag->ag_names, an_next)
 			fprintf(stderr, "\t initiator-name %s\n",
-			    auth_name->an_initator_name);
+			    auth_name->an_initiator_name);
 		TAILQ_FOREACH(auth_portal, &ag->ag_portals, ap_next)
 			fprintf(stderr, "\t initiator-portal %s\n",
-			    auth_portal->ap_initator_portal);
+			    auth_portal->ap_initiator_portal);
 		fprintf(stderr, "}\n");
 	}
 	TAILQ_FOREACH(pg, &conf->conf_portal_groups, pg_next) {
@@ -2180,6 +2188,58 @@ conf_apply(struct conf *oldconf, struct conf *newconf)
 				cumulated_error++;
 				continue;
 			}
+			if (newpg->pg_dscp != -1) {
+				struct sockaddr sa;
+				int len = sizeof(sa);
+				getsockname(newp->p_socket, &sa, &len);
+				/*
+				 * Only allow the 6-bit DSCP
+				 * field to be modified
+				 */
+				int tos = newpg->pg_dscp << 2;
+				if (sa.sa_family == AF_INET) {
+					if (setsockopt(newp->p_socket,
+					    IPPROTO_IP, IP_TOS,
+					    &tos, sizeof(tos)) == -1)
+						log_warn("setsockopt(IP_TOS) "
+						    "failed for %s",
+						    newp->p_listen);
+				} else
+				if (sa.sa_family == AF_INET6) {
+					if (setsockopt(newp->p_socket,
+					    IPPROTO_IPV6, IPV6_TCLASS,
+					    &tos, sizeof(tos)) == -1)
+						log_warn("setsockopt(IPV6_TCLASS) "
+						    "failed for %s",
+						    newp->p_listen);
+				}
+			}
+			if (newpg->pg_pcp != -1) {
+				struct sockaddr sa;
+				int len = sizeof(sa);
+				getsockname(newp->p_socket, &sa, &len);
+				/*
+				 * Only allow the 6-bit DSCP
+				 * field to be modified
+				 */
+				int pcp = newpg->pg_pcp;
+				if (sa.sa_family == AF_INET) {
+					if (setsockopt(newp->p_socket,
+					    IPPROTO_IP, IP_VLAN_PCP,
+					    &pcp, sizeof(pcp)) == -1)
+						log_warn("setsockopt(IP_VLAN_PCP) "
+						    "failed for %s",
+						    newp->p_listen);
+				} else
+				if (sa.sa_family == AF_INET6) {
+					if (setsockopt(newp->p_socket,
+					    IPPROTO_IPV6, IPV6_VLAN_PCP,
+					    &pcp, sizeof(pcp)) == -1)
+						log_warn("setsockopt(IPV6_VLAN_PCP) "
+						    "failed for %s",
+						    newp->p_listen);
+				}
+			}
 			error = bind(newp->p_socket, newp->p_ai->ai_addr,
 			    newp->p_ai->ai_addrlen);
 			if (error != 0) {
@@ -2663,13 +2723,17 @@ main(int argc, char **argv)
 	const char *config_path = DEFAULT_CONFIG_PATH;
 	int debug = 0, ch, error;
 	bool dont_daemonize = false;
+	bool test_config = false;
 	bool use_ucl = false;
 
-	while ((ch = getopt(argc, argv, "duf:R")) != -1) {
+	while ((ch = getopt(argc, argv, "dtuf:R")) != -1) {
 		switch (ch) {
 		case 'd':
 			dont_daemonize = true;
 			debug++;
+			break;
+		case 't':
+			test_config = true;
 			break;
 		case 'u':
 			use_ucl = true;
@@ -2701,6 +2765,10 @@ main(int argc, char **argv)
 
 	if (newconf == NULL)
 		log_errx(1, "configuration error; exiting");
+
+	if (test_config)
+		return (0);
+
 	if (debug > 0) {
 		oldconf->conf_debug = debug;
 		newconf->conf_debug = debug;

@@ -273,6 +273,13 @@ void mips::getMIPSTargetFeatures(const Driver &D, const llvm::Triple &Triple,
       D.Diag(diag::warn_drv_unsupported_longcalls) << (ABICallsArg ? 0 : 1);
   }
 
+  if (Arg *A = Args.getLastArg(options::OPT_mxgot, options::OPT_mno_xgot)) {
+    if (A->getOption().matches(options::OPT_mxgot))
+      Features.push_back("+xgot");
+    else
+      Features.push_back("-xgot");
+  }
+
   mips::FloatABI FloatABI = mips::getMipsFloatABI(D, Args, Triple);
   if (FloatABI == mips::FloatABI::Soft) {
     // FIXME: Note, this is a hack. We need to pass the selected float
@@ -445,8 +452,6 @@ bool mips::isNaN2008(const ArgList &Args, const llvm::Triple &Triple) {
   return llvm::StringSwitch<bool>(getCPUName(Args, Triple))
       .Cases("mips32r6", "mips64r6", true)
       .Default(false);
-
-  return false;
 }
 
 bool mips::isFP64ADefault(const llvm::Triple &Triple, StringRef CPUName) {

@@ -88,7 +88,6 @@ validbcd(int bcd)
 
 	return (bcd == 0 || (bcd > 0 && bcd <= 0x99 && bcd2bin_data[bcd] != 0));
 }
-
 static __inline int imax(int a, int b) { return (a > b ? a : b); }
 static __inline int imin(int a, int b) { return (a < b ? a : b); }
 static __inline long lmax(long a, long b) { return (a > b ? a : b); }
@@ -113,20 +112,22 @@ static __inline __uintmax_t ummin(__uintmax_t a, __uintmax_t b)
 }
 static __inline off_t omax(off_t a, off_t b) { return (a > b ? a : b); }
 static __inline off_t omin(off_t a, off_t b) { return (a < b ? a : b); }
-
 static __inline int abs(int a) { return (a < 0 ? -a : a); }
 static __inline long labs(long a) { return (a < 0 ? -a : a); }
 static __inline quad_t qabs(quad_t a) { return (a < 0 ? -a : a); }
 
+#ifndef RANDOM_FENESTRASX
 #define	ARC4_ENTR_NONE	0	/* Don't have entropy yet. */
 #define	ARC4_ENTR_HAVE	1	/* Have entropy. */
 #define	ARC4_ENTR_SEED	2	/* Reseeding. */
 extern int arc4rand_iniseed_state;
+#endif
 
 /* Prototypes for non-quad routines. */
 struct malloc_type;
 uint32_t arc4random(void);
 void	 arc4random_buf(void *, size_t);
+uint32_t arc4random_uniform(uint32_t);
 void	 arc4rand(void *, u_int, int);
 int	 timingsafe_bcmp(const void *, const void *, size_t);
 void	*bsearch(const void *, const void *, size_t,
@@ -167,6 +168,7 @@ void	 qsort_r(void *base, size_t nmemb, size_t size, void *thunk,
 u_long	 random(void);
 int	 scanc(u_int, const u_char *, const u_char *, int);
 int	 strcasecmp(const char *, const char *);
+char	*strcasestr(const char *, const char *);
 char	*strcat(char * __restrict, const char * __restrict);
 char	*strchr(const char *, int);
 char	*strchrnul(const char *, int);
@@ -190,14 +192,20 @@ size_t	 strspn(const char *, const char *);
 char	*strstr(const char *, const char *);
 int	 strvalid(const char *, size_t);
 
-#ifdef KCSAN
-char	*kcsan_strcpy(char *, const char *);
-int	kcsan_strcmp(const char *, const char *);
-size_t	kcsan_strlen(const char *);
-#define	strcpy(d, s) kcsan_strcpy((d), (s))
-#define	strcmp(s1, s2) kcsan_strcmp((s1), (s2))
-#define	strlen(s) kcsan_strlen((s))
-#endif
+#ifdef SAN_PREFIX
+char	*SAN_INTERCEPTOR(strcpy)(char *, const char *);
+int	SAN_INTERCEPTOR(strcmp)(const char *, const char *);
+size_t	SAN_INTERCEPTOR(strlen)(const char *);
+#ifndef SAN_RUNTIME
+#define	strcpy(d, s)	SAN_INTERCEPTOR(strcpy)((d), (s))
+#define	strcmp(s1, s2)	SAN_INTERCEPTOR(strcmp)((s1), (s2))
+#define	strlen(s)	SAN_INTERCEPTOR(strlen)(s)
+#endif /* !SAN_RUNTIME */
+#else
+#define strcpy(d, s) __builtin_strcpy((d), (s))
+#define strcmp(s1, s2) __builtin_strcmp((s1), (s2))
+#define strlen(s) __builtin_strlen((s))
+#endif /* SAN_PREFIX */
 
 static __inline char *
 index(const char *p, int ch)

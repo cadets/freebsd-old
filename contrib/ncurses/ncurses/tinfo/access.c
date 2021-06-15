@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2011,2012 Free Software Foundation, Inc.              *
+ * Copyright 2019,2020 Thomas E. Dickey                                     *
+ * Copyright 1998-2011,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -36,17 +37,15 @@
 
 #include <tic.h>
 
-MODULE_ID("$Id: access.c,v 1.23 2012/09/01 19:21:29 tom Exp $")
-
-#ifdef __TANDEM
-#define ROOT_UID 65535
-#endif
-
-#ifndef ROOT_UID
-#define ROOT_UID 0
-#endif
+MODULE_ID("$Id: access.c,v 1.27 2020/08/29 16:22:03 juergen Exp $")
 
 #define LOWERCASE(c) ((isalpha(UChar(c)) && isupper(UChar(c))) ? tolower(UChar(c)) : (c))
+
+#ifdef _NC_MSC
+# define ACCESS(FN, MODE) access((FN), (MODE)&(R_OK|W_OK))
+#else
+# define ACCESS access
+#endif
 
 NCURSES_EXPORT(char *)
 _nc_rootname(char *path)
@@ -119,7 +118,7 @@ _nc_access(const char *path, int mode)
 
     if (path == 0) {
 	result = -1;
-    } else if (access(path, mode) < 0) {
+    } else if (ACCESS(path, mode) < 0) {
 	if ((mode & W_OK) != 0
 	    && errno == ENOENT
 	    && strlen(path) < PATH_MAX) {
@@ -134,7 +133,7 @@ _nc_access(const char *path, int mode)
 	    if (head == leaf)
 		_nc_STRCPY(head, ".", sizeof(head));
 
-	    result = access(head, R_OK | W_OK | X_OK);
+	    result = ACCESS(head, R_OK | W_OK | X_OK);
 	} else {
 	    result = -1;
 	}

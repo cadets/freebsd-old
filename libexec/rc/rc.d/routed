@@ -3,9 +3,9 @@
 # $FreeBSD$
 #
 
-# PROVIDE: routed
+# PROVIDE: routed dynamicrouting
 # REQUIRE: netif routing
-# BEFORE: NETWORK
+# BEFORE: NETWORKING
 # KEYWORD: nojailvnet
 
 . /etc/rc.subr

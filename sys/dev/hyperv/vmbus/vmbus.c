@@ -35,6 +35,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
+#include <sys/linker.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
@@ -44,8 +45,13 @@ __FBSDID("$FreeBSD$");
 #include <sys/systm.h>
 #include <sys/taskqueue.h>
 
+#include <vm/vm.h>
+#include <vm/vm_param.h>
+#include <vm/pmap.h>
+
 #include <machine/bus.h>
 #include <machine/intr_machdep.h>
+#include <machine/metadata.h>
 #include <machine/md_var.h>
 #include <machine/resource.h>
 #include <x86/include/apicvar.h>
@@ -137,6 +143,7 @@ SYSCTL_INT(_hw_vmbus, OID_AUTO, pin_evttask, CTLFLAG_RDTUN,
     &vmbus_pin_evttask, 0, "Pin event tasks to their respective CPU");
 
 extern inthand_t IDTVEC(vmbus_isr), IDTVEC(vmbus_isr_pti);
+#define VMBUS_ISR_ADDR	trunc_page((uintptr_t)IDTVEC(vmbus_isr_pti))
 
 uint32_t			vmbus_current_version;
 
@@ -365,10 +372,46 @@ vmbus_gpadl_alloc(struct vmbus_softc *sc)
 	uint32_t gpadl;
 
 again:
-	gpadl = atomic_fetchadd_int(&sc->vmbus_gpadl, 1); 
+	gpadl = atomic_fetchadd_int(&sc->vmbus_gpadl, 1);
 	if (gpadl == 0)
 		goto again;
 	return (gpadl);
+}
+
+/* Used for Hyper-V socket when guest client connects to host */
+int
+vmbus_req_tl_connect(struct hyperv_guid *guest_srv_id,
+    struct hyperv_guid *host_srv_id)
+{
+	struct vmbus_softc *sc = vmbus_get_softc();
+	struct vmbus_chanmsg_tl_connect *req;
+	struct vmbus_msghc *mh;
+	int error;
+
+	if (!sc)
+		return ENXIO;
+
+	mh = vmbus_msghc_get(sc, sizeof(*req));
+	if (mh == NULL) {
+		device_printf(sc->vmbus_dev,
+		    "can not get msg hypercall for tl connect\n");
+		return ENXIO;
+	}
+
+	req = vmbus_msghc_dataptr(mh);
+	req->chm_hdr.chm_type = VMBUS_CHANMSG_TYPE_TL_CONN;
+	req->guest_endpoint_id = *guest_srv_id;
+	req->host_service_id = *host_srv_id;
+
+	error = vmbus_msghc_exec_noresult(mh);
+	vmbus_msghc_put(sc, mh);
+
+	if (error) {
+		device_printf(sc->vmbus_dev,
+		    "tl connect msg hypercall failed\n");
+	}
+
+	return error;
 }
 
 static int
@@ -942,6 +985,10 @@ vmbus_intr_setup(struct vmbus_softc *sc)
 		    vmbus_msg_task, sc);
 	}
 
+#if defined(__amd64__) && defined(KLD_MODULE)
+	pmap_pti_add_kva(VMBUS_ISR_ADDR, VMBUS_ISR_ADDR + PAGE_SIZE, true);
+#endif
+
 	/*
 	 * All Hyper-V ISR required resources are setup, now let's find a
 	 * free IDT vector for Hyper-V ISR and set it up.
@@ -949,6 +996,9 @@ vmbus_intr_setup(struct vmbus_softc *sc)
 	sc->vmbus_idtvec = lapic_ipi_alloc(pti ? IDTVEC(vmbus_isr_pti) :
 	    IDTVEC(vmbus_isr));
 	if (sc->vmbus_idtvec < 0) {
+#if defined(__amd64__) && defined(KLD_MODULE)
+		pmap_pti_remove_kva(VMBUS_ISR_ADDR, VMBUS_ISR_ADDR + PAGE_SIZE);
+#endif
 		device_printf(sc->vmbus_dev, "cannot find free IDT vector\n");
 		return ENXIO;
 	}
@@ -968,6 +1018,10 @@ vmbus_intr_teardown(struct vmbus_softc *sc)
 		lapic_ipi_free(sc->vmbus_idtvec);
 		sc->vmbus_idtvec = -1;
 	}
+
+#if defined(__amd64__) && defined(KLD_MODULE)
+	pmap_pti_remove_kva(VMBUS_ISR_ADDR, VMBUS_ISR_ADDR + PAGE_SIZE);
+#endif
 
 	CPU_FOREACH(cpu) {
 		if (VMBUS_PCPU_GET(sc, event_tq, cpu) != NULL) {
@@ -1296,12 +1350,81 @@ vmbus_get_mmio_res(device_t dev)
 	vmbus_get_mmio_res_pass(dev, parse_32);
 }
 
+/*
+ * On Gen2 VMs, Hyper-V provides mmio space for framebuffer.
+ * This mmio address range is not useable for other PCI devices.
+ * Currently only efifb and vbefb drivers are using this range without
+ * reserving it from system.
+ * Therefore, vmbus driver reserves it before any other PCI device
+ * drivers start to request mmio addresses.
+ */
+static struct resource *hv_fb_res;
+
+static void
+vmbus_fb_mmio_res(device_t dev)
+{
+	struct efi_fb *efifb;
+	struct vbe_fb *vbefb;
+	rman_res_t fb_start, fb_end, fb_count;
+	int fb_height, fb_width;
+	caddr_t kmdp;
+
+	struct vmbus_softc *sc = device_get_softc(dev);
+	int rid = 0;
+
+	kmdp = preload_search_by_type("elf kernel");
+	if (kmdp == NULL)
+		kmdp = preload_search_by_type("elf64 kernel");
+	efifb = (struct efi_fb *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_EFI_FB);
+	vbefb = (struct vbe_fb *)preload_search_info(kmdp,
+	    MODINFO_METADATA | MODINFOMD_VBE_FB);
+	if (efifb != NULL) {
+		fb_start = efifb->fb_addr;
+		fb_end = efifb->fb_addr + efifb->fb_size;
+		fb_count = efifb->fb_size;
+		fb_height = efifb->fb_height;
+		fb_width = efifb->fb_width;
+	} else if (vbefb != NULL) {
+		fb_start = vbefb->fb_addr;
+		fb_end = vbefb->fb_addr + vbefb->fb_size;
+		fb_count = vbefb->fb_size;
+		fb_height = vbefb->fb_height;
+		fb_width = vbefb->fb_width;
+	} else {
+		if (bootverbose)
+			device_printf(dev,
+			    "no preloaded kernel fb information\n");
+		/* We are on Gen1 VM, just return. */
+		return;
+	}
+	
+	if (bootverbose)
+		device_printf(dev,
+		    "fb: fb_addr: %#jx, size: %#jx, "
+		    "actual size needed: 0x%x\n",
+		    fb_start, fb_count, fb_height * fb_width);
+
+	hv_fb_res = pcib_host_res_alloc(&sc->vmbus_mmio_res, dev,
+	    SYS_RES_MEMORY, &rid, fb_start, fb_end, fb_count,
+	    RF_ACTIVE | rman_make_alignment_flags(PAGE_SIZE));
+
+	if (hv_fb_res && bootverbose)
+		device_printf(dev,
+		    "successfully reserved memory for framebuffer "
+		    "starting at %#jx, size %#jx\n",
+		    fb_start, fb_count);
+}
+
 static void
 vmbus_free_mmio_res(device_t dev)
 {
 	struct vmbus_softc *sc = device_get_softc(dev);
 
 	pcib_host_res_free(dev, &sc->vmbus_mmio_res);
+
+	if (hv_fb_res)
+		hv_fb_res = NULL;
 }
 #endif	/* NEW_PCIB */
 
@@ -1351,6 +1474,7 @@ vmbus_doattach(struct vmbus_softc *sc)
 
 #ifdef NEW_PCIB
 	vmbus_get_mmio_res(sc->vmbus_dev);
+	vmbus_fb_mmio_res(sc->vmbus_dev);
 #endif
 
 	sc->vmbus_flags |= VMBUS_FLAG_ATTACHED;

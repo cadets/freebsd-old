@@ -96,6 +96,8 @@ __FBSDID("$FreeBSD$");
 #ifdef TCP_OFFLOAD
 #include <netinet/toecore.h>
 #endif
+#include <netinet/udp.h>
+#include <netinet/udp_var.h>
 
 #include <netipsec/ipsec_support.h>
 
@@ -143,14 +145,14 @@ static tcp_seq	 syncookie_generate(struct syncache_head *, struct syncache *);
 static struct syncache
 		*syncookie_lookup(struct in_conninfo *, struct syncache_head *,
 		    struct syncache *, struct tcphdr *, struct tcpopt *,
-		    struct socket *);
+		    struct socket *, uint16_t);
 static void	syncache_pause(struct in_conninfo *);
 static void	syncache_unpause(void *);
 static void	 syncookie_reseed(void *);
 #ifdef INVARIANTS
 static int	 syncookie_cmp(struct in_conninfo *inc, struct syncache_head *sch,
 		    struct syncache *sc, struct tcphdr *th, struct tcpopt *to,
-		    struct socket *lso);
+		    struct socket *lso, uint16_t port);
 #endif
 
 /*
@@ -172,7 +174,8 @@ static int	 syncookie_cmp(struct in_conninfo *inc, struct syncache_head *sch,
 VNET_DEFINE_STATIC(struct tcp_syncache, tcp_syncache);
 #define	V_tcp_syncache			VNET(tcp_syncache)
 
-static SYSCTL_NODE(_net_inet_tcp, OID_AUTO, syncache, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_net_inet_tcp, OID_AUTO, syncache,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "TCP SYN cache");
 
 SYSCTL_UINT(_net_inet_tcp_syncache, OID_AUTO, bucketlimit, CTLFLAG_VNET | CTLFLAG_RDTUN,
@@ -189,6 +192,11 @@ SYSCTL_UMA_CUR(_net_inet_tcp_syncache, OID_AUTO, count, CTLFLAG_VNET,
 SYSCTL_UINT(_net_inet_tcp_syncache, OID_AUTO, hashsize, CTLFLAG_VNET | CTLFLAG_RDTUN,
     &VNET_NAME(tcp_syncache.hashsize), 0,
     "Size of TCP syncache hashtable");
+
+SYSCTL_BOOL(_net_inet_tcp_syncache, OID_AUTO, see_other, CTLFLAG_VNET |
+    CTLFLAG_RW, &VNET_NAME(tcp_syncache.see_other), 0,
+    "All syncache(4) entries are visible, ignoring UID/GID, jail(2) "
+    "and mac(4) checks");
 
 static int
 sysctl_net_inet_tcp_syncache_rexmtlimit_check(SYSCTL_HANDLER_ARGS)
@@ -208,7 +216,7 @@ sysctl_net_inet_tcp_syncache_rexmtlimit_check(SYSCTL_HANDLER_ARGS)
 }
 
 SYSCTL_PROC(_net_inet_tcp_syncache, OID_AUTO, rexmtlimit,
-    CTLFLAG_VNET | CTLTYPE_UINT | CTLFLAG_RW,
+    CTLFLAG_VNET | CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &VNET_NAME(tcp_syncache.rexmt_limit), 0,
     sysctl_net_inet_tcp_syncache_rexmtlimit_check, "UI",
     "Limit on SYN/ACK retransmissions");
@@ -336,7 +344,6 @@ syncache_destroy(void)
 
 	/* Cleanup hash buckets: stop timers, free entries, destroy locks. */
 	for (i = 0; i < V_tcp_syncache.hashsize; i++) {
-
 		sch = &V_tcp_syncache.hashbase[i];
 		callout_drain(&sch->sch_timer);
 
@@ -509,6 +516,9 @@ syncache_timer(void *xsch)
 				sch->sch_nextc = sc->sc_rxttime;
 			continue;
 		}
+		if (sc->sc_rxmits > V_tcp_ecn_maxretries) {
+			sc->sc_flags &= ~SCF_ECN;
+		}
 		if (sc->sc_rxmits > V_tcp_syncache.rexmt_limit) {
 			if ((s = tcp_log_addrs(&sc->sc_inc, NULL, NULL, NULL))) {
 				log(LOG_DEBUG, "%s; %s: Retransmits exhausted, "
@@ -602,7 +612,8 @@ syncache_lookup(struct in_conninfo *inc, struct syncache_head **schp)
  * If required send a challenge ACK.
  */
 void
-syncache_chkrst(struct in_conninfo *inc, struct tcphdr *th, struct mbuf *m)
+syncache_chkrst(struct in_conninfo *inc, struct tcphdr *th, struct mbuf *m,
+    uint16_t port)
 {
 	struct syncache *sc;
 	struct syncache_head *sch;
@@ -637,6 +648,16 @@ syncache_chkrst(struct in_conninfo *inc, struct tcphdr *th, struct mbuf *m)
 		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
 			log(LOG_DEBUG, "%s; %s: Spurious RST without matching "
 			    "syncache entry (possibly syncookie only), "
+			    "segment ignored\n", s, __func__);
+		TCPSTAT_INC(tcps_badrst);
+		goto done;
+	}
+
+	/* The remote UDP encaps port does not match. */
+	if (sc->sc_port != port) {
+		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
+			log(LOG_DEBUG, "%s; %s: Spurious RST with matching "
+			    "syncache entry but non-matching UDP encaps port, "
 			    "segment ignored\n", s, __func__);
 		TCPSTAT_INC(tcps_badrst);
 		goto done;
@@ -708,7 +729,7 @@ done:
 }
 
 void
-syncache_badack(struct in_conninfo *inc)
+syncache_badack(struct in_conninfo *inc, uint16_t port)
 {
 	struct syncache *sc;
 	struct syncache_head *sch;
@@ -717,7 +738,7 @@ syncache_badack(struct in_conninfo *inc)
 		return;
 	sc = syncache_lookup(inc, &sch);	/* returns locked sch */
 	SCH_LOCK_ASSERT(sch);
-	if (sc != NULL) {
+	if ((sc != NULL) && (sc->sc_port == port)) {
 		syncache_drop(sc, sch);
 		TCPSTAT_INC(tcps_sc_badack);
 	}
@@ -725,7 +746,7 @@ syncache_badack(struct in_conninfo *inc)
 }
 
 void
-syncache_unreach(struct in_conninfo *inc, tcp_seq th_seq)
+syncache_unreach(struct in_conninfo *inc, tcp_seq th_seq, uint16_t port)
 {
 	struct syncache *sc;
 	struct syncache_head *sch;
@@ -735,6 +756,10 @@ syncache_unreach(struct in_conninfo *inc, tcp_seq th_seq)
 	sc = syncache_lookup(inc, &sch);	/* returns locked sch */
 	SCH_LOCK_ASSERT(sch);
 	if (sc == NULL)
+		goto done;
+
+	/* If the port != sc_port, then it's a bogus ICMP msg */
+	if (port != sc->sc_port)
 		goto done;
 
 	/* If the sequence number != sc_iss, then it's a bogus ICMP msg */
@@ -827,6 +852,8 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		inp->inp_vflag &= ~INP_IPV6;
 		inp->inp_vflag |= INP_IPV4;
 #endif
+		inp->inp_ip_ttl = sc->sc_ip_ttl;
+		inp->inp_ip_tos = sc->sc_ip_tos;
 		inp->inp_laddr = sc->sc_inc.inc_laddr;
 #ifdef INET6
 	}
@@ -862,6 +889,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		if (oinp->in6p_outputopts)
 			inp->in6p_outputopts =
 			    ip6_copypktopts(oinp->in6p_outputopts, M_NOWAIT);
+		inp->in6p_hops = oinp->in6p_hops;
 	}
 
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
@@ -902,7 +930,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		struct sockaddr_in sin;
 
 		inp->inp_options = (m) ? ip_srcroute(m) : NULL;
-		
+
 		if (inp->inp_options == NULL) {
 			inp->inp_options = sc->sc_ipopts;
 			sc->sc_ipopts = NULL;
@@ -940,17 +968,18 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 	tcp_state_change(tp, TCPS_SYN_RECEIVED);
 	tp->iss = sc->sc_iss;
 	tp->irs = sc->sc_irs;
+	tp->t_port = sc->sc_port;
 	tcp_rcvseqinit(tp);
 	tcp_sendseqinit(tp);
 	blk = sototcpcb(lso)->t_fb;
 	if (V_functions_inherit_listen_socket_stack && blk != tp->t_fb) {
 		/*
 		 * Our parents t_fb was not the default,
-		 * we need to release our ref on tp->t_fb and 
+		 * we need to release our ref on tp->t_fb and
 		 * pickup one on the new entry.
 		 */
 		struct tcp_function_block *rblk;
-		
+
 		rblk = find_and_ref_tcp_fb(blk);
 		KASSERT(rblk != NULL,
 		    ("cannot find blk %p out of syncache?", blk));
@@ -967,7 +996,7 @@ syncache_socket(struct syncache *sc, struct socket *lso, struct mbuf *m)
 		if (tp->t_fb->tfb_tcp_fb_init) {
 			(*tp->t_fb->tfb_tcp_fb_init)(tp);
 		}
-	}		
+	}
 	tp->snd_wl1 = sc->sc_irs;
 	tp->snd_max = tp->iss + 1;
 	tp->snd_nxt = tp->iss + 1;
@@ -1060,7 +1089,7 @@ abort2:
  */
 int
 syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
-    struct socket **lsop, struct mbuf *m)
+    struct socket **lsop, struct mbuf *m, uint16_t port)
 {
 	struct syncache *sc;
 	struct syncache_head *sch;
@@ -1088,7 +1117,7 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * values with the reconstructed values from the cookie.
 	 */
 	if (sc != NULL)
-		syncookie_cmp(inc, sch, sc, th, to, *lsop);
+		syncookie_cmp(inc, sch, sc, th, to, *lsop, port);
 #endif
 
 	if (sc == NULL) {
@@ -1122,7 +1151,7 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			goto failed;
 		}
 		bzero(&scs, sizeof(scs));
-		sc = syncookie_lookup(inc, sch, &scs, th, to, *lsop);
+		sc = syncookie_lookup(inc, sch, &scs, th, to, *lsop, port);
 		if (locked)
 			SCH_UNLOCK(sch);
 		if (sc == NULL) {
@@ -1149,6 +1178,10 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		}
 #endif /* TCP_SIGNATURE */
 	} else {
+		if (sc->sc_port != port) {
+			SCH_UNLOCK(sch);
+			return (0);
+		}
 #if defined(IPSEC_SUPPORT) || defined(TCP_SIGNATURE)
 		/*
 		 * If listening socket requested TCP digests, check that
@@ -1206,8 +1239,54 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		}
 
 		/*
+		 * If timestamps were not negotiated during SYN/ACK and a
+		 * segment with a timestamp is received, ignore the
+		 * timestamp and process the packet normally.
+		 * See section 3.2 of RFC 7323.
+		 */
+		if (!(sc->sc_flags & SCF_TIMESTAMP) &&
+		    (to->to_flags & TOF_TS)) {
+			if ((s = tcp_log_addrs(inc, th, NULL, NULL))) {
+				log(LOG_DEBUG, "%s; %s: Timestamp not "
+				    "expected, segment processed normally\n",
+				    s, __func__);
+				free(s, M_TCPLOG);
+				s = NULL;
+			}
+		}
+
+		/*
+		 * If timestamps were negotiated during SYN/ACK and a
+		 * segment without a timestamp is received, silently drop
+		 * the segment, unless the missing timestamps are tolerated.
+		 * See section 3.2 of RFC 7323.
+		 */
+		if ((sc->sc_flags & SCF_TIMESTAMP) &&
+		    !(to->to_flags & TOF_TS)) {
+			if (V_tcp_tolerate_missing_ts) {
+				if ((s = tcp_log_addrs(inc, th, NULL, NULL))) {
+					log(LOG_DEBUG,
+					    "%s; %s: Timestamp missing, "
+					    "segment processed normally\n",
+					    s, __func__);
+					free(s, M_TCPLOG);
+				}
+			} else {
+				SCH_UNLOCK(sch);
+				if ((s = tcp_log_addrs(inc, th, NULL, NULL))) {
+					log(LOG_DEBUG,
+					    "%s; %s: Timestamp missing, "
+					    "segment silently dropped\n",
+					    s, __func__);
+					free(s, M_TCPLOG);
+				}
+				return (-1);  /* Do not send RST */
+			}
+		}
+
+		/*
 		 * Pull out the entry to unlock the bucket row.
-		 * 
+		 *
 		 * NOTE: We must decrease TCPS_SYN_RECEIVED count here, not
 		 * tcp_state_change().  The tcpcb is not existent at this
 		 * moment.  A new one will be allocated via syncache_socket->
@@ -1250,32 +1329,6 @@ syncache_expand(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 		goto failed;
 	}
 
-	/*
-	 * If timestamps were not negotiated during SYN/ACK they
-	 * must not appear on any segment during this session.
-	 */
-	if (!(sc->sc_flags & SCF_TIMESTAMP) && (to->to_flags & TOF_TS)) {
-		if ((s = tcp_log_addrs(inc, th, NULL, NULL)))
-			log(LOG_DEBUG, "%s; %s: Timestamp not expected, "
-			    "segment rejected\n", s, __func__);
-		goto failed;
-	}
-
-	/*
-	 * If timestamps were negotiated during SYN/ACK they should
-	 * appear on every segment during this session.
-	 * XXXAO: This is only informal as there have been unverified
-	 * reports of non-compliants stacks.
-	 */
-	if ((sc->sc_flags & SCF_TIMESTAMP) && !(to->to_flags & TOF_TS)) {
-		if ((s = tcp_log_addrs(inc, th, NULL, NULL))) {
-			log(LOG_DEBUG, "%s; %s: Timestamp missing, "
-			    "no action\n", s, __func__);
-			free(s, M_TCPLOG);
-			s = NULL;
-		}
-	}
-
 	*lsop = syncache_socket(sc, *lsop, m);
 
 	if (*lsop == NULL)
@@ -1296,24 +1349,25 @@ failed:
 	return (0);
 }
 
-static void
-syncache_tfo_expand(struct syncache *sc, struct socket **lsop, struct mbuf *m,
+static struct socket *
+syncache_tfo_expand(struct syncache *sc, struct socket *lso, struct mbuf *m,
     uint64_t response_cookie)
 {
 	struct inpcb *inp;
 	struct tcpcb *tp;
 	unsigned int *pending_counter;
+	struct socket *so;
 
 	NET_EPOCH_ASSERT();
 
-	pending_counter = intotcpcb(sotoinpcb(*lsop))->t_tfo_pending;
-	*lsop = syncache_socket(sc, *lsop, m);
-	if (*lsop == NULL) {
+	pending_counter = intotcpcb(sotoinpcb(lso))->t_tfo_pending;
+	so = syncache_socket(sc, lso, m);
+	if (so == NULL) {
 		TCPSTAT_INC(tcps_sc_aborted);
 		atomic_subtract_int(pending_counter, 1);
 	} else {
-		soisconnected(*lsop);
-		inp = sotoinpcb(*lsop);
+		soisconnected(so);
+		inp = sotoinpcb(so);
 		tp = intotcpcb(inp);
 		tp->t_flags |= TF_FASTOPEN;
 		tp->t_tfo_cookie.server = response_cookie;
@@ -1322,6 +1376,8 @@ syncache_tfo_expand(struct syncache *sc, struct socket **lsop, struct mbuf *m,
 		tp->t_tfo_pending = pending_counter;
 		TCPSTAT_INC(tcps_sc_completed);
 	}
+
+	return (so);
 }
 
 /*
@@ -1343,20 +1399,19 @@ syncache_tfo_expand(struct syncache *sc, struct socket **lsop, struct mbuf *m,
  * be ACKed either when the application sends response data or the delayed
  * ACK timer expires, whichever comes first.
  */
-int
+struct socket *
 syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
-    struct inpcb *inp, struct socket **lsop, struct mbuf *m, void *tod,
-    void *todctx, uint8_t iptos)
+    struct inpcb *inp, struct socket *so, struct mbuf *m, void *tod,
+    void *todctx, uint8_t iptos, uint16_t port)
 {
 	struct tcpcb *tp;
-	struct socket *so;
+	struct socket *rv = NULL;
 	struct syncache *sc = NULL;
 	struct syncache_head *sch;
 	struct mbuf *ipopts = NULL;
 	u_int ltflags;
 	int win, ip_ttl, ip_tos;
 	char *s;
-	int rv = 0;
 #ifdef INET6
 	int autoflowlabel = 0;
 #endif
@@ -1371,7 +1426,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	int tfo_response_cookie_valid = 0;
 	bool locked;
 
-	INP_WLOCK_ASSERT(inp);			/* listen socket */
+	INP_RLOCK_ASSERT(inp);			/* listen socket */
 	KASSERT((th->th_flags & (TH_RST|TH_ACK|TH_SYN)) == TH_SYN,
 	    ("%s: unexpected tcp flags", __func__));
 
@@ -1379,18 +1434,33 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	 * Combine all so/tp operations very early to drop the INP lock as
 	 * soon as possible.
 	 */
-	so = *lsop;
 	KASSERT(SOLISTENING(so), ("%s: %p not listening", __func__, so));
 	tp = sototcpcb(so);
-	cred = crhold(so->so_cred);
+	cred = V_tcp_syncache.see_other ? NULL : crhold(so->so_cred);
 
 #ifdef INET6
-	if ((inc->inc_flags & INC_ISIPV6) &&
-	    (inp->inp_flags & IN6P_AUTOFLOWLABEL))
-		autoflowlabel = 1;
+	if (inc->inc_flags & INC_ISIPV6) {
+		if (inp->inp_flags & IN6P_AUTOFLOWLABEL) {
+			autoflowlabel = 1;
+		}
+		ip_ttl = in6_selecthlim(inp, NULL);
+		if ((inp->in6p_outputopts == NULL) ||
+		    (inp->in6p_outputopts->ip6po_tclass == -1)) {
+			ip_tos = 0;
+		} else {
+			ip_tos = inp->in6p_outputopts->ip6po_tclass;
+		}
+	}
 #endif
-	ip_ttl = inp->inp_ip_ttl;
-	ip_tos = inp->inp_ip_tos;
+#if defined(INET6) && defined(INET)
+	else
+#endif
+#ifdef INET
+	{
+		ip_ttl = inp->inp_ip_ttl;
+		ip_tos = inp->inp_ip_tos;
+	}
+#endif
 	win = so->sol_sbrcv_hiwat;
 	ltflags = (tp->t_flags & (TF_NOOPT | TF_SIGNATURE));
 
@@ -1427,13 +1497,13 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 
 #ifdef MAC
 	if (mac_syncache_init(&maclabel) != 0) {
-		INP_WUNLOCK(inp);
+		INP_RUNLOCK(inp);
 		goto done;
 	} else
 		mac_syncache_create(maclabel, inp);
 #endif
 	if (!tfo_cookie_valid)
-		INP_WUNLOCK(inp);
+		INP_RUNLOCK(inp);
 
 	/*
 	 * Remember the IP options, if any.
@@ -1486,7 +1556,7 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 	}
 	if (sc != NULL) {
 		if (tfo_cookie_valid)
-			INP_WUNLOCK(inp);
+			INP_RUNLOCK(inp);
 		TCPSTAT_INC(tcps_sc_dupsyn);
 		if (ipopts) {
 			/*
@@ -1504,6 +1574,13 @@ syncache_add(struct in_conninfo *inc, struct tcpopt *to, struct tcphdr *th,
 			sc->sc_tsreflect = to->to_tsval;
 		else
 			sc->sc_flags &= ~SCF_TIMESTAMP;
+		/*
+		 * Disable ECN if needed.
+		 */
+		if ((sc->sc_flags & SCF_ECN) &&
+		    ((th->th_flags & (TH_ECE|TH_CWR)) != (TH_ECE|TH_CWR))) {
+			sc->sc_flags &= ~SCF_ECN;
+		}
 #ifdef MAC
 		/*
 		 * Since we have already unconditionally allocated label
@@ -1585,16 +1662,12 @@ skip_alloc:
 	sc->sc_label = maclabel;
 #endif
 	sc->sc_cred = cred;
+	sc->sc_port = port;
 	cred = NULL;
 	sc->sc_ipopts = ipopts;
 	bcopy(inc, &sc->sc_inc, sizeof(struct in_conninfo));
-#ifdef INET6
-	if (!(inc->inc_flags & INC_ISIPV6))
-#endif
-	{
-		sc->sc_ip_tos = ip_tos;
-		sc->sc_ip_ttl = ip_ttl;
-	}
+	sc->sc_ip_tos = ip_tos;
+	sc->sc_ip_ttl = ip_ttl;
 #ifdef TCP_OFFLOAD
 	sc->sc_tod = tod;
 	sc->sc_todctx = todctx;
@@ -1611,7 +1684,8 @@ skip_alloc:
 	win = imin(win, TCP_MAXWIN);
 	sc->sc_wnd = win;
 
-	if (V_tcp_do_rfc1323) {
+	if (V_tcp_do_rfc1323 &&
+	    !(ltflags & TF_NOOPT)) {
 		/*
 		 * A timestamp received in a SYN makes
 		 * it ok to send timestamp requests and replies.
@@ -1668,7 +1742,8 @@ skip_alloc:
 		sc->sc_peer_mss = to->to_mss;	/* peer mss may be zero */
 	if (ltflags & TF_NOOPT)
 		sc->sc_flags |= SCF_NOOPT;
-	if ((th->th_flags & (TH_ECE|TH_CWR)) && V_tcp_do_ecn)
+	if (((th->th_flags & (TH_ECE|TH_CWR)) == (TH_ECE|TH_CWR)) &&
+	    V_tcp_do_ecn)
 		sc->sc_flags |= SCF_ECN;
 
 	if (V_tcp_syncookies)
@@ -1688,9 +1763,8 @@ skip_alloc:
 		SCH_UNLOCK(sch);
 
 	if (tfo_cookie_valid) {
-		syncache_tfo_expand(sc, lsop, m, tfo_response_cookie);
-		/* INP_WUNLOCK(inp) will be performed by the caller */
-		rv = 1;
+		rv = syncache_tfo_expand(sc, so, m, tfo_response_cookie);
+		/* INP_RUNLOCK(inp) will be performed by the caller */
 		goto tfo_expanded;
 	}
 
@@ -1715,10 +1789,8 @@ skip_alloc:
 done:
 	TCP_PROBE5(receive, NULL, NULL, m, NULL, th);
 donenoprobe:
-	if (m) {
-		*lsop = NULL;
+	if (m)
 		m_freem(m);
-	}
 	/*
 	 * If tfo_pending is not NULL here, then a TFO SYN that did not
 	 * result in a new socket was processed and the associated pending
@@ -1748,8 +1820,9 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 	struct ip *ip = NULL;
 	struct mbuf *m;
 	struct tcphdr *th = NULL;
+	struct udphdr *udp = NULL;
 	int optlen, error = 0;	/* Make compiler happy */
-	u_int16_t hlen, tlen, mssopt;
+	u_int16_t hlen, tlen, mssopt, ulen;
 	struct tcpopt to;
 #ifdef INET6
 	struct ip6_hdr *ip6 = NULL;
@@ -1763,9 +1836,14 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 #endif
 		sizeof(struct ip);
 	tlen = hlen + sizeof(struct tcphdr);
-
+	if (sc->sc_port) {
+		tlen += sizeof(struct udphdr);
+	}
 	/* Determine MSS we advertize to other end of connection. */
-	mssopt = max(tcp_mssopt(&sc->sc_inc), V_tcp_minmss);
+	mssopt = tcp_mssopt(&sc->sc_inc);
+	if (sc->sc_port)
+		mssopt -= V_tcp_udp_tunneling_overhead;
+	mssopt = max(mssopt, V_tcp_minmss);
 
 	/* XXX: Assume that the entire packet will fit in a header mbuf. */
 	KASSERT(max_linkhdr + tlen + TCP_MAXOLEN <= MHLEN,
@@ -1787,15 +1865,25 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
 		ip6 = mtod(m, struct ip6_hdr *);
 		ip6->ip6_vfc = IPV6_VERSION;
-		ip6->ip6_nxt = IPPROTO_TCP;
 		ip6->ip6_src = sc->sc_inc.inc6_laddr;
 		ip6->ip6_dst = sc->sc_inc.inc6_faddr;
 		ip6->ip6_plen = htons(tlen - hlen);
 		/* ip6_hlim is set after checksum */
-		ip6->ip6_flow &= ~IPV6_FLOWLABEL_MASK;
+		/* Zero out traffic class and flow label. */
+		ip6->ip6_flow &= ~IPV6_FLOWINFO_MASK;
 		ip6->ip6_flow |= sc->sc_flowlabel;
-
-		th = (struct tcphdr *)(ip6 + 1);
+		if (sc->sc_port != 0) {
+			ip6->ip6_nxt = IPPROTO_UDP;
+			udp = (struct udphdr *)(ip6 + 1);
+			udp->uh_sport = htons(V_tcp_udp_tunneling_port);
+			udp->uh_dport = sc->sc_port;
+			ulen = (tlen - sizeof(struct ip6_hdr));
+			th = (struct tcphdr *)(udp + 1);
+		} else {
+			ip6->ip6_nxt = IPPROTO_TCP;
+			th = (struct tcphdr *)(ip6 + 1);
+		}
+		ip6->ip6_flow |= htonl(sc->sc_ip_tos << 20);
 	}
 #endif
 #if defined(INET6) && defined(INET)
@@ -1810,7 +1898,6 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 		ip->ip_id = 0;
 		ip->ip_off = 0;
 		ip->ip_sum = 0;
-		ip->ip_p = IPPROTO_TCP;
 		ip->ip_src = sc->sc_inc.inc_laddr;
 		ip->ip_dst = sc->sc_inc.inc_faddr;
 		ip->ip_ttl = sc->sc_ip_ttl;
@@ -1825,8 +1912,17 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 		 */
 		if (V_path_mtu_discovery && ((sc->sc_flags & SCF_UNREACH) == 0))
 		       ip->ip_off |= htons(IP_DF);
-
-		th = (struct tcphdr *)(ip + 1);
+		if (sc->sc_port == 0) {
+			ip->ip_p = IPPROTO_TCP;
+			th = (struct tcphdr *)(ip + 1);
+		} else {
+			ip->ip_p = IPPROTO_UDP;
+			udp = (struct udphdr *)(ip + 1);
+			udp->uh_sport = htons(V_tcp_udp_tunneling_port);
+			udp->uh_dport = sc->sc_port;
+			ulen = (tlen - sizeof(struct ip));
+			th = (struct tcphdr *)(udp + 1);
+		}
 	}
 #endif /* INET */
 	th->th_sport = sc->sc_inc.inc_lport;
@@ -1906,8 +2002,11 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 	} else
 		optlen = 0;
 
+	if (udp) {
+		ulen += optlen;
+		udp->uh_ulen = htons(ulen);
+	}
 	M_SETFIB(m, sc->sc_inc.inc_fibnum);
-	m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
 	/*
 	 * If we have peer's SYN and it has a flowid, then let's assign it to
 	 * our SYN|ACK.  ip6_output() and ip_output() will not assign flowid
@@ -1919,10 +2018,19 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 	}
 #ifdef INET6
 	if (sc->sc_inc.inc_flags & INC_ISIPV6) {
-		m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
-		th->th_sum = in6_cksum_pseudo(ip6, tlen + optlen - hlen,
-		    IPPROTO_TCP, 0);
-		ip6->ip6_hlim = in6_selecthlim(NULL, NULL);
+		if (sc->sc_port) {
+			m->m_pkthdr.csum_flags = CSUM_UDP_IPV6;
+			m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+			udp->uh_sum = in6_cksum_pseudo(ip6, ulen,
+			      IPPROTO_UDP, 0);
+			th->th_sum = htons(0);
+		} else {
+			m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
+			m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+			th->th_sum = in6_cksum_pseudo(ip6, tlen + optlen - hlen,
+			    IPPROTO_TCP, 0);
+		}
+		ip6->ip6_hlim = sc->sc_ip_ttl;
 #ifdef TCP_OFFLOAD
 		if (ADDED_BY_TOE(sc)) {
 			struct toedev *tod = sc->sc_tod;
@@ -1941,9 +2049,18 @@ syncache_respond(struct syncache *sc, const struct mbuf *m0, int flags)
 #endif
 #ifdef INET
 	{
-		m->m_pkthdr.csum_flags = CSUM_TCP;
-		th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
-		    htons(tlen + optlen - hlen + IPPROTO_TCP));
+		if (sc->sc_port) {
+			m->m_pkthdr.csum_flags = CSUM_UDP;
+			m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
+			udp->uh_sum = in_pseudo(ip->ip_src.s_addr,
+			      ip->ip_dst.s_addr, htons(ulen + IPPROTO_UDP));
+			th->th_sum = htons(0);
+		} else {
+			m->m_pkthdr.csum_flags = CSUM_TCP;
+			m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+			th->th_sum = in_pseudo(ip->ip_src.s_addr, ip->ip_dst.s_addr,
+			    htons(tlen + optlen - hlen + IPPROTO_TCP));
+		}
 #ifdef TCP_OFFLOAD
 		if (ADDED_BY_TOE(sc)) {
 			struct toedev *tod = sc->sc_tod;
@@ -2171,9 +2288,9 @@ syncookie_generate(struct syncache_head *sch, struct syncache *sc)
 }
 
 static struct syncache *
-syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch, 
+syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
     struct syncache *sc, struct tcphdr *th, struct tcpopt *to,
-    struct socket *lso)
+    struct socket *lso, uint16_t port)
 {
 	uint32_t hash;
 	uint8_t *secbits;
@@ -2207,7 +2324,7 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 	sc->sc_flags = 0;
 	bcopy(inc, &sc->sc_inc, sizeof(struct in_conninfo));
 	sc->sc_ipopts = NULL;
-	
+
 	sc->sc_irs = seq;
 	sc->sc_iss = ack;
 
@@ -2221,7 +2338,8 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 #ifdef INET6
 	case INC_ISIPV6:
 		if (sotoinpcb(lso)->inp_flags & IN6P_AUTOFLOWLABEL)
-			sc->sc_flowlabel = sc->sc_iss & IPV6_FLOWLABEL_MASK;
+			sc->sc_flowlabel =
+			    htonl(sc->sc_iss) & IPV6_FLOWLABEL_MASK;
 		break;
 #endif
 	}
@@ -2258,6 +2376,8 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 
 	sc->sc_rxmits = 0;
 
+	sc->sc_port = port;
+
 	TCPSTAT_INC(tcps_sc_recvcookie);
 	return (sc);
 }
@@ -2266,13 +2386,13 @@ syncookie_lookup(struct in_conninfo *inc, struct syncache_head *sch,
 static int
 syncookie_cmp(struct in_conninfo *inc, struct syncache_head *sch,
     struct syncache *sc, struct tcphdr *th, struct tcpopt *to,
-    struct socket *lso)
+    struct socket *lso, uint16_t port)
 {
 	struct syncache scs, *scx;
 	char *s;
 
 	bzero(&scs, sizeof(scs));
-	scx = syncookie_lookup(inc, sch, &scs, th, to, lso);
+	scx = syncookie_lookup(inc, sch, &scs, th, to, lso, port);
 
 	if ((s = tcp_log_addrs(inc, th, NULL, NULL)) == NULL)
 		return (0);
@@ -2451,12 +2571,14 @@ syncache_pcblist(struct sysctl_req *req)
 		sch = &V_tcp_syncache.hashbase[i];
 		SCH_LOCK(sch);
 		TAILQ_FOREACH(sc, &sch->sch_bucket, sc_hash) {
-			if (cr_cansee(req->td->td_ucred, sc->sc_cred) != 0)
+			if (sc->sc_cred != NULL &&
+			    cr_cansee(req->td->td_ucred, sc->sc_cred) != 0)
 				continue;
 			if (sc->sc_inc.inc_flags & INC_ISIPV6)
 				xt.xt_inp.inp_vflag = INP_IPV6;
 			else
 				xt.xt_inp.inp_vflag = INP_IPV4;
+			xt.xt_encaps_port = sc->sc_port;
 			bcopy(&sc->sc_inc, &xt.xt_inp.inp_inc,
 			    sizeof (struct in_conninfo));
 			error = SYSCTL_OUT(req, &xt, sizeof xt);

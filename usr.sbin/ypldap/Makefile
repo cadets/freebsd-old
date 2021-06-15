@@ -9,12 +9,12 @@ SRCS=		parse.y ypldap.c log.c	\
 
 MAN=		ypldap.8 ypldap.conf.5
 
-LIBADD=		openbsd event util rpcsvc
+LIBADD=		openbsd event1 util rpcsvc
 
 CFLAGS+=-I${.CURDIR}
 CFLAGS+=-I${SRCTOP}/contrib/pf/libevent
 CFLAGS+=-I${SRCTOP}/lib/libopenbsd
 
-WARNS=	2
+WARNS?=	2
 
 .include <bsd.prog.mk>

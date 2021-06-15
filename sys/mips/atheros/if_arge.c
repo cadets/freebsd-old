@@ -84,7 +84,6 @@ __FBSDID("$FreeBSD$");
 #include "mdio_if.h"
 #endif
 
-
 MODULE_DEPEND(arge, ether, 1, 1, 1);
 MODULE_DEPEND(arge, miibus, 1, 1, 1);
 MODULE_VERSION(arge, 1);
@@ -230,7 +229,7 @@ static device_method_t argemdio_methods[] = {
 
 	/* bus interface */
 	DEVMETHOD(bus_add_child,	device_add_child_ordered),
-	
+
 	/* MDIO access */
 	DEVMETHOD(mdio_readreg,		arge_miibus_readreg),
 	DEVMETHOD(mdio_writereg,	arge_miibus_writereg),
@@ -292,7 +291,7 @@ arge_attach_intr_sysctl(device_t dev, struct sysctl_oid_list *parent)
 	int i;
 
 	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "intr",
-	    CTLFLAG_RD, NULL, "Interrupt statistics");
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "Interrupt statistics");
 	child = SYSCTL_CHILDREN(tree);
 	for (i = 0; i < 32; i++) {
 		snprintf(sn, sizeof(sn), "%d", i);
@@ -333,6 +332,11 @@ arge_attach_sysctl(device_t dev)
 		0, "number of TX unaligned packets (len)");
 
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		"tx_pkts_unaligned_tooshort", CTLFLAG_RW,
+		&sc->stats.tx_pkts_unaligned_tooshort,
+		0, "number of TX unaligned packets (mbuf length < 4 bytes)");
+
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
 		"tx_pkts_nosegs", CTLFLAG_RW, &sc->stats.tx_pkts_nosegs,
 		0, "number of TX packets fail with no ring slots avail");
 
@@ -347,6 +351,13 @@ arge_attach_sysctl(device_t dev)
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
 		"intr_ok", CTLFLAG_RW, &sc->stats.intr_ok,
 		0, "number of OK interrupts");
+
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		"tx_underflow", CTLFLAG_RW, &sc->stats.tx_underflow,
+		0, "Number of TX underflows");
+	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
+		"rx_overflow", CTLFLAG_RW, &sc->stats.rx_overflow,
+		0, "Number of RX overflows");
 #ifdef	ARGE_DEBUG
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(tree), OID_AUTO, "tx_prod",
 	    CTLFLAG_RW, &sc->arge_cdata.arge_tx_prod, 0, "");
@@ -1230,7 +1241,6 @@ arge_update_link_locked(struct arge_softc *sc)
 	}
 
 	if (mii->mii_media_status & IFM_ACTIVE) {
-
 		media = IFM_SUBTYPE(mii->mii_media_active);
 		if (media != IFM_NONE) {
 			sc->arge_link_status = 1;
@@ -1361,18 +1371,26 @@ arge_set_pll(struct arge_softc *sc, int media, int duplex)
 #endif
 }
 
-
 static void
 arge_reset_dma(struct arge_softc *sc)
 {
+	uint32_t val;
 
 	ARGEDEBUG(sc, ARGE_DBG_RESET, "%s: called\n", __func__);
 
 	ARGE_WRITE(sc, AR71XX_DMA_RX_CONTROL, 0);
 	ARGE_WRITE(sc, AR71XX_DMA_TX_CONTROL, 0);
 
+	/* Give hardware a chance to finish */
+	DELAY(1000);
+
 	ARGE_WRITE(sc, AR71XX_DMA_RX_DESC, 0);
 	ARGE_WRITE(sc, AR71XX_DMA_TX_DESC, 0);
+
+	ARGEDEBUG(sc, ARGE_DBG_RESET, "%s: RX_STATUS=%08x, TX_STATUS=%08x\n",
+	    __func__,
+	    ARGE_READ(sc, AR71XX_DMA_RX_STATUS),
+	    ARGE_READ(sc, AR71XX_DMA_TX_STATUS));
 
 	/* Clear all possible RX interrupts */
 	while(ARGE_READ(sc, AR71XX_DMA_RX_STATUS) & DMA_RX_STATUS_PKT_RECVD)
@@ -1397,6 +1415,24 @@ arge_reset_dma(struct arge_softc *sc)
 	 * flushed to RAM before underlying buffers are freed.
 	 */
 	arge_flush_ddr(sc);
+
+	/* Check if we cleared RX status */
+	val = ARGE_READ(sc, AR71XX_DMA_RX_STATUS);
+	if (val != 0) {
+		device_printf(sc->arge_dev,
+		    "%s: unable to clear DMA_RX_STATUS: %08x\n",
+		    __func__, val);
+	}
+
+	/* Check if we cleared TX status */
+	val = ARGE_READ(sc, AR71XX_DMA_TX_STATUS);
+	/* Mask out reserved bits */
+	val = val & 0x00ffffff;
+	if (val != 0) {
+		device_printf(sc->arge_dev,
+		    "%s: unable to clear DMA_TX_STATUS: %08x\n",
+		    __func__, val);
+	}
 }
 
 static void
@@ -1417,8 +1453,12 @@ arge_init_locked(struct arge_softc *sc)
 
 	ARGE_LOCK_ASSERT(sc);
 
+	ARGEDEBUG(sc, ARGE_DBG_RESET, "%s: called\n", __func__);
+
 	if ((ifp->if_flags & IFF_UP) && (ifp->if_drv_flags & IFF_DRV_RUNNING))
 		return;
+
+	ARGEDEBUG(sc, ARGE_DBG_RESET, "%s: init'ing\n", __func__);
 
 	/* Init circular RX list. */
 	if (arge_rx_ring_init(sc) != 0) {
@@ -1431,6 +1471,7 @@ arge_init_locked(struct arge_softc *sc)
 	/* Init tx descriptors. */
 	arge_tx_ring_init(sc);
 
+	/* Restart DMA */
 	arge_reset_dma(sc);
 
 	if (sc->arge_miibus) {
@@ -1451,6 +1492,11 @@ arge_init_locked(struct arge_softc *sc)
 		callout_reset(&sc->arge_stat_callout, hz, arge_tick, sc);
 		arge_update_link_locked(sc);
 	}
+
+	ARGEDEBUG(sc, ARGE_DBG_RESET, "%s: desc ring; TX=0x%x, RX=0x%x\n",
+	    __func__,
+	    ARGE_TX_RING_ADDR(sc, 0),
+	    ARGE_RX_RING_ADDR(sc, 0));
 
 	ARGE_WRITE(sc, AR71XX_DMA_TX_DESC, ARGE_TX_RING_ADDR(sc, 0));
 	ARGE_WRITE(sc, AR71XX_DMA_RX_DESC, ARGE_RX_RING_ADDR(sc, 0));
@@ -1493,6 +1539,15 @@ arge_mbuf_chain_is_tx_aligned(struct arge_softc *sc, struct mbuf *m0)
 		 */
 		if ((m->m_next != NULL) && ((m->m_len & 0x03) != 0)) {
 			sc->stats.tx_pkts_unaligned_len++;
+			return 0;
+		}
+
+		/*
+		 * All chips have this requirement for length being greater
+		 * than 4.
+		 */
+		if ((m->m_next != NULL) && ((m->m_len < 4))) {
+			sc->stats.tx_pkts_unaligned_tooshort++;
 			return 0;
 		}
 	}
@@ -1581,6 +1636,11 @@ arge_encap(struct arge_softc *sc, struct mbuf **m_head)
 		if (i == 0)
 			tmp |= ARGE_DESC_EMPTY;
 		desc->packet_ctrl = tmp;
+
+		ARGEDEBUG(sc, ARGE_DBG_TX, " [%d / %d] addr=0x%x, len=%d\n",
+		    i,
+		    prod,
+		    (uint32_t) txsegs[i].ds_addr, (int) txsegs[i].ds_len);
 
 		/* XXX Note: only relevant for older MACs; but check length! */
 		if ((sc->arge_hw_flags & ARGE_HW_FLG_TX_DESC_ALIGN_4BYTE) &&
@@ -1675,7 +1735,6 @@ arge_start_locked(struct ifnet *ifp)
 		if (m_head == NULL)
 			break;
 
-
 		/*
 		 * Pack the data into the transmit ring.
 		 */
@@ -1720,7 +1779,6 @@ arge_stop(struct arge_softc *sc)
 	arge_rx_ring_free(sc);
 	arge_tx_ring_free(sc);
 }
-
 
 static int
 arge_ioctl(struct ifnet *ifp, u_long command, caddr_t data)
@@ -2356,7 +2414,6 @@ arge_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 }
 #endif /* DEVICE_POLLING */
 
-
 static void
 arge_tx_locked(struct arge_softc *sc)
 {
@@ -2421,7 +2478,6 @@ arge_tx_locked(struct arge_softc *sc)
 	    sc->arge_cdata.arge_tx_ring_map, BUS_DMASYNC_PREWRITE);
 }
 
-
 static int
 arge_rx_locked(struct arge_softc *sc)
 {
@@ -2478,7 +2534,6 @@ arge_rx_locked(struct arge_softc *sc)
 	}
 
 	if (prog > 0) {
-
 		i = sc->arge_cdata.arge_rx_cons;
 		for (; prog > 0 ; prog--) {
 			if (arge_newbuf(sc, i) != 0) {
@@ -2606,7 +2661,7 @@ arge_intr(void *arg)
 	}
 
 	/*
-	 * If we've finished TXing and there's space for more packets
+	 * If we've finished RX /or/ TX and there's space for more packets
 	 * to be queued for TX, do so. Otherwise we may end up in a
 	 * situation where the interface send queue was filled
 	 * whilst the hardware queue was full, then the hardware
@@ -2620,8 +2675,7 @@ arge_intr(void *arg)
 	 * after a TX underrun, then having the hardware queue added
 	 * to below.
 	 */
-	if (status & (DMA_INTR_TX_PKT_SENT | DMA_INTR_TX_UNDERRUN) &&
-	    (ifp->if_drv_flags & IFF_DRV_OACTIVE) == 0) {
+	 if ((ifp->if_drv_flags & IFF_DRV_OACTIVE) == 0) {
 		if (!IFQ_IS_EMPTY(&ifp->if_snd))
 			arge_start_locked(ifp);
 	}
@@ -2636,7 +2690,6 @@ arge_intr(void *arg)
 	 */
 	ARGE_WRITE(sc, AR71XX_DMA_INTR, DMA_INTR_ALL);
 }
-
 
 static void
 arge_tick(void *xsc)

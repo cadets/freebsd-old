@@ -928,7 +928,12 @@ forkshell(struct job *jp, union node *n, int mode)
 				pgrp = jp->ps[0].pid;
 			if (setpgid(0, pgrp) == 0 && mode == FORK_FG &&
 			    ttyfd >= 0) {
-				/*** this causes superfluous TIOCSPGRPS ***/
+				/*
+				 * Each process in a pipeline must have the tty
+				 * pgrp set before running its code.
+				 * Only for pipelines of three or more processes
+				 * could this be reduced to two calls.
+				 */
 				if (tcsetpgrp(ttyfd, pgrp) < 0)
 					error("tcsetpgrp failed, errno=%d", errno);
 			}
@@ -1008,9 +1013,11 @@ vforkexecshell(struct job *jp, char **argv, char **envp, const char *path, int i
 	pid_t pid;
 	struct jmploc jmploc;
 	struct jmploc *savehandler;
+	int inton;
 
 	TRACE(("vforkexecshell(%%%td, %s, %p) called\n", jp - jobtab, argv[0],
 	    (void *)pip));
+	inton = is_int_on();
 	INTOFF;
 	flushall();
 	savehandler = handler;
@@ -1045,7 +1052,7 @@ vforkexecshell(struct job *jp, char **argv, char **envp, const char *path, int i
 		setcurjob(jp);
 #endif
 	}
-	INTON;
+	SETINTON(inton);
 	TRACE(("In parent shell:  child = %d\n", (int)pid));
 	return pid;
 }

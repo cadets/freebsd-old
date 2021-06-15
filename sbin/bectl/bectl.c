@@ -72,19 +72,19 @@ usage(bool explicit)
 	    "\tbectl add (path)*\n"
 #endif
 	    "\tbectl activate [-t] beName\n"
+	    "\tbectl activate [-T]\n"
 	    "\tbectl check\n"
 	    "\tbectl create [-r] [-e {nonActiveBe | beName@snapshot}] beName\n"
 	    "\tbectl create [-r] beName@snapshot\n"
-	    "\tbectl destroy [-F] {beName | beName@snapshot}\n"
+	    "\tbectl destroy [-Fo] {beName | beName@snapshot}\n"
 	    "\tbectl export sourceBe\n"
 	    "\tbectl import targetBe\n"
-	    "\tbectl jail {-b | -U} [{-o key=value | -u key}]... "
-	    "{jailID | jailName}\n"
-	    "\t      bootenv [utility [argument ...]]\n"
-	    "\tbectl list [-DHas] [{-c property | -C property}]\n"
+	    "\tbectl jail [-bU] [{-o key=value | -u key}]... beName\n"
+	    "\t      [utility [argument ...]]\n"
+	    "\tbectl list [-aDHs] [{-c property | -C property}]\n"
 	    "\tbectl mount beName [mountpoint]\n"
 	    "\tbectl rename origBeName newBeName\n"
-	    "\tbectl {ujail | unjail} {jailID | jailName} bootenv\n"
+	    "\tbectl {ujail | unjail} {jailID | jailName | beName}\n"
 	    "\tbectl {umount | unmount} [-f] beName\n");
 
 	return (explicit ? 0 : EX_USAGE);
@@ -139,13 +139,21 @@ static int
 bectl_cmd_activate(int argc, char *argv[])
 {
 	int err, opt;
-	bool temp;
+	bool temp, reset;
 
 	temp = false;
-	while ((opt = getopt(argc, argv, "t")) != -1) {
+	reset = false;
+	while ((opt = getopt(argc, argv, "tT")) != -1) {
 		switch (opt) {
 		case 't':
+			if (reset)
+				return (usage(false));
 			temp = true;
+			break;
+		case 'T':
+			if (temp)
+				return (usage(false));
+			reset = true;
 			break;
 		default:
 			fprintf(stderr, "bectl activate: unknown option '-%c'\n",
@@ -157,11 +165,18 @@ bectl_cmd_activate(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 1) {
+	if (argc != 1 && (!reset || argc != 0)) {
 		fprintf(stderr, "bectl activate: wrong number of arguments\n");
 		return (usage(false));
 	}
 
+	if (reset) {
+		if ((err = be_deactivate(be, NULL, reset)) == 0)
+			printf("Temporary activation removed\n");
+		else
+			printf("Failed to remove temporary activation\n");
+		return (err);
+	}
 
 	/* activate logic goes here */
 	if ((err = be_activate(be, argv[0], temp)) != 0)
@@ -218,7 +233,10 @@ bectl_cmd_create(int argc, char *argv[])
 	bootenv = *argv;
 
 	err = BE_ERR_SUCCESS;
-	if ((atpos = strchr(bootenv, '@')) != NULL) {
+	if (strchr(bootenv, ' ') != NULL)
+		/* BE datasets with spaces are not bootable */
+		err = BE_ERR_INVALIDNAME;
+	else if ((atpos = strchr(bootenv, '@')) != NULL) {
 		/*
 		 * This is the "create a snapshot variant". No new boot
 		 * environment is to be created here.
@@ -245,6 +263,10 @@ bectl_cmd_create(int argc, char *argv[])
 
 	switch (err) {
 	case BE_ERR_SUCCESS:
+		break;
+	case BE_ERR_INVALIDNAME:
+		fprintf(stderr,
+		    "bectl create: boot environment name must not contain spaces\n");
 		break;
 	default:
 		if (atpos != NULL)
@@ -566,8 +588,12 @@ main(int argc, char *argv[])
 		return (usage(false));
 	}
 
-	if ((be = libbe_init(root)) == NULL)
+	if ((be = libbe_init(root)) == NULL) {
+		if (!cmd->silent)
+			fprintf(stderr, "libbe_init(\"%s\") failed.\n",
+			    root != NULL ? root : "");
 		return (-1);
+	}
 
 	libbe_print_on_error(be, !cmd->silent);
 

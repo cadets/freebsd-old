@@ -47,6 +47,7 @@
 #include <net/route.h>
 #include <net/vnet.h>
 #include <netinet/in.h>
+#include <netinet/in_var.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <net/slcompress.h>
@@ -742,7 +743,7 @@ static void
 sppp_ifstart_sched(void *dummy)
 {
 	struct sppp *sp = dummy;
-	
+
 	sp->if_start(SP2IFP(sp));
 }
 
@@ -1005,7 +1006,7 @@ sppp_attach(struct ifnet *ifp)
 
 	/* Initialize mtx lock */
 	mtx_init(&sp->mtx, "sppp", MTX_NETWORK_LOCK, MTX_DEF | MTX_RECURSE);
-	
+
 	/* Initialize keepalive handler. */
  	callout_init(&sp->keepalive_callout, 1);
 	callout_reset(&sp->keepalive_callout, hz * 10, sppp_keepalive,
@@ -1863,7 +1864,6 @@ sppp_cp_input(const struct cp *cp, struct sppp *sp, struct mbuf *m)
 	}
 }
 
-
 /*
  * The generic part of all Up/Down/Open/Close/TO event handlers.
  * Basically, the state transition handling in the automaton.
@@ -1930,7 +1930,6 @@ sppp_down_event(const struct cp *cp, struct sppp *sp)
 	}
 }
 
-
 static void
 sppp_open_event(const struct cp *cp, struct sppp *sp)
 {
@@ -1979,7 +1978,6 @@ sppp_open_event(const struct cp *cp, struct sppp *sp)
 		break;
 	}
 }
-
 
 static void
 sppp_close_event(const struct cp *cp, struct sppp *sp)
@@ -2680,7 +2678,7 @@ sppp_lcp_tlu(struct sppp *sp)
 	/* notify low-level driver of state change */
 	if (sp->pp_chg)
 		sp->pp_chg(sp, (int)sp->pp_phase);
-	
+
 	if (sp->pp_phase == PHASE_NETWORK)
 		/* if no NCP is starting, close down */
 		sppp_lcp_check_and_close(sp);
@@ -3070,7 +3068,6 @@ sppp_ipcp_RCR(struct sppp *sp, struct lcp_header *h, int len)
 				else
 					log(-1, "%s [not agreed] ",
 						sppp_dotted_quad(desiredaddr));
-
 			}
 			p[2] = hisaddr >> 24;
 			p[3] = hisaddr >> 16;
@@ -3836,7 +3833,6 @@ static void sppp_ipv6cp_down(struct sppp *sp)
 {
 }
 
-
 static void sppp_ipv6cp_open(struct sppp *sp)
 {
 }
@@ -4188,7 +4184,6 @@ sppp_chap_input(struct sppp *sp, struct mbuf *m)
 			log(-1, ">\n");
 		}
 		break;
-
 	}
 }
 
@@ -4506,7 +4501,6 @@ sppp_pap_input(struct sppp *sp, struct mbuf *m)
 			log(-1, ">\n");
 		}
 		break;
-
 	}
 }
 
@@ -4888,9 +4882,12 @@ sppp_set_ip_addr(struct sppp *sp, u_long src)
 
 	if (ifa != NULL) {
 		int error;
+		int fibnum = ifp->if_fib;
 
+		rt_addrmsg(RTM_DELETE, ifa, fibnum);
 		/* delete old route */
-		error = rtinit(ifa, (int)RTM_DELETE, RTF_HOST);
+		ia = ifatoia(ifa);
+		error = in_handle_ifaddr_route(RTM_DELETE, ia);
 		if (debug && error) {
 			log(LOG_DEBUG, SPP_FMT "sppp_set_ip_addr: rtinit DEL failed, error=%d\n",
 		    		SPP_ARGS(ifp), error);
@@ -4898,14 +4895,14 @@ sppp_set_ip_addr(struct sppp *sp, u_long src)
 
 		/* set new address */
 		si->sin_addr.s_addr = htonl(src);
-		ia = ifatoia(ifa);
 		IN_IFADDR_WLOCK();
 		LIST_REMOVE(ia, ia_hash);
 		LIST_INSERT_HEAD(INADDR_HASH(si->sin_addr.s_addr), ia, ia_hash);
 		IN_IFADDR_WUNLOCK();
 
+		rt_addrmsg(RTM_ADD, ifa, fibnum);
 		/* add new route */
-		error = rtinit(ifa, (int)RTM_ADD, RTF_HOST);
+		error = in_handle_ifaddr_route(RTM_ADD, ia);
 		if (debug && error) {
 			log(LOG_DEBUG, SPP_FMT "sppp_set_ip_addr: rtinit ADD failed, error=%d",
 		    		SPP_ARGS(ifp), error);
@@ -5227,7 +5224,6 @@ sppp_phase_network(struct sppp *sp)
 	/* if no NCP is starting, all this was in vain, close down */
 	sppp_lcp_check_and_close(sp);
 }
-
 
 static const char *
 sppp_cp_type_name(u_char type)

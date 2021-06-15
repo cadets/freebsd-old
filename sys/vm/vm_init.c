@@ -212,7 +212,7 @@ again:
 	/*
 	 * Allocate the clean map to hold all of I/O virtual memory.
 	 */
-	size = (long)nbuf * BKVASIZE + (long)bio_transient_maxcnt * MAXPHYS;
+	size = (long)nbuf * BKVASIZE + (long)bio_transient_maxcnt * maxphys;
 	kmi->clean_sva = firstaddr = kva_alloc(size);
 	kmi->clean_eva = firstaddr + size;
 
@@ -233,7 +233,7 @@ again:
 	 * And optionally transient bio space.
 	 */
 	if (bio_transient_maxcnt != 0) {
-		size = (long)bio_transient_maxcnt * MAXPHYS;
+		size = (long)bio_transient_maxcnt * maxphys;
 		vmem_init(transient_arena, "transient arena",
 		    firstaddr, size, PAGE_SIZE, 0, 0);
 		firstaddr += size;
@@ -253,8 +253,8 @@ again:
 	exec_map_entries = 2 * mp_ncpus + 4;
 #endif
 	exec_map_entry_size = round_page(PATH_MAX + ARG_MAX);
-	exec_map = kmem_suballoc(kernel_map, &minaddr, &maxaddr,
-	    exec_map_entries * exec_map_entry_size + 64 * PAGE_SIZE, FALSE);
-	pipe_map = kmem_suballoc(kernel_map, &minaddr, &maxaddr, maxpipekva,
-	    FALSE);
+	kmem_subinit(exec_map, kernel_map, &minaddr, &maxaddr,
+	    exec_map_entries * exec_map_entry_size + 64 * PAGE_SIZE, false);
+	kmem_subinit(pipe_map, kernel_map, &minaddr, &maxaddr, maxpipekva,
+	    false);
 }

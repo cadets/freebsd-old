@@ -230,8 +230,6 @@ acpi_uhub_port_sysctl(SYSCTL_HANDLER_ARGS)
 			    posstr[(port->pld[8] >> 6) & 3]);
 			sbuf_printf(&sb, "\tHorizPosition: %s\n",
 			    posstr[(port->pld[9]) & 3]);
-
-
 		}
 		sbuf_printf(&sb, "\tShape: %s\n",
 		    shapestr[(port->pld[9] >> 2) & 0xf]);
@@ -384,21 +382,19 @@ acpi_usb_hub_port_probe_cb(ACPI_HANDLE ah, UINT32 lv, void *ctx, void **rv)
 			snprintf(buf, sizeof(buf), "port%ju",
 			    (uintmax_t)devinfo->Address);
 			oid = SYSCTL_ADD_NODE(ctx,
-					      SYSCTL_CHILDREN(
-						      device_get_sysctl_tree(dev)),
-					      OID_AUTO, buf, CTLFLAG_RD,
-					      NULL, "port nodes");
+			    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)),
+			        OID_AUTO, buf, CTLFLAG_RD | CTLFLAG_MPSAFE,
+				NULL, "port nodes");
 			tree = SYSCTL_CHILDREN(oid);
 			sc->port[devinfo->Address - 1].handle = ah;
 			sc->port[devinfo->Address - 1].upc = 0xffffffff;
 			acpi_uhub_parse_upc(dev, devinfo->Address, ah, tree);
 			acpi_uhub_parse_pld(dev, devinfo->Address, ah, tree);
-			SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
-					tree, OID_AUTO, "info",
-					CTLTYPE_STRING | CTLFLAG_RD,
-					&sc->port[devinfo->Address - 1], 0,
-					acpi_uhub_port_sysctl,
-					"A", "Port information");
+			SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev), tree,
+			    OID_AUTO, "info",
+			    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE,
+			    &sc->port[devinfo->Address - 1], 0,
+			    acpi_uhub_port_sysctl, "A", "Port information");
 		}
 		AcpiOsFree(devinfo);
 	}
@@ -494,7 +490,7 @@ acpi_uhub_root_attach(device_t dev)
 	if ((ret = uhub_attach(dev)) != 0) {
 		return (ret);
 	}
-	
+
 	if ((ret = acpi_uhub_attach_common(dev)) != 0) {
 		acpi_uhub_detach(dev);
 	}
@@ -559,7 +555,6 @@ acpi_uhub_child_location_string(device_t parent, device_t child,
 	}
 	return (0);
 }
-
 
 static device_method_t acpi_uhub_methods[] = {
 	DEVMETHOD(device_probe, acpi_uhub_probe),

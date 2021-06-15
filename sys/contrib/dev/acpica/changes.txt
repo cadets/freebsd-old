@@ -1,4 +1,659 @@
 ----------------------------------------
+04 June 2021. Summary of changes for version 20210604:
+
+1) ACPICA kernel-resident subsystem:
+
+Cleaned up (delete) the context mutex during local address handler object 
+deletion.
+
+Fixed a memory leak caused by the _CID repair function.
+
+Added support for PlatformRtMechanism OperationRegion handler. Adds a new 
+utility function, AcpiUtConvertUuidToString. Writing a buffer to a 
+PlatformRtMechanism fieldunit invokes a bidirectional transaction. The 
+input buffer contains 26 bytes containing 9 bytes of status, a command 
+byte and a 16-byte UUID. This change will simply pass this incoming 
+buffer to a handler registered by the OS.
+
+2) iASL Compiler/Disassembler and ACPICA tools:
+
+Added full support for the PRMT ACPI table (Platform Runtime Mechanism 
+Table). Includes support in the iASL compiler, the disassembler, and the 
+template generator.
+
+Added full support for the BDAT (BIOS Data ACPI Table) ACPI table.
+
+Added full support for the RGRT (Regulatory Graphics Resource Table) ACPI 
+table.
+
+Added full support for the SVKL (Storage Volume Key Location Table) ACPI 
+table. Header file support from Kuppuswamy Sathyanarayanan 
+<sathyanarayanan.kuppuswamy@linux.intel.com>.
+
+Completed full support for the IVRS (I/O Virtualization Reporting 
+Structure) ACPI table. Added compiler support for IVRS, updated 
+disassembler support. Adds a new utility, UtIsIdInteger, to determine if 
+a HID/CID is an integer or a string.
+
+Headers: Added more structs to the CEDT table: CXL fixed memory window 
+structure.
+
+ACPI 6.4: MADT: added Multiprocessor Wakeup Mailbox Structure.
+
+----------------------------------------
+31 March 2021. Summary of changes for version 20210331:
+
+This release is available at https://acpica.org/downloads, and includes 
+all ACPI 6.4 support
+
+1) ACPICA kernel-resident subsystem:
+ACPI 6.4: iASL: deprecate DDBHandleObj keyword
+Always create namespace nodes using AcpiNsCreateNode(). ACPICA is 
+allocating an object using kmalloc(), but then frees it
+using kmem_cache_free(<"Acpi-Namespace" kmem_cache>). This is wrong.
+Fixed a race condition in generic serial bus operation region handler. 
+Fixed by Hans de Goede.
+
+2) iASL Compiler/Disassembler and ACPICA tools:
+
+ACPI 6.4: NFIT: add Location Cookie field
+ACPI 6.4: HMAT: add new fields/flags
+ACPI 6.4: Add new flags in SRAT
+ACPI 6.4: add SDEV secure access components
+ACPI 6.4: add Csi2Bus resource template
+ACPI 6.4: add support for PHAT table
+ACPI 6.4: add support for PMTT table
+Add disassembly support for the IVRS table. Compilation of the table is 
+not yet complete.
+Fixed a potential infinite loop due to type mismatch. The for-loop is 
+using a UINT8 counter and comparing the upper
+limit against a UINT32 AslGbl_ExpectedMessagesIndex maximum. In
+the case where AslGbl_ExpectedMessagesIndex is > 255 the counter i
+will wrap around to zero and the loop will never exit. I suspect
+the AslGbl_ExpectedMessagesIndex is never that high, but fixing
+this does future proof the code and cleans up static analysis
+warnings.Colin King.
+iASL/TableCompiler: update it with IORT table E.b revision changes. From 
+shamiali2008.
+iASL/TableCompiler: Add compilation support for the VIOT table. Signed-
+off-by: Jean-Philippe Brucker.
+iASL/TableCompiler: Add compilation support for CEDT table. Also, update 
+the CEDT template.
+
+----------------------------------------
+05 January 2021. Summary of changes for version 20210105:
+
+This release is available at https://acpica.org/downloads
+
+
+1) ACPICA kernel-resident subsystem:
+
+Updated all copyrights to 2021. This affects all ACPICA source code 
+modules.
+
+2) iASL Compiler/Disassembler and ACPICA tools:
+
+ASL test suite (ASLTS): Updated all copyrights to 2021.
+
+Tools and utilities: Updated all signon copyrights to 2021.
+
+iASL Table Compiler: Removed support for obsolete ACPI tables: VRTC, 
+MTMR. Al Stone.
+
+
+----------------------------------------
+17 December 2020. Summary of changes for version 20201217:
+
+This release is available at https://acpica.org/downloads
+
+
+1) ACPICA kernel-resident subsystem:
+
+Note: The implementation of ACPI 6.4 is underway, and is expected to be 
+mostly finished next month, when ACPI 6.4 is released.
+
+From qzed:- fixed-ae-class-macros. Fix exception code class checks. Added 
+several new macros, such as ACPI_CNTL_EXCEPTION(Status) in order to 
+enable this.
+
+AcpiExec/iASL/AcpiHelp: Added a few changes for support of GCC 10.2.0. 
+These included a few casts, as well as a null pointer check.
+
+Fix -Wfallthrough: GCC 7.1 gained -Wimplicit-fallthrough to warn on 
+implicit fallthrough, as well as __attribute__((__fallthrough__)) and 
+comments to explicitly denote that cases of fallthrough were intentional. 
+Clang also supports this warning and statement attribute, but not the 
+comment form. Added a new macro, ACPI_FALLTHROUGH to support this feature 
+of GCC. With assistance from @nickdesaulniers. 
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+Added improvement to method call analysis by saving the return type and 
+relaxing certain cases of type checking.
+
+iASL Table Compiler: Improved info messages. Added a message to the -T 
+option for when the default template (DSDT) is used.
+Also added a note for when multiple SSDTs are created with a DSDT that 
+the SSDTs are created in the same file as the DSDT.
+
+
+----------------------------------------
+
+13 November 2020. Summary of changes for version 20201113:
+
+This release is available at https://acpica.org/downloads
+
+
+1) ACPICA kernel-resident subsystem:
+
+Interpreter: fixed a memory leak by using use existing buffer in _HID 
+repair. There was a memory leak that occurred when a _CID object is 
+defined as a package containing string objects. When _CID is checked for 
+any possible repairs, it calls a helper function to repair _HID (because 
+_CID basically contains multiple _HID entries). The _HID repair function 
+assumes that string objects are standalone objects that are not contained 
+inside of any packages. The _HID repair function replaced the string 
+object with a brand new object and attempted to delete the old object by 
+decrementing the reference count of the old object. Strings inside of 
+packages have a reference count of 2 so the _HID repair function leaves 
+this object in a dangling state and causes a memory leak. Instead of 
+allocating a brand new object and removing the old object, use the 
+existing object when repairing the _HID object.
+
+Added function trace macros to improve namespace debugging. The namespace 
+repair mechanism does not have function tracing macros. Add several trace 
+macros to improve debuggability.
+
+Handle "orphan" _REG methods for GPIO OpRegions. Before this change 
+AcpiEvExecuteRegMethods() had special handling to handle "orphan" (no 
+matching OpRegion declared) _REG methods for EC nodes. On Intel Cherry 
+Trail devices there are 2 possible ACPI OpRegions for accessing GPIOs. 
+The standard GeneralPurposeIo OpRegion and the Cherry Trail - specific 
+UserDefined 0x9X OpRegions. Having 2 different types of OpRegions leads 
+to potential issues with checks for OpRegion availability, or in other 
+words checks if _REG has been called for the OpRegion which the ACPI code 
+wants to use. Except for the "orphan" EC handling, ACPICA core does not 
+call _REG on an ACPI node which does not define an OpRegion matching the 
+type being registered; and the reference design DSDT, from which most 
+Cherry Trail DSDTs are derived, does not define GeneralPurposeIo, nor 
+UserDefined(0x93) OpRegions for the GPO2 (UID 3) device, because no pins 
+were assigned ACPI controlled functions in the reference design. Together 
+this leads to the perfect storm, at least on the Cherry Trail based 
+Medion Akayo E1239T. This design does use a GPO2 pin from its ACPI code 
+and has added the Cherry Trail specific UserDefined(0x93) opregion to its 
+GPO2 ACPI node to access this pin. But it uses a "has _REG been called" 
+availability check for the standard GeneralPurposeIo OpRegion. This 
+clearly is a bug in the DSDT, but this does work under Windows. This 
+issue leads to the intel vbtn driver reporting the device always being in 
+tablet-mode at boot, even if it is in laptop mode. Which in turn causes 
+userspace to ignore touchpad events. So in other words, this issue causes 
+the touchpad to not work at boot. This change fixes this by extending the 
+"orphan" _REG method handling to also apply to GPIO address-space 
+handlers.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL: Added more info to namespace dump file (-ln option). In a separate 
+section of the dump file (after the main namespace dump), emit the full 
+pathname for each namespace node, its type, and the ASL filename and line 
+number where it is declared.
+
+AcpiHelp: Added an option to display/decode iASL exceptions. Option is: -
+x [Hex Value] where "Hex Value" is the iASL exception code. If Hex Value 
+is omitted, all iASL exceptions are displayed.
+
+iASL: Use StringLiteral instead of StringData for some ASL macros. The 
+use of the stringData rule allows for some "string" oriented opcodes 
+(Such as ToString, ToHexString, etc.) None of which make sense with the 
+macros in question. This change modifies the StringData part of the rule 
+for these macros to a simple string  literal - thus disallowing the use 
+of ToString, ToHexString, etc.
+The following ASL operators (macros) are affected:
+EisaId
+Fprintf
+Printf
+ToUuid
+Unicode
+Note: The MS compiler requires the use of string literals for these 
+operators also.
+
+iASL: Added a remark for an unknown UUID: ASL_MSG_UUID_NOT_FOUND. Search 
+the list of "known" UUIDs for the input to the ToUUID macro.
+
+Added 5 new UUIDs to the known UUID table. All related to NVDIMM and the 
+NFIT table.
+
+
+----------------------------------------
+
+25 September 2020. Summary of changes for version 20200925:
+
+This release is available at https://acpica.org/downloads
+
+
+1) ACPICA kernel-resident subsystem:
+
+Preserve memory opregion mappings. The ACPICA's strategy with respect to 
+the handling of memory mappings associated with memory operation regions 
+is to avoid mapping the entire region at once which may be problematic at 
+least in principle (for example, it may lead to conflicts with 
+overlapping mappings having different attributes created by drivers).  It 
+may also be wasteful, because memory opregions on some systems take up 
+vastchunks of address space while the fields in those regions actually 
+accessed by AML are sparsely distributed.
+
+For this reason, a one-page "window" is mapped for a given opregion on 
+the first memory access through it and if that "window" does not cover an 
+address range accessed through that opregion subsequently, it is unmapped 
+and a new "window" is mapped to replace it.  Next, if the new "window" is 
+not sufficient to access memory through the opregion in question in the 
+future, it will be replaced with yet another "window" and so on.  That 
+may lead to a suboptimal sequence of memory mapping and unmapping 
+operations, for example if two fields in one opregion separated from each 
+other by a sufficiently wide chunk of unused address space are accessed 
+in an alternating pattern.
+
+Added support for 64 bit risc-v compilation.  Useful for acpica tools and 
+incorporating ACPICA into the Firmware Test Suite. Colin Ian King 
+<colin.king@canonical.com>.
+
+Added support for SMBus predefined names (from SMBus Control Method 
+Interface Specification, Version 1.0, December 10, 1999. New predefined 
+names:
+    _SBA
+    _SBI
+    _SBR
+    _SBT
+    _SBW
+
+AML Disassembler: Added a new command, "All <NameSeg>". This command will 
+evaluate all objects in the current namespace whose NameString contains 
+the input NameSeg as the last element of the NameString. Useful for 
+debugging.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL: fixed a crash that occurred when predefined objects return packages 
+with lengths that exceed the initializer list.
+
+iASL: added more detail to external resolution error message when 
+compiling multiple definition blocks.
+
+iASL: added a remark for an attempt to create a nameseg or namestring 
+containing lower-case letters. This should prevent declaring multiple 
+namesegs or namestrings in an attempt to refer to different objects (with 
+different cases), but actually refer to the same object(s).
+
+iASL: improve alias analysis by saving object type. If the alias is a 
+method type, the parameter count is also recorded.
+
+AcpiExec: Increase the default loop timeout value. Was 1 second, is now 
+10 seconds. Prevents unnecessary timeouts when executing control methods 
+from the command line.
+
+AcpiHelp/disassembler: Added a bunch of "known" UUIDs to the internal 
+list. Includes:
+    Memory Device
+    Generic Buttons Device
+    NVDIMM Root Device
+    Control Method Battery
+    Device Graphs for _DSD method
+    Hierarchical Data Extension
+....ARM CoreSight Graph
+
+----------------------------------------
+
+
+17 July 2020. Summary of changes for version 20200717:
+
+This release is available at https://acpica.org/downloads
+
+
+1) ACPICA kernel-resident subsystem:
+
+Do not increment OperationRegion reference counts for field units. Recent 
+server firmware has revealed that this reference count can overflow on 
+large servers that declare many field units (thousands) under the same 
+OperationRegion. This occurs because each field unit declaration will add 
+a reference count to the source OperationRegion. This release solves the 
+reference count overflow for OperationRegion objects by preventing 
+fieldUnits from incrementing their parent OperationRegion's reference 
+count.
+
+Replaced one-element arrays with flexible-arrays, which were introduced 
+in C99.
+
+Restored the readme file containing the directions for generation of 
+ACPICA from source on MSVC 2017. Updated the file for MSVC 2017. File is 
+located at: generate/msvc2017/readme.txt
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL: Fixed a regression found in version 20200214. Prevent iASL from 
+emitting an extra byte of garbage data when control methods declared a 
+single parameter type without using braces. This extra byte is known to 
+cause a blue screen on the Windows AML interpreter.
+
+iASL: Made a change to allow external declarations to specify the type of 
+a named object even when some name segments are not defined.
+This change allows the following ASL code to compile (When DEV0 is not 
+defined or not defined yet):
+
+    External (\_SB.DEV0.OBJ1, IntObj)
+    External (\_SB.DEV0, DeviceObj)
+
+iASL: Fixed a problem where method names in "Alias ()" statement could be 
+misinterpreted. They are now interpreted correctly as method invocations.
+
+iASL: capture a method parameter count (Within the Method info segment, 
+as well as the argument node) when using parameter type lists.
+
+----------------------------------------
+
+
+28 May 2020. Summary of changes for version 20200528:
+
+
+1) ACPICA kernel-resident subsystem:
+
+Removed old/obsolete Visual Studio files which were used to build the 
+Windows versions of the ACPICA tools. Since we have moved to Visual 
+Studio 2017, we are no longer supporting Visual Studio 2006 and 2009 
+project files. The new subdirectory and solution file are located at:
+
+    acpica/generate/msvc2017/AcpiComponents.sln
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL: added support for a new OperationRegion Address Space (subtype): 
+PlatformRtMechanism. Support for this new keyword is being released for 
+early prototyping. It will appear in the next release of the ACPI 
+specification.
+
+iASL: do not optimize the NameString parameter of the CondRefOf operator. 
+In the previous iASL compiler release, the NameString parameter of the 
+CondRefOf was optimized. There is evidence that some implementations of 
+the AML interpreter do not perform the recursive search-to-parent search 
+during the execution of the CondRefOf operator. Therefore, the CondRefOf 
+operator behaves differently when the NameString parameter is a single 
+name segment (a NameSeg) as opposed to a full NamePath (starting at the 
+root scope) or a NameString containing parent prefixes.
+
+iASL: Prevent an inadvertent remark message. This change prevents a 
+remark if within a control method the following exist:
+1) An Operation Region is defined, and
+2) A Field operator is defined that refers to the region.
+This happens because at the top level, the Field operator does not 
+actually create a new named object, it simply references the operation 
+region.
+
+Removed support for the acpinames utility. The acpinames was a simple 
+utility used to populate and display the ACPI namespace without executing 
+any AML code. However, ACPICA now supports executable opcodes outside of 
+control methods. This means that executable AML opcodes such as If and 
+Store opcodes need to be executed during table load. Therefore, acpinames 
+would need to be updated to match the same behavior as the acpiexec 
+utility and since acpiexec can already dump the entire namespace (via the 
+'namespace' command), we no longer have the need to maintain acpinames.
+
+    In order to dump the contents of the ACPI namespace using acpiexec,
+execute the following command from the command line:
+
+        acpiexec -b "n" [aml files]
+
+----------------------------------------
+
+
+30 April 2020. Summary of changes for version 20200430:
+
+1) ACPICA kernel-resident subsystem:
+
+Cleaned up the coding style of a couple of global variables 
+(AcpiGbl_NextCmdNum and AcpiProtocolLengths) caught by static analyzers. 
+AcpiProtocolLengths was made static, and the definition of 
+AcpiGbl_NextCmdNum was moved to acglobal.h.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL DataTable Compiler:  Fixed a segfault on errors that aren't directly 
+associated with a field.
+
+Disassembler: has been made more resilient so that it will continue to 
+parse AML even if the AML generates ACPI namespace errors. This enables 
+iASL to disassemble some AML that may have been compiled using older 
+versions of iASL that no longer compile with newer versions of iASL.
+
+iASL: Fixed the required parameters for _NIH and _NIG. Previously, there 
+was a mixup where _NIG required one parameter and _NIH required zero 
+parameters. This change swaps these parameter requirements. Now it is 
+required that _NIH must be called with one parameter and _NIG requires 
+zero parameters.
+
+iASL: Allow use of undefined externals as long as they are protected by 
+an if (CondRefOf (...)) block when compiling multiple definition blocks.
+
+iASL: Fixed the type override behavior of named objects that are declared 
+as External. External declarations will no longer override the type of 
+the actual definition if it already exists.
+
+AcpiNames: Added setargv.obj to the MSVC 2017 link sequence to enable 
+command line wildcard support on Windows. Note: the AcpiNames utility is 
+essentially redundant with the AcpiExec utility (using the "namespace" 
+command) and is therefore deprecated. It will be removed in future 
+releases of ACPICA.
+
+Disassembler: ignore AE_ALREADY_EXISTS status when parsing create* 
+operators. The disassembler is intended to emit existing ASL code as-is. 
+Therefore, error messages emitted during disassembly should be ignored or 
+handled in a way such that the disassembler can continue to parse the 
+AML. This change ignores AE_ALREADY_EXISTS errors during the deferred Op 
+parsing for create operators in order to complete parsing ASL termlists.
+
+iASL DataTable Compiler: IVRS table: fix potentially uninitialized 
+variable warning. Some compilers catch potential uninitialized variables. 
+This is done by examining branches of if/else statements. This change 
+replaces an "else if" with an "else" to fix the uninitialized variable 
+warning.
+
+
+----------------------------------------
+26 March 2020. Summary of changes for version 20200326:
+
+
+1) ACPICA kernel-resident subsystem:
+
+Performed a code clean-up to prevent build errors on early versions of 
+GCC-10.
+
+Added the NHLT table signature. iASL data table compiler/disassembler 
+support for this table is coming soon.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+AcpiExec: Fixed several problems with the namespace initialization file 
+(-fi<filename> option). Includes fixes to prevent AE_ALREADY_EXISTS 
+errors, several seg faults, and enhancements to line parsing within the 
+init file. In addition, each object found in the init file and it's new 
+value is displayed, as well as any such entries that do not have a 
+corresponding name in the namespace. For reference, the syntax for the 
+various supported data types are presented below:
+	PCHG 0x777788889999BBBB	// Integer
+	\DEV1.STR1 "XYZ"			// String
+	BUF1 (88 99 AA)			// Buffer
+	PKG1 [0x1111 0x2222]		// Package
+	\BF1 0x7980				// BufferField
+	RCRV 0x0123456789ABCDEF	// Field Unit
+
+iASL: Added a custom iASL macro __EXPECT__(iASL-Error-Code). This macro 
+can be used anywhere in a given ASL file to configure iASL to expect an 
+iASL compiler error code on the line where this macro was placed. If the 
+error code does not exist, an error is generated. This is intended to be 
+used for ACPICA's ASL test suite, but can be used by ASL developers as 
+well.
+
+iASL: table compiler: Implemented IVRS IVHD type 11h parsing. The AMD 
+IVRS table parsing supported only IVHD type 10h structures. Parsing an 
+IVHD type 11h caused the iasl to report unknown subtable type. Add 
+necessary structure definition for IVHD type 11h and apply correct 
+parsing method based on subtable type. Micha? ?ygowski.
+
+iASL: table compiler: Fixed IVRS table IVHD type 10h reserved field name 
+According to AMD IOMMU Specification Revision 3.05 the reserved field 
+should be IOMMU Feature Reporting. Change the name of the field to the 
+correct one. Micha? ?ygowski.
+
+acpiexec: removed redeclaration of AcpiGbl_DbOpt_NoRegionSupport. Patch 
+based on suggestions by David Seifert and Benjamin Berg.
+
+iASL: table compiler: removed an unused variable (DtCompilerParserResult) 
+causing linking errors. Patch based on suggestions by David Seifert and 
+Benjamin Berg.
+
+iASL: table compiler: make LexBuffer static to avoid linking errors in 
+newer compilers. Patch based on suggestions by David Seifert and Benjamin 
+Berg.
+
+iASL: fixed type matching between External and Named objects. External 
+object types can only be expressed with ACPI object type values that are 
+defined in the ACPI spec. However, iASL uses ACPI object type values that 
+are local to ACPICA in addition to the values defined in the ACPI spec. 
+This change implements type matching to map some object type values 
+specific to ACPICA to ones that are defined in the ACPI spec.
+
+iASL: Dropped the type mismatch compiler error that can arise from 
+External declarations to a warning. This warning can occur when there is 
+a type difference between the external declaration and the actual object 
+declaration (when compiling multiple files/modules simultaneously).
+
+iASL: removed an incorrect error message regarding externals. This change 
+removes an incorrect error that is emitted when a duplicate external 
+declaration does not contain a type that opens a scope. This is incorrect 
+because the duplicate external with conflicting types are already caught 
+by iASL and it doesn't make any sense to enforce what this conflicting 
+type should be.
+
+AcpiXtract: fix AX_IS_TABLE_BLOCK_HEADER macro. This macro needs to be 
+surrounded by parens. Otherwise, a logical statement that applies a 
+logical not operator to this macro could result in a computation that 
+applies the operator to the left side of the logical and but not the 
+right. Reported-by: John Levon <john.levon@joyent.com>
+
+Fixed a problem with the local version of sprint(): On 32-bit, the 
+provided sprintf() is non-functional: with a size of ACPI_UINT32_MAX, 
+String + Size will wrap, meaning End < Start, and 
+AcpiUtBoundStringOutput() will never output anything as a result. The 
+symptom seen of this was acpixtract failing to output anything -- with a 
+custom build that included utprint.c. Signed-off-by: John Levon 
+<john.levon@joyent.com>
+
+iASL: Changed the "PlatformCommChannel" ASL keyword to "PCC", as per the 
+ACPI specification.
+
+
+----------------------------------------
+14 February 2020. Summary of changes for version 20200214:
+
+
+1) ACPICA kernel-resident subsystem:
+
+Enable sleep button on ACPI legacy wake:  Hibernation (S4) is triggered 
+in a guest when it receives a sleep trigger from the hypervisor. When the 
+guest resumes from this power state, it does not see the SleepEnabled 
+bit. In other words, the sleepHibernation (S4) is triggered in a guest 
+when it receives a sleep trigger from the hypervisor. When the guest 
+resumes from this power state, it does not see the SleepEnabled bit. In 
+other words, the sleep button is not enabled on waking from an S4 state. 
+This causes subsequent invocation of sleep state to fail since the 
+guest.button is not enabled on waking from an S4 state. This causes 
+subsequent invocation of sleep state to fail in the guest. Fix this 
+problem by enabling the sleep button in ACPI legacy wake. From Anchal 
+Agarwal <anchalag@amazon.com>.
+
+Implemented a new external interface, AcpiAnyGpeStatusSet (). To be used 
+for checking the status bits of all enabled GPEs in one go. It is needed 
+to distinguish spurious SCIs from genuine ones when deciding whether or 
+not to wake up the system from suspend-to-idle.
+
+Generic Makefiles: replace HOST name with ACPI_HOST: Some machines may be 
+using HOST in their environment to represent the host name for their 
+machines. Avoid this problem by renaming this variable from HOST to 
+ACPI_HOST.
+
+MSVC 2017 project files: Enable multiprocessor generation to improve 
+build performance.
+
+Added a macro to get the byte width of a Generic Address structure. New 
+ACPI_ACCESS_BYTE_WIDTH is in addition to the existing 
+ACPI_ACCESS_BIT_WIDTH. From Mika Westerberg.
+
+
+2) iASL Compiler/Disassembler and ACPICA tools: 
+
+iASL: Implemented full support for the (optional, rarely used) ReturnType 
+and ParameterTypesList for the Method, Function, and External operators. 
+For Method declarations, the number of individual ParameterTypes must 
+match the declaration of the number of arguments (NumArgs). This also 
+Fixes a problem with the External operator where extra/extraneous bytes 
+were emitted in the AML code if the optional ReturnType/ParameterTypes 
+were specified for a MethodObj declaration.
+New error message:
+1) Method NumArgs count does not match length of ParameterTypes list
+
+iASL: Implemented detection of type mismatches between External 
+declarations and named object declarations. Also, detect type mismatches 
+between multiple External declarations of the same Name.
+New error messages:
+1) Type mismatch between external declaration and actual object 
+declaration detected
+2) Type mismatch between multiple external declarations detected
+
+iASL: Implemented new error messages for External operators that specify 
+a ReturnType and/or ParameterTypesList for any object type other than 
+control methods (MethodObj).
+New error messages:
+1) Return type is only allowed for Externals declared as MethodObj
+2) Parameter type is only allowed for Externals declared as MethodObj
+
+iASL: Implemented two new remark/warning messages for ASL code that 
+creates named objects from within a control method. This is very 
+inefficient since the named object must be created and deleted each time 
+the method is executed.
+New messages:
+1) Creation of named objects within a method is highly inefficient, use 
+globals or method local variables instead (remark)
+2) Static OperationRegion should be declared outside control method 
+(warning)
+
+iASL: Improved illegal forward reference detection by adding support to 
+detect forward-reference method invocations.
+
+iASL: Detect and issue an error message for NameStrings that contain too 
+many individual NameSegs (>255). This is an AML limitation that is 
+defined in the ACPI specification.
+New message:
+1) NameString contains too many NameSegs (>255)
+
+acpidump: windows: use GetSystemFirmwareTable API for all tables except 
+SSDT. By using this API, acpidump is able to get all tables in the XSDT
+
+iASL: Removed unused parser file and updated msvc2017 project files. 
+Removed the obsolete AslCompiler.y from the repository.
+
+iASL: msvc2017: Fixed macros in the file dependency list to prevent 
+unnecessary rebuilds. Replace %(Directory) with %(RelativeDir).
+
+Disassembler: Prevent spilling error messages to the output file. All 
+errors are directed to the console instead. These error messages 
+prevented re-compilation of the resulting disassembled ASL output file 
+(.DSL).
+
+
+----------------------------------------
 10 January 2020. Summary of changes for version 20200110:
 
 
@@ -481,7 +1136,7 @@ temporary.
 
 iASL: Emit error for creation of a zero-length operation region. Such a 
 region is rather pointless. If encountered, a runtime error is also 
-implemented in the interpeter.
+implemented in the interpreter.
 
 Debugger: Fix a possible fault with the "test objects" command.
 
@@ -3278,7 +3933,7 @@ iASL compiler, all ACPICA utilities, and the test suites.
 Events: Introduce ACPI_GPE_DISPATCH_RAW_HANDLER to fix GPE storm issues.
 A raw gpe handling mechanism was created to allow better handling of GPE
 storms that aren't easily managed by the normal handler. The raw handler
-allows disabling/renabling of the the GPE so that interrupt storms can be
+allows disabling/renabling of the GPE so that interrupt storms can be
 avoided in cases where events cannot be timely serviced. In this 
 scenario, handlers should use the AcpiSetGpe() API to disable/enable the 
 GPE. This API will leave the reference counts undisturbed, thereby 
@@ -8845,8 +9500,8 @@ much larger code and data size.
 
 Fix build error under Bison-2.4.
 
-Dissasembler: Enhanced FADT support. Added decoding of the Boot 
-Architecture 
+Disassembler: Enhanced FADT support. Added decoding of the Boot
+Architecture
 flags. Now decode all flags, regardless of the FADT version. Flag output 
 includes the FADT version which first defined each flag.
 
@@ -17256,7 +17911,7 @@ bypass the "implicit conversion" mechanism of the Store operator.)
 The ACPI 2.0 semantics for the SizeOf operator are fully
 implemented.  The change is that performing a SizeOf on a
 reference object causes an automatic dereference of the object to
-tha actual value before the size is evaluated. This behavior was
+the actual value before the size is evaluated. This behavior was
 undefined in ACPI 1.0.
 
 The ACPI 2.0 semantics for the Extended IRQ resource descriptor

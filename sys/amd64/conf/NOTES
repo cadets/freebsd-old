@@ -8,10 +8,6 @@
 #
 
 #
-# We want LINT to cover profiling as well.
-profile         2
-
-#
 # Enable the kernel DTrace hooks which are required to load the DTrace
 # kernel modules.
 #
@@ -125,8 +121,8 @@ device		nvram		# Access to rtc cmos via /dev/nvram
 # MISCELLANEOUS DEVICES AND OPTIONS
 
 device		speaker		#Play IBM BASIC-style noises out your speaker
-hint.speaker.0.at="isa"
-hint.speaker.0.port="0x61"
+envvar		hint.speaker.0.at="isa"
+envvar		hint.speaker.0.port="0x61"
 
 
 #####################################################################
@@ -199,8 +195,8 @@ options 	X86BIOS
 
 # PS/2 mouse
 device		psm
-hint.psm.0.at="atkbdc"
-hint.psm.0.irq="12"
+envvar		hint.psm.0.at="atkbdc"
+envvar		hint.psm.0.irq="12"
 
 # Options for psm:
 options 	PSM_HOOKRESUME		#hook the system resume event, useful
@@ -209,13 +205,13 @@ options 	PSM_RESETAFTERSUSPEND	#reset the device at the resume event
 
 # The keyboard controller; it controls the keyboard and the PS/2 mouse.
 device		atkbdc
-hint.atkbdc.0.at="isa"
-hint.atkbdc.0.port="0x060"
+envvar		hint.atkbdc.0.at="isa"
+envvar		hint.atkbdc.0.port="0x060"
 
 # The AT keyboard
 device		atkbd
-hint.atkbd.0.at="atkbdc"
-hint.atkbd.0.irq="1"
+envvar		hint.atkbd.0.at="atkbdc"
+envvar		hint.atkbd.0.irq="1"
 
 # Options for atkbd:
 options 	ATKBD_DFLT_KEYMAP	# specify the built-in keymap
@@ -230,7 +226,7 @@ makeoptions	ATKBD_DFLT_KEYMAP=fr.dvorak
 
 # Video card driver for VGA adapters.
 device		vga
-hint.vga.0.at="isa"
+envvar		hint.vga.0.at="isa"
 
 # Options for vga:
 # Try the following option if the mouse pointer is not drawn correctly
@@ -255,6 +251,7 @@ options 	VGA_DEBUG
 # vt(4) drivers.
 device		vt_vga		# VGA
 device		vt_efifb	# EFI framebuffer
+device		vt_vbefb	# VBE framebuffer
 
 # Linear framebuffer driver for S3 VESA 1.2 cards. Works on top of VESA.
 device		s3pci
@@ -291,6 +288,8 @@ device		cpufreq
 
 # bxe:  Broadcom NetXtreme II (BCM5771X/BCM578XX) PCIe 10Gb Ethernet
 #       adapters.
+# ice:	Intel 800 Series Physical Function
+#	Requires the ice_ddp module for full functionality
 # ipw:	Intel PRO/Wireless 2100 IEEE 802.11 adapter
 #	Requires the ipw firmware module
 # iwi:	Intel PRO/Wireless 2200BG/2225BG/2915ABG IEEE 802.11 adapters
@@ -306,6 +305,8 @@ device		cpufreq
 # vmx:	VMware VMXNET3 Ethernet (BSD open source)
 # wpi:	Intel 3945ABG Wireless LAN controller
 #	Requires the wpi firmware module
+# axp: AMD EPYC integrated NIC
+#   Requires the miibus module
 
 device		bxe		# Broadcom NetXtreme II BCM5771X/BCM578XX 10GbE
 options 	ED_3C503
@@ -316,6 +317,8 @@ device		iwi		# Intel 2200BG/2225BG/2915ABG wireless NICs.
 device		iwn		# Intel 4965/1000/5000/6000 wireless NICs.
 device		ixl		# Intel 700 Series Physical Function
 device		iavf		# Intel Adaptive Virtual Function
+device		ice		# Intel 800 Series Physical Function
+device		ice_ddp		# Intel 800 Series DDP Package
 device  	mthca		# Mellanox HCA InfiniBand
 device  	mlx4		# Shared code module between IB and Ethernet
 device  	mlx4ib		# Mellanox ConnectX HCA InfiniBand
@@ -324,6 +327,7 @@ device		nfe		# nVidia nForce MCP on-board Ethernet
 device		sfxge		# Solarflare SFC9000 10Gb Ethernet
 device		vmx		# VMware VMXNET3 Ethernet
 device		wpi		# Intel 3945ABG wireless NICs.
+device		axp		# AMD EPYC integrated NIC
 
 # IEEE 802.11 adapter firmware modules
 
@@ -417,10 +421,6 @@ device		aac
 device		aacp	# SCSI Passthrough interface (optional, CAM required)
 
 #
-# Adaptec by PMC RAID controllers, Series 6/7/8 and upcoming families
-device		aacraid		# Container interface, CAM required
-
-#
 # Highpoint RocketRAID 27xx.
 device		hpt27xx
 
@@ -470,6 +470,10 @@ device		vmd_bus		# bus for VMD children
 device		pmspcv
 
 #
+# Intel QuickAssist
+device		qat
+
+#
 # SafeNet crypto driver: can be moved to the MI NOTES as soon as
 # it's tested on a big-endian machine
 #
@@ -509,7 +513,7 @@ device 		xenpci		# Xen HVM Hypervisor services driver
 #
 # ipmi: Intelligent Platform Management Interface
 # pbio: Parallel (8255 PPI) basic I/O (mode 0) port (e.g. Advantech PCL-724)
-# smbios: DMI/SMBIOS entry point
+# smbios: DMI/SMBIOS entry point (requires EFIRT option)
 # vpd: Vital Product Data kernel interface
 # asmc: Apple System Management Controller
 # si: Specialix International SI/XIO or SX intelligent serial card
@@ -523,8 +527,8 @@ device 		xenpci		# Xen HVM Hypervisor services driver
 
 device		ipmi
 device		pbio
-hint.pbio.0.at="isa"
-hint.pbio.0.port="0x360"
+envvar		hint.pbio.0.at="isa"
+envvar		hint.pbio.0.port="0x360"
 device		smbios
 device		vpd
 device		asmc
@@ -532,12 +536,14 @@ device		tpm
 device		padlock_rng	# VIA Padlock RNG
 device		rdrand_rng	# Intel Bull Mountain RNG
 device		aesni		# AES-NI OpenCrypto module
+device		ossl		# OpenSSL OpenCrypto module
 device		ioat		# Intel I/OAT DMA engine
 
 #
 # Laptop/Notebook options:
 #
 
+device backlight
 
 #
 # I2C Bus
@@ -599,7 +605,13 @@ options 	NKPT=31
 # EFI Runtime Services support
 options 	EFIRT
 
-
+#
+# HID-over-I2C support
+#
+device		iichid		# HID-over-I2C support
+options 	IICHID_DEBUG	# Enable HID-over-I2C debug messages
+options 	IICHID_SAMPLING	# Workaround missing GPIO INTR support
+
 #####################################################################
 # ABI Emulation
 
@@ -635,6 +647,7 @@ options 	LINSYSFS
 #####################################################################
 # ZFS support
 
+# NB: This depends on crypto, cryptodev and ZSTDIO
 options		ZFS
 
 #####################################################################
@@ -668,11 +681,6 @@ options 	TIMER_FREQ=((14318182+6)/12)
 options 	VM_KMEM_SIZE
 options 	VM_KMEM_SIZE_MAX
 options 	VM_KMEM_SIZE_SCALE
-
-# Enable NDIS binary driver support
-options 	NDISAPI
-device		ndis
-
 
 # GCOV (code coverage) support
 

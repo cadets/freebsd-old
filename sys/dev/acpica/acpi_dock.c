@@ -64,6 +64,8 @@ struct acpi_dock_softc {
 
 ACPI_SERIAL_DECL(dock, "ACPI Docking Station");
 
+static char *acpi_dock_pnp_ids[] = {"PNP0C15", NULL};
+
 /*
  * Utility functions
  */
@@ -515,7 +517,7 @@ acpi_dock_attach(device_t dev)
 	SYSCTL_ADD_PROC(sc->sysctl_ctx,
 		SYSCTL_CHILDREN(sc->sysctl_tree),
 		OID_AUTO, "status",
-		CTLTYPE_INT|CTLFLAG_RW, dev, 0,
+		CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, dev, 0,
 		acpi_dock_status_sysctl, "I",
 		"Dock/Undock operation");
 
@@ -545,3 +547,4 @@ static devclass_t acpi_dock_devclass;
 
 DRIVER_MODULE(acpi_dock, acpi, acpi_dock_driver, acpi_dock_devclass, 0, 0);
 MODULE_DEPEND(acpi_dock, acpi, 1, 1, 1);
+ACPI_PNP_INFO(acpi_dock_pnp_ids);

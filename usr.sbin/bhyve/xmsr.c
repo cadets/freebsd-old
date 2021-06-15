@@ -46,7 +46,7 @@ __FBSDID("$FreeBSD$");
 #include "debug.h"
 #include "xmsr.h"
 
-static int cpu_vendor_intel, cpu_vendor_amd;
+static int cpu_vendor_intel, cpu_vendor_amd, cpu_vendor_hygon;
 
 int
 emulate_wrmsr(struct vmctx *ctx, int vcpu, uint32_t num, uint64_t val)
@@ -64,7 +64,7 @@ emulate_wrmsr(struct vmctx *ctx, int vcpu, uint32_t num, uint64_t val)
 		default:
 			break;
 		}
-	} else if (cpu_vendor_amd) {
+	} else if (cpu_vendor_amd || cpu_vendor_hygon) {
 		switch (num) {
 		case MSR_HWCR:
 			/*
@@ -124,11 +124,19 @@ emulate_rdmsr(struct vmctx *ctx, int vcpu, uint32_t num, uint64_t *val)
 			 */
 			*val = 0x000a1003;
 			break;
+		case MSR_IA32_FEATURE_CONTROL:
+			/*
+			 * Windows guests check this MSR.
+			 * Set the lock bit to avoid writes
+			 * to this MSR.
+			 */
+			*val = IA32_FEATURE_CONTROL_LOCK;
+			break;
 		default:
 			error = -1;
 			break;
 		}
-	} else if (cpu_vendor_amd) {
+	} else if (cpu_vendor_amd || cpu_vendor_hygon) {
 		switch (num) {
 		case MSR_BIOS_SIGN:
 			*val = 0;
@@ -225,6 +233,8 @@ init_msr(void)
 	error = 0;
 	if (strcmp(cpu_vendor, "AuthenticAMD") == 0) {
 		cpu_vendor_amd = 1;
+	} else if (strcmp(cpu_vendor, "HygonGenuine") == 0) {
+		cpu_vendor_hygon = 1;
 	} else if (strcmp(cpu_vendor, "GenuineIntel") == 0) {
 		cpu_vendor_intel = 1;
 	} else {

@@ -55,6 +55,7 @@ struct epoch_tracker {
 	TAILQ_ENTRY(epoch_tracker) et_link;
 	struct thread *et_td;
 	ck_epoch_section_t et_section;
+	uint8_t et_old_priority;
 #ifdef EPOCH_TRACE
 	struct epoch *et_epoch;
 	SLIST_ENTRY(epoch_tracker) et_tlink;
@@ -104,6 +105,9 @@ extern epoch_t net_epoch_preempt;
 #define	NET_EPOCH_WAIT()	epoch_wait_preempt(net_epoch_preempt)
 #define	NET_EPOCH_CALL(f, c)	epoch_call(net_epoch_preempt, (f), (c))
 #define	NET_EPOCH_ASSERT()	MPASS(in_epoch(net_epoch_preempt))
+#define	NET_TASK_INIT(t, p, f, c) TASK_INIT_FLAGS(t, p, f, c, TASK_NETWORK)
+#define	NET_GROUPTASK_INIT(gtask, prio, func, ctx)			\
+	    GTASK_INIT(&(gtask)->gt_task, TASK_NETWORK, (prio), (func), (ctx))
 
 #endif	/* _KERNEL */
 #endif	/* _SYS_EPOCH_H_ */

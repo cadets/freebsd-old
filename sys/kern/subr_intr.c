@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_ddb.h"
 #include "opt_hwpmc_hooks.h"
+#include "opt_iommu.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -50,11 +51,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/queue.h>
 #include <sys/bus.h>
 #include <sys/interrupt.h>
+#include <sys/taskqueue.h>
+#include <sys/tree.h>
 #include <sys/conf.h>
 #include <sys/cpuset.h>
 #include <sys/rman.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
+#include <sys/sysctl.h>
 #include <sys/vmmeter.h>
 #ifdef HWPMC_HOOKS
 #include <sys/pmckern.h>
@@ -68,6 +72,10 @@ __FBSDID("$FreeBSD$");
 
 #ifdef DDB
 #include <ddb/ddb.h>
+#endif
+
+#ifdef IOMMU
+#include <dev/iommu/iommu_msi.h>
 #endif
 
 #include "pic_if.h"
@@ -124,28 +132,26 @@ static struct intr_pic *pic_lookup(device_t dev, intptr_t xref, int flags);
 
 /* Interrupt source definition. */
 static struct mtx isrc_table_lock;
-static struct intr_irqsrc *irq_sources[NIRQ];
+static struct intr_irqsrc **irq_sources;
 u_int irq_next_free;
 
 #ifdef SMP
-static boolean_t irq_assign_cpu = FALSE;
+#ifdef EARLY_AP_STARTUP
+static bool irq_assign_cpu = true;
+#else
+static bool irq_assign_cpu = false;
+#endif
 #endif
 
-/*
- * - 2 counters for each I/O interrupt.
- * - MAXCPU counters for each IPI counters for SMP.
- */
-#ifdef SMP
-#define INTRCNT_COUNT   (NIRQ * 2 + INTR_IPI_COUNT * MAXCPU)
-#else
-#define INTRCNT_COUNT   (NIRQ * 2)
-#endif
+u_int intr_nirq = NIRQ;
+SYSCTL_UINT(_machdep, OID_AUTO, nirq, CTLFLAG_RDTUN, &intr_nirq, 0,
+    "Number of IRQs");
 
 /* Data for MI statistics reporting. */
-u_long intrcnt[INTRCNT_COUNT];
-char intrnames[INTRCNT_COUNT * INTRNAME_LEN];
-size_t sintrcnt = sizeof(intrcnt);
-size_t sintrnames = sizeof(intrnames);
+u_long *intrcnt;
+char *intrnames;
+size_t sintrcnt;
+size_t sintrnames;
 static u_int intrcnt_index;
 
 static struct intr_irqsrc *intr_map_get_isrc(u_int res_id);
@@ -160,11 +166,30 @@ static void intr_map_copy_map_data(u_int res_id, device_t *dev, intptr_t *xref,
 static void
 intr_irq_init(void *dummy __unused)
 {
+	u_int intrcnt_count;
 
 	SLIST_INIT(&pic_list);
 	mtx_init(&pic_list_lock, "intr pic list", NULL, MTX_DEF);
 
 	mtx_init(&isrc_table_lock, "intr isrc table", NULL, MTX_DEF);
+
+	/*
+	 * - 2 counters for each I/O interrupt.
+	 * - MAXCPU counters for each IPI counters for SMP.
+	 */
+	intrcnt_count = intr_nirq * 2;
+#ifdef SMP
+	intrcnt_count += INTR_IPI_COUNT * MAXCPU;
+#endif
+
+	intrcnt = mallocarray(intrcnt_count, sizeof(u_long), M_INTRNG,
+	    M_WAITOK | M_ZERO);
+	intrnames = mallocarray(intrcnt_count, INTRNAME_LEN, M_INTRNG,
+	    M_WAITOK | M_ZERO);
+	sintrcnt = intrcnt_count * sizeof(u_long);
+	sintrnames = intrcnt_count * INTRNAME_LEN;
+	irq_sources = mallocarray(intr_nirq, sizeof(struct intr_irqsrc*),
+	    M_INTRNG, M_WAITOK | M_ZERO);
 }
 SYSINIT(intr_irq_init, SI_SUB_INTR, SI_ORDER_FIRST, intr_irq_init, NULL);
 
@@ -380,7 +405,7 @@ isrc_alloc_irq(struct intr_irqsrc *isrc)
 
 	mtx_assert(&isrc_table_lock, MA_OWNED);
 
-	maxirqs = nitems(irq_sources);
+	maxirqs = intr_nirq;
 	if (irq_next_free >= maxirqs)
 		return (ENOSPC);
 
@@ -415,7 +440,7 @@ isrc_free_irq(struct intr_irqsrc *isrc)
 
 	mtx_assert(&isrc_table_lock, MA_OWNED);
 
-	if (isrc->isrc_irq >= nitems(irq_sources))
+	if (isrc->isrc_irq >= intr_nirq)
 		return (EINVAL);
 	if (irq_sources[isrc->isrc_irq] != isrc)
 		return (EINVAL);
@@ -576,9 +601,6 @@ intr_isrc_assign_cpu(void *arg, int cpu)
 #ifdef SMP
 	struct intr_irqsrc *isrc = arg;
 	int error;
-
-	if (isrc->isrc_dev != intr_irq_root_dev)
-		return (EINVAL);
 
 	mtx_lock(&isrc_table_lock);
 	if (cpu == NOCPU) {
@@ -797,8 +819,8 @@ intr_pic_register(device_t dev, intptr_t xref)
 	if (pic == NULL)
 		return (NULL);
 
-	debugf("PIC %p registered for %s <dev %p, xref %x>\n", pic,
-	    device_get_nameunit(dev), dev, xref);
+	debugf("PIC %p registered for %s <dev %p, xref %jx>\n", pic,
+	    device_get_nameunit(dev), dev, (uintmax_t)xref);
 	return (pic);
 }
 
@@ -932,8 +954,22 @@ intr_resolve_irq(device_t dev, intptr_t xref, struct intr_map_data *data,
 		    ("%s: Found a non-PIC controller: %s", __func__,
 		     device_get_name(pic->pic_dev)));
 		return (PIC_MAP_INTR(pic->pic_dev, data, isrc));
-
 	}
+}
+
+bool
+intr_is_per_cpu(struct resource *res)
+{
+	u_int res_id;
+	struct intr_irqsrc *isrc;
+
+	res_id = (u_int)rman_get_start(res);
+	isrc = intr_map_get_isrc(res_id);
+
+	if (isrc == NULL)
+		panic("Attempt to get isrc for non-active resource id: %u\n",
+		    res_id);
+	return ((isrc->isrc_flags & INTR_ISRCF_PPI) != 0);
 }
 
 int
@@ -1191,6 +1227,7 @@ intr_irq_next_cpu(u_int last_cpu, cpuset_t *cpumask)
 	return (last_cpu);
 }
 
+#ifndef EARLY_AP_STARTUP
 /*
  *  Distribute all the interrupt sources among the available
  *  CPUs once the AP's have been launched.
@@ -1205,8 +1242,8 @@ intr_irq_shuffle(void *arg __unused)
 		return;
 
 	mtx_lock(&isrc_table_lock);
-	irq_assign_cpu = TRUE;
-	for (i = 0; i < NIRQ; i++) {
+	irq_assign_cpu = true;
+	for (i = 0; i < intr_nirq; i++) {
 		isrc = irq_sources[i];
 		if (isrc == NULL || isrc->isrc_handlers == 0 ||
 		    isrc->isrc_flags & (INTR_ISRCF_PPI | INTR_ISRCF_IPI))
@@ -1231,6 +1268,7 @@ intr_irq_shuffle(void *arg __unused)
 	mtx_unlock(&isrc_table_lock);
 }
 SYSINIT(intr_irq_shuffle, SI_SUB_SMP, SI_ORDER_SECOND, intr_irq_shuffle, NULL);
+#endif /* !EARLY_AP_STARTUP */
 
 #else
 u_int
@@ -1239,7 +1277,7 @@ intr_irq_next_cpu(u_int current_cpu, cpuset_t *cpumask)
 
 	return (PCPU_GET(cpuid));
 }
-#endif
+#endif /* SMP */
 
 /*
  * Allocate memory for new intr_map_data structure.
@@ -1285,6 +1323,7 @@ int
 intr_alloc_msi(device_t pci, device_t child, intptr_t xref, int count,
     int maxcount, int *irqs)
 {
+	struct iommu_domain *domain;
 	struct intr_irqsrc **isrc;
 	struct intr_pic *pic;
 	device_t pdev;
@@ -1299,6 +1338,14 @@ intr_alloc_msi(device_t pci, device_t child, intptr_t xref, int count,
 	    ("%s: Found a non-MSI controller: %s", __func__,
 	     device_get_name(pic->pic_dev)));
 
+	/*
+	 * If this is the first time we have used this context ask the
+	 * interrupt controller to map memory the msi source will need.
+	 */
+	err = MSI_IOMMU_INIT(pic->pic_dev, child, &domain);
+	if (err != 0)
+		return (err);
+
 	isrc = malloc(sizeof(*isrc) * count, M_INTRNG, M_WAITOK);
 	err = MSI_ALLOC_MSI(pic->pic_dev, child, count, maxcount, &pdev, isrc);
 	if (err != 0) {
@@ -1307,12 +1354,13 @@ intr_alloc_msi(device_t pci, device_t child, intptr_t xref, int count,
 	}
 
 	for (i = 0; i < count; i++) {
+		isrc[i]->isrc_iommu = domain;
 		msi = (struct intr_map_data_msi *)intr_alloc_map_data(
 		    INTR_MAP_DATA_MSI, sizeof(*msi), M_WAITOK | M_ZERO);
 		msi-> isrc = isrc[i];
+
 		irqs[i] = intr_map_irq(pic->pic_dev, xref,
 		    (struct intr_map_data *)msi);
-
 	}
 	free(isrc, M_INTRNG);
 
@@ -1347,6 +1395,8 @@ intr_release_msi(device_t pci, device_t child, intptr_t xref, int count,
 		isrc[i] = msi->isrc;
 	}
 
+	MSI_IOMMU_DEINIT(pic->pic_dev, child);
+
 	err = MSI_RELEASE_MSI(pic->pic_dev, child, count, isrc);
 
 	for (i = 0; i < count; i++) {
@@ -1361,6 +1411,7 @@ intr_release_msi(device_t pci, device_t child, intptr_t xref, int count,
 int
 intr_alloc_msix(device_t pci, device_t child, intptr_t xref, int *irq)
 {
+	struct iommu_domain *domain;
 	struct intr_irqsrc *isrc;
 	struct intr_pic *pic;
 	device_t pdev;
@@ -1375,10 +1426,19 @@ intr_alloc_msix(device_t pci, device_t child, intptr_t xref, int *irq)
 	    ("%s: Found a non-MSI controller: %s", __func__,
 	     device_get_name(pic->pic_dev)));
 
+	/*
+	 * If this is the first time we have used this context ask the
+	 * interrupt controller to map memory the msi source will need.
+	 */
+	err = MSI_IOMMU_INIT(pic->pic_dev, child, &domain);
+	if (err != 0)
+		return (err);
+
 	err = MSI_ALLOC_MSIX(pic->pic_dev, child, &pdev, &isrc);
 	if (err != 0)
 		return (err);
 
+	isrc->isrc_iommu = domain;
 	msi = (struct intr_map_data_msi *)intr_alloc_map_data(
 		    INTR_MAP_DATA_MSI, sizeof(*msi), M_WAITOK | M_ZERO);
 	msi->isrc = isrc;
@@ -1413,6 +1473,8 @@ intr_release_msix(device_t pci, device_t child, intptr_t xref, int irq)
 		return (EINVAL);
 	}
 
+	MSI_IOMMU_DEINIT(pic->pic_dev, child);
+
 	err = MSI_RELEASE_MSIX(pic->pic_dev, child, isrc);
 	intr_unmap_irq(irq);
 
@@ -1440,6 +1502,12 @@ intr_map_msi(device_t pci, device_t child, intptr_t xref, int irq,
 		return (EINVAL);
 
 	err = MSI_MAP_MSI(pic->pic_dev, child, isrc, addr, data);
+
+#ifdef IOMMU
+	if (isrc->isrc_iommu != NULL)
+		iommu_translate_msi(isrc->isrc_iommu, addr);
+#endif
+
 	return (err);
 }
 
@@ -1475,7 +1543,7 @@ DB_SHOW_COMMAND(irqs, db_show_irqs)
 	u_long num;
 	struct intr_irqsrc *isrc;
 
-	for (irqsum = 0, i = 0; i < NIRQ; i++) {
+	for (irqsum = 0, i = 0; i < intr_nirq; i++) {
 		isrc = irq_sources[i];
 		if (isrc == NULL)
 			continue;
@@ -1507,9 +1575,9 @@ struct intr_map_entry
 };
 
 /* XXX Convert irq_map[] to dynamicaly expandable one. */
-static struct intr_map_entry *irq_map[2 * NIRQ];
-static int irq_map_count = nitems(irq_map);
-static int irq_map_first_free_idx;
+static struct intr_map_entry **irq_map;
+static u_int irq_map_count;
+static u_int irq_map_first_free_idx;
 static struct mtx irq_map_lock;
 
 static struct intr_irqsrc *
@@ -1517,13 +1585,12 @@ intr_map_get_isrc(u_int res_id)
 {
 	struct intr_irqsrc *isrc;
 
+	isrc = NULL;
 	mtx_lock(&irq_map_lock);
-	if ((res_id >= irq_map_count) || (irq_map[res_id] == NULL)) {
-		mtx_unlock(&irq_map_lock);
-		return (NULL);
-	}
-	isrc = irq_map[res_id]->isrc;
+	if (res_id < irq_map_count && irq_map[res_id] != NULL)
+		isrc = irq_map[res_id]->isrc;
 	mtx_unlock(&irq_map_lock);
+
 	return (isrc);
 }
 
@@ -1532,11 +1599,8 @@ intr_map_set_isrc(u_int res_id, struct intr_irqsrc *isrc)
 {
 
 	mtx_lock(&irq_map_lock);
-	if ((res_id >= irq_map_count) || (irq_map[res_id] == NULL)) {
-		mtx_unlock(&irq_map_lock);
-		return;
-	}
-	irq_map[res_id]->isrc = isrc;
+	if (res_id < irq_map_count && irq_map[res_id] != NULL)
+		irq_map[res_id]->isrc = isrc;
 	mtx_unlock(&irq_map_lock);
 }
 
@@ -1662,5 +1726,9 @@ intr_map_init(void *dummy __unused)
 {
 
 	mtx_init(&irq_map_lock, "intr map table", NULL, MTX_DEF);
+
+	irq_map_count = 2 * intr_nirq;
+	irq_map = mallocarray(irq_map_count, sizeof(struct intr_map_entry*),
+	    M_INTRNG, M_WAITOK | M_ZERO);
 }
 SYSINIT(intr_map_init, SI_SUB_INTR, SI_ORDER_FIRST, intr_map_init, NULL);

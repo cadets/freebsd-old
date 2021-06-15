@@ -213,7 +213,7 @@ pwd_id_func(char *buffer, size_t *buffer_size, va_list ap, void *cache_mdata)
 	int	res = NS_UNAVAIL;
 	enum nss_lookup_type lookup_type;
 
-	lookup_type = (enum nss_lookup_type)cache_mdata;
+	lookup_type = (enum nss_lookup_type)(uintptr_t)cache_mdata;
 	switch (lookup_type) {
 	case nss_lt_name:
 		name = va_arg(ap, char *);
@@ -267,7 +267,7 @@ pwd_marshal_func(char *buffer, size_t *buffer_size, void *retval, va_list ap,
 	size_t desired_size, size;
 	char *p;
 
-	switch ((enum nss_lookup_type)cache_mdata) {
+	switch ((enum nss_lookup_type)(uintptr_t)cache_mdata) {
 	case nss_lt_name:
 		name = va_arg(ap, char *);
 		break;
@@ -370,7 +370,7 @@ pwd_unmarshal_func(char *buffer, size_t buffer_size, void *retval, va_list ap,
 
 	char *p;
 
-	switch ((enum nss_lookup_type)cache_mdata) {
+	switch ((enum nss_lookup_type)(uintptr_t)cache_mdata) {
 	case nss_lt_name:
 		name = va_arg(ap, char *);
 		break;
@@ -389,10 +389,17 @@ pwd_unmarshal_func(char *buffer, size_t buffer_size, void *retval, va_list ap,
 	orig_buf_size = va_arg(ap, size_t);
 	ret_errno = va_arg(ap, int *);
 
-	if (orig_buf_size <
-	    buffer_size - sizeof(struct passwd) - sizeof(char *)) {
+	if (orig_buf_size + sizeof(struct passwd) + sizeof(char *) <
+	    buffer_size) {
 		*ret_errno = ERANGE;
 		return (NS_RETURN);
+	} else if (buffer_size < sizeof(struct passwd) + sizeof(char *)) {
+		/*
+		 * nscd(8) sometimes returns buffer_size=1 for nonexistent
+		 * entries.
+		 */
+		*ret_errno = 0;
+		return (NS_NOTFOUND);
 	}
 
 	memcpy(pwd, buffer, sizeof(struct passwd));
@@ -764,7 +771,7 @@ files_setpwent(void *retval, void *mdata, va_list ap)
 	rv = files_getstate(&st);
 	if (rv != 0)
 		return (NS_UNAVAIL);
-	switch ((enum constants)mdata) {
+	switch ((enum constants)(uintptr_t)mdata) {
 	case SETPWENT:
 		stayopen = va_arg(ap, int);
 		st->keynum = 0;
@@ -802,7 +809,7 @@ files_passwd(void *retval, void *mdata, va_list ap)
 
 	name = NULL;
 	uid = (uid_t)-1;
-	how = (enum nss_lookup_type)mdata;
+	how = (enum nss_lookup_type)(uintptr_t)mdata;
 	switch (how) {
 	case nss_lt_name:
 		name = va_arg(ap, const char *);
@@ -1101,7 +1108,7 @@ dns_passwd(void *retval, void *mdata, va_list ap)
 	hes = NULL;
 	name = NULL;
 	uid = (uid_t)-1;
-	how = (enum nss_lookup_type)mdata;
+	how = (enum nss_lookup_type)(uintptr_t)mdata;
 	switch (how) {
 	case nss_lt_name:
 		name = va_arg(ap, const char *);
@@ -1294,7 +1301,7 @@ nis_passwd(void *retval, void *mdata, va_list ap)
 
 	name = NULL;
 	uid = (uid_t)-1;
-	how = (enum nss_lookup_type)mdata;
+	how = (enum nss_lookup_type)(uintptr_t)mdata;
 	switch (how) {
 	case nss_lt_name:
 		name = va_arg(ap, const char *);
@@ -1693,7 +1700,7 @@ compat_setpwent(void *retval, void *mdata, va_list ap)
 	rv = compat_getstate(&st);
 	if (rv != 0)
 		return (NS_UNAVAIL);
-	switch ((enum constants)mdata) {
+	switch ((enum constants)(uintptr_t)mdata) {
 	case SETPWENT:
 		stayopen = va_arg(ap, int);
 		st->keynum = 0;
@@ -1726,6 +1733,7 @@ compat_passwd(void *retval, void *mdata, va_list ap)
 {
 	char			 keybuf[MAXLOGNAME + 1];
 	DBT			 key, entry;
+	pwkeynum		 keynum;
 	struct compat_state	*st;
 	enum nss_lookup_type	 how;
 	const char		*name;
@@ -1740,7 +1748,7 @@ compat_passwd(void *retval, void *mdata, va_list ap)
 	from_compat = 0;
 	name = NULL;
 	uid = (uid_t)-1;
-	how = (enum nss_lookup_type)mdata;
+	how = (enum nss_lookup_type)(uintptr_t)mdata;
 	switch (how) {
 	case nss_lt_name:
 		name = va_arg(ap, const char *);
@@ -1776,9 +1784,10 @@ compat_passwd(void *retval, void *mdata, va_list ap)
 			rv = NS_NOTFOUND;
 			goto fin;
 		}
+		keynum = st->keynum;
 		stayopen = 1;
 	} else {
-		st->keynum = 0;
+		keynum = 0;
 		stayopen = st->stayopen;
 	}
 docompat:
@@ -1822,13 +1831,13 @@ docompat:
 	}
 	key.data = keybuf;
 	rv = NS_NOTFOUND;
-	while (st->keynum >= 0) {
-		st->keynum++;
+	while (keynum >= 0) {
+		keynum++;
 		if (st->version < _PWD_CURRENT_VERSION) {
-			memcpy(&keybuf[1], &st->keynum, sizeof(st->keynum));
-			key.size = sizeof(st->keynum) + 1;
+			memcpy(&keybuf[1], &keynum, sizeof(keynum));
+			key.size = sizeof(keynum) + 1;
 		} else {
-			store = htonl(st->keynum);
+			store = htonl(keynum);
 			memcpy(&keybuf[1], &store, sizeof(store));
 			key.size = sizeof(store) + 1;
 		}
@@ -1839,7 +1848,7 @@ docompat:
 			rv = NS_UNAVAIL;
 			goto fin;
 		} else if (rv == 1) {
-			st->keynum = -1;
+			keynum = -1;
 			rv = NS_NOTFOUND;
 			goto fin;
 		}
@@ -1924,6 +1933,8 @@ docompat:
 			break;
 	}
 fin:
+	if (how == nss_lt_all)
+		st->keynum = keynum;
 	if (st->db != NULL && !stayopen) {
 		(void)st->db->close(st->db);
 		st->db = NULL;

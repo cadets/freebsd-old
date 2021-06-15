@@ -35,6 +35,10 @@ __FBSDID("$FreeBSD$");
 
 extern struct devsw vdisk_dev;
 
+#ifdef MD_IMAGE_SIZE
+extern struct devsw md_dev;
+#endif
+
 struct devsw *devsw[] = {
 	&efipart_fddev,
 	&efipart_cddev,
@@ -46,6 +50,9 @@ struct devsw *devsw[] = {
 	&vdisk_dev,
 #ifdef EFI_ZFS_BOOT
 	&zfs_dev,
+#endif
+#ifdef MD_IMAGE_SIZE
+	&md_dev,
 #endif
 	NULL
 };
@@ -73,16 +80,16 @@ struct netif_driver *netif_drivers[] = {
 };
 
 extern struct console efi_console;
-#if defined(__amd64__) || defined(__i386__)
 extern struct console comconsole;
+#if defined(__amd64__) || defined(__i386__)
 extern struct console nullconsole;
 extern struct console spinconsole;
 #endif
 
 struct console *consoles[] = {
 	&efi_console,
-#if defined(__amd64__) || defined(__i386__)
 	&comconsole,
+#if defined(__amd64__) || defined(__i386__)
 	&nullconsole,
 	&spinconsole,
 #endif

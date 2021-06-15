@@ -43,6 +43,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/asan.h>
 #include <sys/bus.h>
 #include <sys/kernel.h>
 #include <sys/lock.h>
@@ -201,20 +202,37 @@ static u_long lapic_timer_divisor, count_freq;
 static struct eventtimer lapic_et;
 #ifdef SMP
 static uint64_t lapic_ipi_wait_mult;
+static int __read_mostly lapic_ds_idle_timeout = 1000000;
 #endif
 unsigned int max_apic_id;
 
-SYSCTL_NODE(_hw, OID_AUTO, apic, CTLFLAG_RD, 0, "APIC options");
+SYSCTL_NODE(_hw, OID_AUTO, apic, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "APIC options");
 SYSCTL_INT(_hw_apic, OID_AUTO, x2apic_mode, CTLFLAG_RD, &x2apic_mode, 0, "");
 SYSCTL_INT(_hw_apic, OID_AUTO, eoi_suppression, CTLFLAG_RD,
     &lapic_eoi_suppression, 0, "");
 SYSCTL_INT(_hw_apic, OID_AUTO, timer_tsc_deadline, CTLFLAG_RD,
     &lapic_timer_tsc_deadline, 0, "");
+#ifdef SMP
+SYSCTL_INT(_hw_apic, OID_AUTO, ds_idle_timeout, CTLFLAG_RWTUN,
+    &lapic_ds_idle_timeout, 0,
+    "timeout (in us) for APIC Delivery Status to become Idle (xAPIC only)");
+#endif
 
 static void lapic_calibrate_initcount(struct lapic *la);
 static void lapic_calibrate_deadline(struct lapic *la);
 
-static uint32_t
+/*
+ * Use __nosanitizethread to exempt the LAPIC I/O accessors from KCSan
+ * instrumentation.  Otherwise, if x2APIC is not available, use of the global
+ * lapic_map will generate a KCSan false positive.  While the mapping is
+ * shared among all CPUs, the physical access will always take place on the
+ * local CPU's APIC, so there isn't in fact a race here.  Furthermore, the
+ * KCSan warning printf can cause a panic if issued during LAPIC access,
+ * due to attempted recursive use of event timer resources.
+ */
+
+static uint32_t __nosanitizethread
 lapic_read32(enum LAPIC_REGISTERS reg)
 {
 	uint32_t res;
@@ -227,7 +245,7 @@ lapic_read32(enum LAPIC_REGISTERS reg)
 	return (res);
 }
 
-static void
+static void __nosanitizethread
 lapic_write32(enum LAPIC_REGISTERS reg, uint32_t val)
 {
 
@@ -240,7 +258,7 @@ lapic_write32(enum LAPIC_REGISTERS reg, uint32_t val)
 	}
 }
 
-static void
+static void __nosanitizethread
 lapic_write32_nofence(enum LAPIC_REGISTERS reg, uint32_t val)
 {
 
@@ -253,22 +271,6 @@ lapic_write32_nofence(enum LAPIC_REGISTERS reg, uint32_t val)
 
 #ifdef SMP
 static uint64_t
-lapic_read_icr(void)
-{
-	uint64_t v;
-	uint32_t vhi, vlo;
-
-	if (x2apic_mode) {
-		v = rdmsr(MSR_APIC_000 + LAPIC_ICR_LO);
-	} else {
-		vhi = lapic_read32(LAPIC_ICR_HI);
-		vlo = lapic_read32(LAPIC_ICR_LO);
-		v = ((uint64_t)vhi << 32) | vlo;
-	}
-	return (v);
-}
-
-static uint64_t
 lapic_read_icr_lo(void)
 {
 
@@ -278,6 +280,7 @@ lapic_read_icr_lo(void)
 static void
 lapic_write_icr(uint32_t vhi, uint32_t vlo)
 {
+	register_t saveintr;
 	uint64_t v;
 
 	if (x2apic_mode) {
@@ -285,9 +288,31 @@ lapic_write_icr(uint32_t vhi, uint32_t vlo)
 		mfence();
 		wrmsr(MSR_APIC_000 + LAPIC_ICR_LO, v);
 	} else {
+		saveintr = intr_disable();
 		lapic_write32(LAPIC_ICR_HI, vhi);
 		lapic_write32(LAPIC_ICR_LO, vlo);
+		intr_restore(saveintr);
 	}
+}
+
+static void
+lapic_write_icr_lo(uint32_t vlo)
+{
+
+	if (x2apic_mode) {
+		mfence();
+		wrmsr(MSR_APIC_000 + LAPIC_ICR_LO, vlo);
+	} else {
+		lapic_write32(LAPIC_ICR_LO, vlo);
+	}
+}
+
+static void
+lapic_write_self_ipi(uint32_t vector)
+{
+
+	KASSERT(x2apic_mode, ("SELF IPI write in xAPIC mode"));
+	wrmsr(MSR_APIC_000 + LAPIC_SELF_IPI, vector);
 }
 #endif /* SMP */
 
@@ -657,7 +682,6 @@ native_lapic_create(u_int apic_id, int boot_cpu)
 #ifdef XENHVM
 	lapics[apic_id].la_ioint_irqs[IDT_EVTCHN - APIC_IO_INTS] = IRQ_EVTCHN;
 #endif
-
 
 #ifdef SMP
 	cpu_add(apic_id, boot_cpu);
@@ -1282,6 +1306,9 @@ lapic_handle_intr(int vector, struct trapframe *frame)
 {
 	struct intsrc *isrc;
 
+	/* The frame may have been written into a poisoned region. */
+	kasan_mark(frame, sizeof(*frame), sizeof(*frame), 0);
+
 	isrc = intr_lookup_source(apic_idt_to_irq(PCPU_GET(apic_id),
 	    vector));
 	intr_execute_handlers(isrc, frame);
@@ -1296,6 +1323,9 @@ lapic_handle_timer(struct trapframe *frame)
 
 	/* Send EOI first thing. */
 	lapic_eoi();
+
+	/* The frame may have been written into a poisoned region. */
+	kasan_mark(frame, sizeof(*frame), sizeof(*frame), 0);
 
 #if defined(SMP) && !defined(SCHED_ULE)
 	/*
@@ -1556,7 +1586,6 @@ native_apic_alloc_vectors(u_int apic_id, u_int *irqs, u_int count, u_int align)
 	first = 0;
 	mtx_lock_spin(&icu_lock);
 	for (vector = 0; vector < APIC_NUM_IOINTS; vector++) {
-
 		/* Vector is in use, end run. */
 		if (lapics[apic_id].la_ioint_irqs[vector] != IRQ_FREE) {
 			run = 0;
@@ -1950,7 +1979,7 @@ apic_setup_io(void *dummy __unused)
 		lapic_dump("BSP");
 
 	/* Enable the MSI "pic". */
-	init_ops.msi_init();
+	msi_init();
 
 #ifdef XENHVM
 	xen_intr_alloc_irqs();
@@ -1990,9 +2019,7 @@ native_lapic_ipi_wait(int delay)
 static void
 native_lapic_ipi_raw(register_t icrlo, u_int dest)
 {
-	uint64_t icr;
-	uint32_t vhi, vlo;
-	register_t saveintr;
+	uint32_t icrhi;
 
 	/* XXX: Need more sanity checking of icrlo? */
 	KASSERT(x2apic_mode || lapic_map != NULL,
@@ -2003,38 +2030,17 @@ native_lapic_ipi_raw(register_t icrlo, u_int dest)
 	KASSERT((icrlo & APIC_ICRLO_RESV_MASK) == 0,
 	    ("%s: reserved bits set in ICR LO register", __func__));
 
-	/* Set destination in ICR HI register if it is being used. */
-	if (!x2apic_mode) {
-		saveintr = intr_disable();
-		icr = lapic_read_icr();
-	}
-
 	if ((icrlo & APIC_DEST_MASK) == APIC_DEST_DESTFLD) {
-		if (x2apic_mode) {
-			vhi = dest;
-		} else {
-			vhi = icr >> 32;
-			vhi &= ~APIC_ID_MASK;
-			vhi |= dest << APIC_ID_SHIFT;
-		}
+		if (x2apic_mode)
+			icrhi = dest;
+		else
+			icrhi = dest << APIC_ID_SHIFT;
+		lapic_write_icr(icrhi, icrlo);
 	} else {
-		vhi = 0;
+		lapic_write_icr_lo(icrlo);
 	}
-
-	/* Program the contents of the IPI and dispatch it. */
-	if (x2apic_mode) {
-		vlo = icrlo;
-	} else {
-		vlo = icr;
-		vlo &= APIC_ICRLO_RESV_MASK;
-		vlo |= icrlo;
-	}
-	lapic_write_icr(vhi, vlo);
-	if (!x2apic_mode)
-		intr_restore(saveintr);
 }
 
-#define	BEFORE_SPIN	50000
 #ifdef DETECT_DEADLOCK
 #define	AFTER_SPIN	50
 #endif
@@ -2047,7 +2053,28 @@ native_lapic_ipi_vectored(u_int vector, int dest)
 	KASSERT((vector & ~APIC_VECTOR_MASK) == 0,
 	    ("%s: invalid vector %d", __func__, vector));
 
-	icrlo = APIC_DESTMODE_PHY | APIC_TRIGMOD_EDGE | APIC_LEVEL_ASSERT;
+	destfield = 0;
+	switch (dest) {
+	case APIC_IPI_DEST_SELF:
+		if (x2apic_mode && vector < IPI_NMI_FIRST) {
+			lapic_write_self_ipi(vector);
+			return;
+		}
+		icrlo = APIC_DEST_SELF;
+		break;
+	case APIC_IPI_DEST_ALL:
+		icrlo = APIC_DEST_ALLISELF;
+		break;
+	case APIC_IPI_DEST_OTHERS:
+		icrlo = APIC_DEST_ALLESELF;
+		break;
+	default:
+		icrlo = 0;
+		KASSERT(x2apic_mode ||
+		    (dest & ~(APIC_ID_MASK >> APIC_ID_SHIFT)) == 0,
+		    ("%s: invalid destination 0x%x", __func__, dest));
+		destfield = dest;
+	}
 
 	/*
 	 * NMI IPIs are just fake vectors used to send a NMI.  Use special rules
@@ -2057,26 +2084,10 @@ native_lapic_ipi_vectored(u_int vector, int dest)
 		icrlo |= APIC_DELMODE_NMI;
 	else
 		icrlo |= vector | APIC_DELMODE_FIXED;
-	destfield = 0;
-	switch (dest) {
-	case APIC_IPI_DEST_SELF:
-		icrlo |= APIC_DEST_SELF;
-		break;
-	case APIC_IPI_DEST_ALL:
-		icrlo |= APIC_DEST_ALLISELF;
-		break;
-	case APIC_IPI_DEST_OTHERS:
-		icrlo |= APIC_DEST_ALLESELF;
-		break;
-	default:
-		KASSERT(x2apic_mode ||
-		    (dest & ~(APIC_ID_MASK >> APIC_ID_SHIFT)) == 0,
-		    ("%s: invalid destination 0x%x", __func__, dest));
-		destfield = dest;
-	}
+	icrlo |= APIC_DESTMODE_PHY | APIC_TRIGMOD_EDGE | APIC_LEVEL_ASSERT;
 
 	/* Wait for an earlier IPI to finish. */
-	if (!lapic_ipi_wait(BEFORE_SPIN)) {
+	if (!lapic_ipi_wait(lapic_ds_idle_timeout)) {
 		if (KERNEL_PANICKED())
 			return;
 		else
@@ -2144,6 +2155,9 @@ native_lapic_ipi_alloc(inthand_t *ipifunc)
 	for (idx = IPI_DYN_FIRST; idx <= IPI_DYN_LAST; idx++) {
 		ip = &idt[idx];
 		func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+#ifdef __i386__
+		func -= setidt_disp;
+#endif
 		if ((!pti && func == (uintptr_t)&IDTVEC(rsvd)) ||
 		    (pti && func == (uintptr_t)&IDTVEC(rsvd_pti))) {
 			vector = idx;
@@ -2167,6 +2181,9 @@ native_lapic_ipi_free(int vector)
 	mtx_lock_spin(&icu_lock);
 	ip = &idt[vector];
 	func = (ip->gd_hioffset << 16) | ip->gd_looffset;
+#ifdef __i386__
+	func -= setidt_disp;
+#endif
 	KASSERT(func != (uintptr_t)&IDTVEC(rsvd) &&
 	    func != (uintptr_t)&IDTVEC(rsvd_pti),
 	    ("invalid idtfunc %#lx", func));

@@ -213,7 +213,6 @@ static struct {
 		.method		= METHOD_RBLL,
 		.description	= "Number of brightness level steps"
 	},
-
 	{ NULL, 0, NULL }
 };
 
@@ -317,7 +316,6 @@ acpi_fujitsu_notify_status_changed(void *arg)
 	ACPI_SERIAL_END(fujitsu);
 }
 
-
 static void
 acpi_fujitsu_notify_handler(ACPI_HANDLE h, uint32_t notify, void *context)
 {
@@ -385,7 +383,7 @@ acpi_fujitsu_init(struct acpi_fujitsu_softc *sc)
 	sysctl_ctx_init(&sc->sysctl_ctx);
 	sc->sysctl_tree = SYSCTL_ADD_NODE(&sc->sysctl_ctx,
 	    SYSCTL_CHILDREN(acpi_sc->acpi_sysctl_tree),
-	    OID_AUTO, "fujitsu", CTLFLAG_RD, 0, "");
+	    OID_AUTO, "fujitsu", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "");
 
 	for (i = 0; sysctl_table[i].name != NULL; i++) {
 		switch(sysctl_table[i].method) {
@@ -418,11 +416,10 @@ acpi_fujitsu_init(struct acpi_fujitsu_softc *sc)
 		SYSCTL_ADD_PROC(&sc->sysctl_ctx,
 		    SYSCTL_CHILDREN(sc->sysctl_tree), OID_AUTO,
 		    sysctl_table[i].name,
-		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY,
-		    sc, i, acpi_fujitsu_sysctl, "I",
+		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY |
+		    CTLFLAG_NEEDGIANT, sc, i, acpi_fujitsu_sysctl, "I",
 		    sysctl_table[i].description);
 	}
-
 
 	/* Set the hotkeys to their initial states */
 	if (!acpi_fujitsu_update(sc)) {
@@ -675,21 +672,21 @@ acpi_fujitsu_update(struct acpi_fujitsu_softc *sc)
 			device_printf(sc->dev, "Couldn't query volume level\n");
 			return (FALSE);
 		}
-	
+
 		if (changed & VOLUME_CHANGED) {
 			sc->bIsMuted =
 			(uint8_t)((sc->gvol.value & VOLUME_MUTE_BIT) != 0);
-	
+
 			/* Clear the modification bit */
 			sc->gvol.value &= VOLUME_SETTING_BITS;
-	
+
 			if (sc->bIsMuted) {
 				acpi_UserNotify("FUJITSU", sc->handle, FN_MUTE);
 				ACPI_VPRINT(sc->dev, acpi_sc, "Volume is now mute\n");
 			} else
 				ACPI_VPRINT(sc->dev, acpi_sc, "Volume is now %d\n",
 				sc->gvol.value);
-	
+
 			acpi_UserNotify("FUJITSU", sc->handle, FN_VOLUME);
 		}
 	}
@@ -701,10 +698,10 @@ acpi_fujitsu_update(struct acpi_fujitsu_softc *sc)
 			device_printf(sc->dev, "Couldn't query pointer state\n");
 			return (FALSE);
 		}
-	
+
 		if (changed & MOUSE_CHANGED) {
 			sc->bIntPtrEnabled = (uint8_t)(sc->gmou.value & 0x1);
-	
+
 			/* Clear the modification bit */
 			sc->gmou.value &= MOUSE_SETTING_BITS;
 			
@@ -712,7 +709,7 @@ acpi_fujitsu_update(struct acpi_fujitsu_softc *sc)
                         acpi_fujitsu_method_set(sc, METHOD_GMOU, sc->gmou.value);
 
 			acpi_UserNotify("FUJITSU", sc->handle, FN_POINTER_ENABLE);
-	
+
 			ACPI_VPRINT(sc->dev, acpi_sc, "Internal pointer is now %s\n",
 			(sc->bIntPtrEnabled) ? "enabled" : "disabled");
 		}
@@ -748,15 +745,15 @@ acpi_fujitsu_update(struct acpi_fujitsu_softc *sc)
 			device_printf(sc->dev, "Couldn't query brightness level\n");
 			return (FALSE);
 		}
-	
+
 		if (changed & BRIGHT_CHANGED) {
 			/* No state to record here. */
-	
+
 			/* Clear the modification bit */
 			sc->gbll.value &= BRIGHTNESS_SETTING_BITS;
-	
+
 			acpi_UserNotify("FUJITSU", sc->handle, FN_LCD_BRIGHTNESS);
-	
+
 			ACPI_VPRINT(sc->dev, acpi_sc, "Brightness level is now %d\n",
 			sc->gbll.value);
 		}

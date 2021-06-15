@@ -12,7 +12,7 @@
 #include "atomic"
 #elif !defined(_LIBCPP_HAS_NO_THREADS)
 #include "mutex"
-#if defined(__unix__) &&  defined(__ELF__) && defined(_LIBCPP_HAS_COMMENT_LIB_PRAGMA)
+#if defined(__ELF__) && defined(_LIBCPP_LINK_PTHREAD_LIB)
 #pragma comment(lib, "pthread")
 #endif
 #endif
@@ -76,16 +76,6 @@ union ResourceInitHelper {
   ~ResourceInitHelper() {}
 };
 
-// Detect if the init_priority attribute is supported.
-#if (defined(_LIBCPP_COMPILER_GCC) && defined(__APPLE__)) \
-  || defined(_LIBCPP_COMPILER_MSVC)
-// GCC on Apple doesn't support the init priority attribute,
-// and MSVC doesn't support any GCC attributes.
-# define _LIBCPP_INIT_PRIORITY_MAX
-#else
-# define _LIBCPP_INIT_PRIORITY_MAX __attribute__((init_priority(101)))
-#endif
-
 // When compiled in C++14 this initialization should be a constant expression.
 // Only in C++11 is "init_priority" needed to ensure initialization order.
 #if _LIBCPP_STD_VER > 11
@@ -116,11 +106,11 @@ __default_memory_resource(bool set = false, memory_resource * new_res = nullptr)
         new_res = new_res ? new_res : new_delete_resource();
         // TODO: Can a weaker ordering be used?
         return _VSTD::atomic_exchange_explicit(
-            &__res, new_res, memory_order::memory_order_acq_rel);
+            &__res, new_res, memory_order_acq_rel);
     }
     else {
         return _VSTD::atomic_load_explicit(
-            &__res, memory_order::memory_order_acquire);
+            &__res, memory_order_acquire);
     }
 #elif !defined(_LIBCPP_HAS_NO_THREADS)
     _LIBCPP_SAFE_STATIC static memory_resource * res = &res_init.resources.new_delete_res;

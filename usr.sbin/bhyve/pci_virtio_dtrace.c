@@ -65,6 +65,8 @@ __FBSDID("$FreeBSD$");
 #include "pci_emul.h"
 #include "virtio.h"
 
+#define MAX_VMNAME	100
+
 #define	VTDTR_RINGSZ	4096
 #define	VTDTR_MAXQ	2
 
@@ -263,7 +265,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	static size_t offs = 0;
 	static char *elf;
 	uint64_t size;
-	char *name;
+	char name[MAX_VMNAME];
 	uint16_t vmid;
 	static char padding[6] = {0,0,0,0,0,0};
 	static char inbound[DTDAEMON_LOCSIZE] = "inbound";
@@ -308,7 +310,14 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		if (ctrl->pvc_elfhasmore == 0) {
 			assert(elf + offs == elf + len);
 			vmid = vm_get_vmid(sc->vsd_vmctx);
-			name = vm_get_name(sc->vsd_vmctx);
+
+			if (vm_get_name(
+			    sc->vsd_vmctx, name, MAX_VMNAME - 1) != 0) {
+				fprintf(stderr,
+				    "vm_get_name() failed with: %s\n",
+				    strerror(errno));
+				return (retval);
+			}
 			size = strlen(name);
 
 			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
@@ -426,17 +435,16 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 {
 	struct pci_vtdtr_softc *sc;
 	struct iovec iov[1];
-	uint16_t idx;
-	uint16_t flags[8];
+	struct vi_req req;
 	int n;
 	int retval;
 
 	sc = xsc;
 
 	while (vq_has_descs(vq)) {
-		n = vq_getchain(vq, &idx, iov, 1, flags);
+		n = vq_getchain(vq, iov, 1, &req);
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
-		vq_relchain(vq, idx, sizeof(struct pci_vtdtr_control));
+		vq_relchain(vq, req.idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
 			break;
 	}
@@ -499,15 +507,15 @@ pci_vtdtr_fill_desc(struct vqueue_info *vq, struct pci_vtdtr_control *ctrl)
 	struct iovec iov;
 	size_t len;
 	int n;
-	uint16_t idx;
+	struct vi_req req;
 
-	n = vq_getchain(vq, &idx, &iov, 1, NULL);
+	n = vq_getchain(vq, &iov, 1, &req);
 	assert(n == 1);
 
 	len = sizeof(struct pci_vtdtr_control);
 	memcpy(iov.iov_base, ctrl, len);
 
-	vq_relchain(vq, idx, len);
+	vq_relchain(vq, req.idx, len);
 }
 
 static void
@@ -912,7 +920,7 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
 	pci_set_cfgdata16(pci_inst, PCIR_DEVICE, VIRTIO_DEV_DTRACE);
 	pci_set_cfgdata16(pci_inst, PCIR_VENDOR, VIRTIO_VENDOR);
 	pci_set_cfgdata8(pci_inst, PCIR_CLASS, PCIC_OTHER);
-	pci_set_cfgdata16(pci_inst, PCIR_SUBDEV_0, VIRTIO_TYPE_DTRACE);
+	pci_set_cfgdata16(pci_inst, PCIR_SUBDEV_0, VIRTIO_ID_DTRACE);
 	pci_set_cfgdata16(pci_inst, PCIR_SUBVEND_0, VIRTIO_VENDOR);
 
 	error = pthread_mutex_init(&sc->vsd_ctrlq->mtx, NULL);

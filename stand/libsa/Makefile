@@ -13,8 +13,9 @@ LIBSA_CPUARCH?=${MACHINE_CPUARCH}
 LIB?=		sa
 
 # standalone components and stuff we have modified locally
-SRCS+=	gzguts.h zutil.h __main.c abort.c assert.c bcd.c environment.c getopt.c gets.c \
-	globals.c pager.c panic.c printf.c strdup.c strerror.c \
+SRCS+=	gzguts.h zutil.h __main.c abort.c assert.c bcd.c environment.c \
+	getopt.c gets.c globals.c \
+	hexdump.c pager.c panic.c printf.c strdup.c strerror.c \
 	random.c sbrk.c twiddle.c zalloc.c zalloc_malloc.c
 
 # private (pruned) versions of libc string functions
@@ -28,7 +29,7 @@ SRCS+= ntoh.c
 .PATH: ${LIBCSRC}/string
 SRCS+=	bcmp.c bcopy.c bzero.c ffs.c fls.c \
 	memccpy.c memchr.c memcmp.c memcpy.c memmove.c memset.c \
-	strcat.c strchr.c strcmp.c strcpy.c stpcpy.c stpncpy.c \
+	strcat.c strchr.c strchrnul.c strcmp.c strcpy.c stpcpy.c stpncpy.c \
 	strcspn.c strlcat.c strlcpy.c strlen.c strncat.c strncmp.c strncpy.c \
 	strnlen.c strpbrk.c strrchr.c strsep.c strspn.c strstr.c strtok.c swab.c
 
@@ -46,11 +47,7 @@ SRCS+=	subr_boot.c
 # Do not generate movt/movw, because the relocation fixup for them does not
 # translate to the -Bsymbolic -pie format required by self_reloc() in loader(8).
 # Also, the fpu is not available in a standalone environment.
-.if ${COMPILER_VERSION} < 30800
-CFLAGS.clang+=	-mllvm -arm-use-movt=0
-.else
 CFLAGS.clang+=	-mno-movt
-.endif
 CFLAGS.clang+=	-mfpu=none
 
 .PATH: ${SRCTOP}/contrib/llvm-project/compiler-rt/lib/builtins/arm/
@@ -125,7 +122,7 @@ beforedepend:
 	ln -sf ${SRCTOP}/include/arpa/inet.h arpa/inet.h; \
 	ln -sf ${SRCTOP}/include/arpa/tftp.h arpa/tftp.h; \
 	for i in _time.h _strings.h _string.h; do \
-		[ -f xlocale/$$i ] || cp /dev/null xlocale/$$i; \
+		[ -f xlocale/$$i ] || :> xlocale/$$i; \
 	done; \
 	for i in ${STAND_H_INC}; do \
 		ln -sf ${SASRC}/stand.h $$i; \
@@ -136,6 +133,20 @@ CLEANFILES+= ${SAFE_INCS} ${STAND_H_INC} ${OTHER_INC}
 # io routines
 SRCS+=	closeall.c dev.c ioctl.c nullfs.c stat.c \
 	fstat.c close.c lseek.c open.c read.c write.c readdir.c
+
+# SMBios routines
+SRCS+=	smbios.c
+.if !defined(BOOT_HIDE_SERIAL_NUMBERS)
+# Export serial numbers, UUID, and asset tag from loader.
+CFLAGS.smbios.c+= -DSMBIOS_SERIAL_NUMBERS
+.if defined(BOOT_LITTLE_ENDIAN_UUID)
+# Use little-endian UUID format as defined in SMBIOS 2.6.
+CFLAGS.smbios.c+= -DSMBIOS_LITTLE_ENDIAN_UUID
+.elif defined(BOOT_NETWORK_ENDIAN_UUID)
+# Use network-endian UUID format for backward compatibility.
+CFLAGS.smbios.c+= -DSMBIOS_NETWORK_ENDIAN_UUID
+.endif
+.endif
 
 # network routines
 SRCS+=	arp.c ether.c ip.c inet_ntoa.c in_cksum.c net.c udp.c netif.c rpc.c
@@ -148,6 +159,9 @@ SRCS+=	ufs.c nfs.c cd9660.c tftp.c gzipfs.c bzipfs.c
 SRCS+=	dosfs.c ext2fs.c
 SRCS+=	splitfs.c
 SRCS+=	pkgfs.c
+
+# Time support
+SRCS+=	time.c
 
 # kernel ufs support
 .PATH: ${SRCTOP}/sys/ufs/ffs

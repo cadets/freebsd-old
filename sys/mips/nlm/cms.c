@@ -296,7 +296,6 @@ msgring_process_fast_intr(void *arg)
 		msgring_wakeup_nosleep[cpu]++;
 	}
 
-
 	return (FILTER_HANDLED);
 }
 
@@ -493,5 +492,7 @@ sys_print_debug(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
-SYSCTL_PROC(_debug, OID_AUTO, msgring, CTLTYPE_STRING | CTLFLAG_RD, 0, 0,
-    sys_print_debug, "A", "msgring debug info");
+SYSCTL_PROC(_debug, OID_AUTO, msgring,
+    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, 0, 0,
+    sys_print_debug, "A",
+    "msgring debug info");

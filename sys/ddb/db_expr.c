@@ -34,6 +34,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/systm.h>
 
 #include <ddb/ddb.h>
 #include <ddb/db_lex.h>
@@ -124,7 +125,7 @@ db_unary(db_expr_t *valuep)
 	    return (true);
 	}
 	if (t == tEXCL) {
-	    if(!db_unary(valuep)) {
+	    if (!db_unary(valuep)) {
 		db_printf("Expression syntax error after '%c'\n", '!');
 		db_error(NULL);
 		/* NOTREACHED  */
@@ -133,7 +134,7 @@ db_unary(db_expr_t *valuep)
 	    return (true);
 	}
 	if (t == tBIT_NOT) {
-	    if(!db_unary(valuep)) {
+	    if (!db_unary(valuep)) {
 		db_printf("Expression syntax error after '%c'\n", '~');
 		db_error(NULL);
 		/* NOTREACHED */
@@ -229,7 +230,7 @@ db_add_expr(db_expr_t *valuep)
 		lhs |= rhs;
 		break;
 	    default:
-		__unreachable();
+		__assert_unreachable();
 	    }
 	    t = db_read_token();
 	}
@@ -313,7 +314,7 @@ db_logical_relation_expr(
 		    lhs = (lhs <= rhs);
 		    break;
 		default:
-		    __unreachable();
+		    __assert_unreachable();
 	    }
 	    t = db_read_token();
 	}

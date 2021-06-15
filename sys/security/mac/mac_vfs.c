@@ -372,7 +372,7 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_access, "struct ucred *",
     "struct vnode *", "accmode_t");
 
 int
-mac_vnode_check_access(struct ucred *cred, struct vnode *vp, accmode_t accmode)
+mac_vnode_check_access_impl(struct ucred *cred, struct vnode *vp, accmode_t accmode)
 {
 	int error;
 
@@ -565,13 +565,15 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_lookup, "struct ucred *",
     "struct vnode *", "struct componentname *");
 
 int
-mac_vnode_check_lookup(struct ucred *cred, struct vnode *dvp,
+mac_vnode_check_lookup_impl(struct ucred *cred, struct vnode *dvp,
     struct componentname *cnp)
 {
 	int error;
 
 	ASSERT_VOP_LOCKED(dvp, "mac_vnode_check_lookup");
 
+	if ((cnp->cn_flags & NOMACCHECK) != 0)
+		return (0);
 	MAC_POLICY_CHECK(vnode_check_lookup, cred, dvp, dvp->v_label, cnp);
 	MAC_CHECK_PROBE3(vnode_check_lookup, error, cred, dvp, cnp);
 
@@ -582,7 +584,7 @@ MAC_CHECK_PROBE_DEFINE4(vnode_check_mmap, "struct ucred *", "struct vnode *",
     "int", "int");
 
 int
-mac_vnode_check_mmap(struct ucred *cred, struct vnode *vp, int prot,
+mac_vnode_check_mmap_impl(struct ucred *cred, struct vnode *vp, int prot,
     int flags)
 {
 	int error;
@@ -629,7 +631,7 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_open, "struct ucred *", "struct vnode *",
     "accmode_t");
 
 int
-mac_vnode_check_open(struct ucred *cred, struct vnode *vp, accmode_t accmode)
+mac_vnode_check_open_impl(struct ucred *cred, struct vnode *vp, accmode_t accmode)
 {
 	int error;
 
@@ -664,7 +666,7 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_read, "struct ucred *", "struct ucred *",
     "struct vnode *");
 
 int
-mac_vnode_check_read(struct ucred *active_cred, struct ucred *file_cred,
+mac_vnode_check_read_impl(struct ucred *active_cred, struct ucred *file_cred,
     struct vnode *vp)
 {
 	int error;
@@ -699,7 +701,7 @@ MAC_CHECK_PROBE_DEFINE2(vnode_check_readlink, "struct ucred *",
     "struct vnode *");
 
 int
-mac_vnode_check_readlink(struct ucred *cred, struct vnode *vp)
+mac_vnode_check_readlink_impl(struct ucred *cred, struct vnode *vp)
 {
 	int error;
 
@@ -889,7 +891,7 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_stat, "struct ucred *", "struct ucred *",
     "struct vnode *");
 
 int
-mac_vnode_check_stat(struct ucred *active_cred, struct ucred *file_cred,
+mac_vnode_check_stat_impl(struct ucred *active_cred, struct ucred *file_cred,
     struct vnode *vp)
 {
 	int error;
@@ -927,7 +929,7 @@ MAC_CHECK_PROBE_DEFINE3(vnode_check_write, "struct ucred *",
     "struct ucred *", "struct vnode *");
 
 int
-mac_vnode_check_write(struct ucred *active_cred, struct ucred *file_cred,
+mac_vnode_check_write_impl(struct ucred *active_cred, struct ucred *file_cred,
     struct vnode *vp)
 {
 	int error;
@@ -1019,6 +1021,10 @@ vop_stdsetlabel_ea(struct vop_setlabel_args *ap)
 	if (error)
 		return (error);
 
+	/*
+	 * XXXRW: See the comment below in vn_setlabel() as to why this might
+	 * be the wrong place to call mac_vnode_relabel().
+	 */
 	mac_vnode_relabel(ap->a_cred, vp, intlabel);
 
 	return (0);
@@ -1043,9 +1049,6 @@ vn_setlabel(struct vnode *vp, struct label *intlabel, struct ucred *cred)
 	 * Multi-phase commit.  First check the policies to confirm the
 	 * change is OK.  Then commit via the filesystem.  Finally, update
 	 * the actual vnode label.
-	 *
-	 * Question: maybe the filesystem should update the vnode at the end
-	 * as part of VOP_SETLABEL()?
 	 */
 	error = mac_vnode_check_relabel(cred, vp, intlabel);
 	if (error)
@@ -1066,5 +1069,22 @@ vn_setlabel(struct vnode *vp, struct label *intlabel, struct ucred *cred)
 	if (error)
 		return (error);
 
+	/*
+	 * It would be more symmetric if mac_vnode_relabel() was called here
+	 * rather than in VOP_SETLABEL(), but we don't for historical reasons.
+	 * We should think about moving it so that the filesystem is
+	 * responsible only for persistence in VOP_SETLABEL(), not the vnode
+	 * label update itself.
+	 */
+
 	return (0);
 }
+
+#ifdef DEBUG_VFS_LOCKS
+void
+mac_vnode_assert_locked(struct vnode *vp, const char *func)
+{
+
+	ASSERT_VOP_LOCKED(vp, func);
+}
+#endif

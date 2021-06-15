@@ -29,6 +29,8 @@
 #ifndef _LINUX_MI_H_
 #define _LINUX_MI_H_
 
+#include <sys/queue.h>
+
 #define	LINUX_IFHWADDRLEN	6
 #define	LINUX_IFNAMSIZ		16
 
@@ -56,6 +58,16 @@ struct l_sockaddr {
 #define	LINUX_AF_IPX		4
 #define	LINUX_AF_APPLETALK	5
 #define	LINUX_AF_INET6		10
+#define	LINUX_AF_NETLINK	16
+
+#define	LINUX_NETLINK_ROUTE		0
+#define	LINUX_NETLINK_SOCK_DIAG		4
+#define	LINUX_NETLINK_NFLOG		5
+#define	LINUX_NETLINK_SELINUX		7
+#define	LINUX_NETLINK_AUDIT		9
+#define	LINUX_NETLINK_FIB_LOOKUP	10
+#define	LINUX_NETLINK_NETFILTER		12
+#define	LINUX_NETLINK_KOBJECT_UEVENT	15
 
 /*
  * net device flags
@@ -145,5 +157,94 @@ extern struct mtx futex_mtx;
 
 void linux_dev_shm_create(void);
 void linux_dev_shm_destroy(void);
+
+/*
+ * mask=0 is not sensible for this application, so it will be taken to mean
+ * a mask equivalent to the value.  Otherwise, (word & mask) == value maps to
+ * (word & ~mask) | value in a bitfield for the platform we're converting to.
+ */
+struct bsd_to_linux_bitmap {
+	int	bsd_mask;
+	int	bsd_value;
+	int	linux_mask;
+	int	linux_value;
+};
+
+int bsd_to_linux_bits_(int value, struct bsd_to_linux_bitmap *bitmap,
+    size_t mapcnt, int no_value);
+int linux_to_bsd_bits_(int value, struct bsd_to_linux_bitmap *bitmap,
+    size_t mapcnt, int no_value);
+
+/*
+ * These functions are used for simplification of BSD <-> Linux bit conversions.
+ * Given `value`, a bit field, these functions will walk the given bitmap table
+ * and set the appropriate bits for the target platform.  If any bits were
+ * successfully converted, then the return value is the equivalent of value
+ * represented with the bit values appropriate for the target platform.
+ * Otherwise, the value supplied as `no_value` is returned.
+ */
+#define	bsd_to_linux_bits(_val, _bmap, _noval) \
+    bsd_to_linux_bits_((_val), (_bmap), nitems((_bmap)), (_noval))
+#define	linux_to_bsd_bits(_val, _bmap, _noval) \
+    linux_to_bsd_bits_((_val), (_bmap), nitems((_bmap)), (_noval))
+
+/*
+ * Easy mapping helpers.  BITMAP_EASY_LINUX represents a single bit to be
+ * translated, and the FreeBSD and Linux values are supplied.  BITMAP_1t1_LINUX
+ * is the extreme version of this, where not only is it a single bit, but the
+ * name of the macro used to represent the Linux version of a bit literally has
+ * LINUX_ prepended to the normal name.
+ */
+#define	BITMAP_EASY_LINUX(_name, _linux_name)	\
+	{					\
+		.bsd_value = (_name),		\
+		.linux_value = (_linux_name),	\
+	}
+#define	BITMAP_1t1_LINUX(_name)	BITMAP_EASY_LINUX(_name, LINUX_##_name)
+
+int bsd_to_linux_errno(int error);
+void linux_check_errtbl(void);
+
+#define STATX_BASIC_STATS		0x07ff
+#define STATX_BTIME			0x0800
+#define STATX_ALL			0x0fff
+
+#define STATX_ATTR_COMPRESSED		0x0004
+#define STATX_ATTR_IMMUTABLE		0x0010
+#define STATX_ATTR_APPEND		0x0020
+#define STATX_ATTR_NODUMP		0x0040
+#define STATX_ATTR_ENCRYPTED		0x0800
+#define STATX_ATTR_AUTOMOUNT		0x1000
+
+struct l_statx_timestamp {
+	int64_t tv_sec;
+	int32_t tv_nsec;
+	int32_t __spare0;
+};
+
+struct l_statx {
+	uint32_t stx_mask;
+	uint32_t stx_blksize;
+	uint64_t stx_attributes;
+	uint32_t stx_nlink;
+	uint32_t stx_uid;
+	uint32_t stx_gid;
+	uint16_t stx_mode;
+	uint16_t __spare0[1];
+	uint64_t stx_ino;
+	uint64_t stx_size;
+	uint64_t stx_blocks;
+	uint64_t stx_attributes_mask;
+	struct l_statx_timestamp stx_atime;
+	struct l_statx_timestamp stx_btime;
+	struct l_statx_timestamp stx_ctime;
+	struct l_statx_timestamp stx_mtime;
+	uint32_t stx_rdev_major;
+	uint32_t stx_rdev_minor;
+	uint32_t stx_dev_major;
+	uint32_t stx_dev_minor;
+	uint64_t stx_mnt_id;
+	uint64_t __spare2[13];
+};
 
 #endif /* _LINUX_MI_H_ */

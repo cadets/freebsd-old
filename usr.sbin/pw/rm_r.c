@@ -57,6 +57,10 @@ rm_r(int rootfd, const char *path, uid_t uid)
 	}
 
 	d = fdopendir(dirfd);
+	if (d == NULL) {
+		(void)close(dirfd);
+		return;
+	}
 	while ((e = readdir(d)) != NULL) {
 		if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
 			continue;
@@ -71,5 +75,8 @@ rm_r(int rootfd, const char *path, uid_t uid)
 	closedir(d);
 	if (fstatat(rootfd, path, &st, AT_SYMLINK_NOFOLLOW) != 0)
 		return;
-	unlinkat(rootfd, path, S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0);
+	if (S_ISLNK(st.st_mode))
+		unlinkat(rootfd, path, 0);
+	else if (st.st_uid == uid)
+		unlinkat(rootfd, path, AT_REMOVEDIR);
 }

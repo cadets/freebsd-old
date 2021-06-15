@@ -87,7 +87,7 @@ TEST_F(Release, dup)
 	expect_release(ino, getpid(), O_RDONLY, 0);
 	
 	fd = open(FULLPATH, O_RDONLY);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 
 	fd2 = dup(fd);
 	ASSERT_LE(0, fd2) << strerror(errno);
@@ -117,7 +117,7 @@ TEST_F(Release, eio)
 	expect_release(ino, getpid(), O_WRONLY, EIO);
 	
 	fd = open(FULLPATH, O_WRONLY);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 
 	ASSERT_TRUE(0 == close(fd) || errno == EIO) << strerror(errno);
 }
@@ -139,7 +139,7 @@ TEST_F(Release, DISABLED_flags)
 	expect_release(ino, getpid(), O_RDWR | O_APPEND, 0);
 	
 	fd = open(FULLPATH, O_RDWR | O_APPEND);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 
 	ASSERT_EQ(0, close(fd)) << strerror(errno);
 }
@@ -162,11 +162,11 @@ TEST_F(Release, multiple_opens)
 	expect_release(ino, getpid(), O_RDONLY, 0);
 	
 	fd = open(FULLPATH, O_RDONLY);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 
 	expect_release(ino, getpid(), O_WRONLY, 0);
 	fd2 = open(FULLPATH, O_WRONLY);
-	EXPECT_LE(0, fd2) << strerror(errno);
+	ASSERT_LE(0, fd2) << strerror(errno);
 
 	ASSERT_EQ(0, close(fd2)) << strerror(errno);
 	ASSERT_EQ(0, close(fd)) << strerror(errno);
@@ -185,7 +185,7 @@ TEST_F(Release, ok)
 	expect_release(ino, getpid(), O_RDONLY, 0);
 	
 	fd = open(FULLPATH, O_RDONLY);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 
 	ASSERT_EQ(0, close(fd)) << strerror(errno);
 }
@@ -206,6 +206,16 @@ TEST_F(ReleaseWithLocks, unlock_on_close)
 		ResultOf([=](auto in) {
 			return (in.header.opcode == FUSE_SETLK &&
 				in.header.nodeid == ino &&
+				in.body.setlk.lk.type == F_RDLCK &&
+				in.body.setlk.fh == FH);
+		}, Eq(true)),
+		_)
+	).WillOnce(Invoke(ReturnErrno(0)));
+	EXPECT_CALL(*m_mock, process(
+		ResultOf([=](auto in) {
+			return (in.header.opcode == FUSE_SETLK &&
+				in.header.nodeid == ino &&
+				in.body.setlk.lk.type == F_UNLCK &&
 				in.body.setlk.fh == FH);
 		}, Eq(true)),
 		_)
@@ -221,7 +231,7 @@ TEST_F(ReleaseWithLocks, unlock_on_close)
 	fl.l_type = F_RDLCK;
 	fl.l_whence = SEEK_SET;
 	fl.l_sysid = 0;
-	ASSERT_NE(-1, fcntl(fd, F_SETLKW, &fl)) << strerror(errno);
+	ASSERT_NE(-1, fcntl(fd, F_SETLK, &fl)) << strerror(errno);
 
 	ASSERT_EQ(0, close(fd)) << strerror(errno);
 }

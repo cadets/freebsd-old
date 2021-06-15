@@ -708,7 +708,6 @@ ar5211Get11nExtBusy(struct ath_hal *ah)
 	return (0);
 }
 
-
 /*
  * There's no channel survey support for the AR5211.
  */
@@ -734,3 +733,26 @@ void
 ar5211GetDfsThresh(struct ath_hal *ah, HAL_PHYERR_PARAM *pe)
 {
 }
+
+/*
+ * Get the current NAV value from the hardware.
+ */
+u_int
+ar5211GetNav(struct ath_hal *ah)
+{
+	uint32_t reg;
+
+	reg = OS_REG_READ(ah, AR_NAV);
+	return (reg);
+}
+
+/*
+ * Set the current NAV value to the hardware.
+ */
+void
+ar5211SetNav(struct ath_hal *ah, u_int val)
+{
+
+	OS_REG_WRITE(ah, AR_NAV, val);
+}
+

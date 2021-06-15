@@ -81,8 +81,8 @@ SYSCTL_INT(_debug, OID_AUTO, clock_show_io, CTLFLAG_RWTUN, &show_io, 0,
     "Enable debug printing of RTC clock I/O; 1=reads, 2=writes, 3=both.");
 
 static int sysctl_clock_do_io(SYSCTL_HANDLER_ARGS);
-SYSCTL_PROC(_debug, OID_AUTO, clock_do_io, CTLTYPE_INT | CTLFLAG_RW,
-    0, 0, sysctl_clock_do_io, "I",
+SYSCTL_PROC(_debug, OID_AUTO, clock_do_io,
+    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, 0, 0, sysctl_clock_do_io, "I",
     "Trigger one-time IO on RTC clocks; 1=read (and discard), 2=write");
 
 /* XXX: should be kern. now, it's no longer machdep.  */
@@ -164,7 +164,7 @@ clock_dbgprint_hdr(device_t dev, int rw)
 	getnanotime(&now);
 	device_printf(dev, "%s at ", (rw & CLOCK_DBG_READ) ? "read " : "write");
 	clock_print_ts(&now, 9);
-	printf(": "); 
+	printf(": ");
 }
 
 void
@@ -241,7 +241,7 @@ clock_register_flags(device_t clockdev, long resolution, int flags)
 	}
 	sx_xunlock(&rtc_list_lock);
 
-	device_printf(clockdev, 
+	device_printf(clockdev,
 	    "registered as a time-of-day clock, resolution %d.%6.6ds\n",
 	    newrtc->resolution / 1000000, newrtc->resolution % 1000000);
 }

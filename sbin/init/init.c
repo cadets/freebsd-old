@@ -106,7 +106,6 @@ static void stall(const char *, ...) __printflike(1, 2);
 static void warning(const char *, ...) __printflike(1, 2);
 static void emergency(const char *, ...) __printflike(1, 2);
 static void disaster(int);
-static void badsys(int);
 static void revoke_ttys(void);
 static int  runshutdown(void);
 static char *strk(char *);
@@ -307,9 +306,8 @@ invalid:
 	 * We catch or block signals rather than ignore them,
 	 * so that they get reset on exec.
 	 */
-	handle(badsys, SIGSYS, 0);
-	handle(disaster, SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGXCPU,
-	    SIGXFSZ, 0);
+	handle(disaster, SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGSYS,
+	    SIGXCPU, SIGXFSZ, 0);
 	handle(transition_handler, SIGHUP, SIGINT, SIGEMT, SIGTERM, SIGTSTP,
 	    SIGUSR1, SIGUSR2, SIGWINCH, 0);
 	handle(alrm_handler, SIGALRM, 0);
@@ -507,22 +505,6 @@ emergency(const char *message, ...)
 }
 
 /*
- * Catch a SIGSYS signal.
- *
- * These may arise if a system does not support sysctl.
- * We tolerate up to 25 of these, then throw in the towel.
- */
-static void
-badsys(int sig)
-{
-	static int badcount = 0;
-
-	if (badcount++ < 25)
-		return;
-	disaster(sig);
-}
-
-/*
  * Catch an unexpected signal.
  */
 static void
@@ -550,8 +532,7 @@ getsecuritylevel(void)
 	name[1] = KERN_SECURELVL;
 	len = sizeof curlevel;
 	if (sysctl(name, 2, &curlevel, &len, NULL, 0) == -1) {
-		emergency("cannot get kernel security level: %s",
-		    strerror(errno));
+		emergency("cannot get kernel security level: %m");
 		return (-1);
 	}
 	return (curlevel);
@@ -576,8 +557,8 @@ setsecuritylevel(int newlevel)
 	name[1] = KERN_SECURELVL;
 	if (sysctl(name, 2, NULL, NULL, &newlevel, sizeof newlevel) == -1) {
 		emergency(
-		    "cannot change kernel security level from %d to %d: %s",
-		    curlevel, newlevel, strerror(errno));
+		    "cannot change kernel security level from %d to %d: %m",
+		    curlevel, newlevel);
 		return;
 	}
 #ifdef SECURE
@@ -669,13 +650,13 @@ read_file(const char *path, void **bufp, size_t *bufsizep)
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		emergency("%s: %s", path, strerror(errno));
+		emergency("%s: %m", path);
 		return (-1);
 	}
 
 	error = fstat(fd, &sb);
 	if (error != 0) {
-		emergency("fstat: %s", strerror(errno));
+		emergency("fstat: %m");
 		close(fd);
 		return (error);
 	}
@@ -683,14 +664,14 @@ read_file(const char *path, void **bufp, size_t *bufsizep)
 	bufsize = sb.st_size;
 	buf = malloc(bufsize);
 	if (buf == NULL) {
-		emergency("malloc: %s", strerror(errno));
+		emergency("malloc: %m");
 		close(fd);
 		return (error);
 	}
 
 	nbytes = read(fd, buf, bufsize);
 	if (nbytes != (ssize_t)bufsize) {
-		emergency("read: %s", strerror(errno));
+		emergency("read: %m");
 		close(fd);
 		free(buf);
 		return (error);
@@ -698,7 +679,7 @@ read_file(const char *path, void **bufp, size_t *bufsizep)
 
 	error = close(fd);
 	if (error != 0) {
-		emergency("close: %s", strerror(errno));
+		emergency("close: %m");
 		free(buf);
 		return (error);
 	}
@@ -717,20 +698,20 @@ create_file(const char *path, const void *buf, size_t bufsize)
 
 	fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0700);
 	if (fd < 0) {
-		emergency("%s: %s", path, strerror(errno));
+		emergency("%s: %m", path);
 		return (-1);
 	}
 
 	nbytes = write(fd, buf, bufsize);
 	if (nbytes != (ssize_t)bufsize) {
-		emergency("write: %s", strerror(errno));
+		emergency("write: %m");
 		close(fd);
 		return (-1);
 	}
 
 	error = close(fd);
 	if (error != 0) {
-		emergency("close: %s", strerror(errno));
+		emergency("close: %m");
 		return (-1);
 	}
 
@@ -757,11 +738,11 @@ mount_tmpfs(const char *fspath)
 	error = nmount(iov, iovlen, 0);
 	if (error != 0) {
 		if (*errmsg != '\0') {
-			emergency("cannot mount tmpfs on %s: %s: %s",
-			    fspath, errmsg, strerror(errno));
+			emergency("cannot mount tmpfs on %s: %s: %m",
+			    fspath, errmsg);
 		} else {
-			emergency("cannot mount tmpfs on %s: %s",
-			    fspath, strerror(errno));
+			emergency("cannot mount tmpfs on %s: %m",
+			    fspath);
 		}
 		return (error);
 	}
@@ -788,7 +769,7 @@ reroot(void)
 	 */
 	error = kill(-1, SIGKILL);
 	if (error != 0 && errno != ESRCH) {
-		emergency("kill(2) failed: %s", strerror(errno));
+		emergency("kill(2) failed: %m");
 		goto out;
 	}
 
@@ -810,7 +791,7 @@ reroot(void)
 	 * Execute the temporary init.
 	 */
 	execl(_PATH_REROOT_INIT, _PATH_REROOT_INIT, "-r", NULL);
-	emergency("cannot exec %s: %s", _PATH_REROOT_INIT, strerror(errno));
+	emergency("cannot exec %s: %m", _PATH_REROOT_INIT);
 
 out:
 	emergency("reroot failed; going to single user mode");
@@ -830,7 +811,7 @@ reroot_phase_two(void)
 	 */
 	error = reboot(RB_REROOT);
 	if (error != 0) {
-		emergency("RB_REBOOT failed: %s", strerror(errno));
+		emergency("RB_REBOOT failed: %m");
 		goto out;
 	}
 
@@ -847,8 +828,7 @@ reroot_phase_two(void)
 		error = sysctlbyname("kern.init_path",
 		    init_path, &init_path_len, NULL, 0);
 		if (error != 0) {
-			emergency("failed to retrieve kern.init_path: %s",
-			    strerror(errno));
+			emergency("failed to retrieve kern.init_path: %m");
 			goto out;
 		}
 	}
@@ -863,7 +843,7 @@ reroot_phase_two(void)
 		 */
 		execl(path, path, NULL);
 	}
-	emergency("cannot exec init from %s: %s", init_path, strerror(errno));
+	emergency("cannot exec init from %s: %m", init_path);
 
 out:
 	emergency("reroot failed; going to single user mode");
@@ -897,8 +877,7 @@ single_user(void)
 		/* Instead of going single user, let's reboot the machine */
 		sync();
 		if (reboot(howto) == -1) {
-			emergency("reboot(%#x) failed, %s", howto,
-			    strerror(errno));
+			emergency("reboot(%#x) failed, %m", howto);
 			_exit(1); /* panic and reboot */
 		}
 		warning("reboot(%#x) returned", howto);
@@ -929,7 +908,7 @@ single_user(void)
 				if (clear == NULL || *clear == '\0')
 					_exit(0);
 				password = crypt(clear, pp->pw_passwd);
-				bzero(clear, _PASSWORD_LEN);
+				explicit_bzero(clear, _PASSWORD_LEN);
 				if (password != NULL &&
 				    strcmp(password, pp->pw_passwd) == 0)
 					break;
@@ -1205,9 +1184,9 @@ static int
 start_session_db(void)
 {
 	if (session_db && (*session_db->close)(session_db))
-		emergency("session database close: %s", strerror(errno));
+		emergency("session database close: %m");
 	if ((session_db = dbopen(NULL, O_RDWR, 0, DB_HASH, NULL)) == NULL) {
-		emergency("session database open: %s", strerror(errno));
+		emergency("session database open: %m");
 		return (1);
 	}
 	return (0);
@@ -1229,7 +1208,7 @@ add_session(session_t *sp)
 	data.size = sizeof sp;
 
 	if ((*session_db->put)(session_db, &key, &data, 0))
-		emergency("insert %d: %s", sp->se_process, strerror(errno));
+		emergency("insert %d: %m", sp->se_process);
 }
 
 /*
@@ -1244,7 +1223,7 @@ del_session(session_t *sp)
 	key.size = sizeof sp->se_process;
 
 	if ((*session_db->del)(session_db, &key, 0))
-		emergency("delete %d: %s", sp->se_process, strerror(errno));
+		emergency("delete %d: %m", sp->se_process);
 }
 
 /*
@@ -2053,6 +2032,7 @@ setprocresources(const char *cname)
 	login_cap_t *lc;
 	if ((lc = login_getclassbyname(cname, NULL)) != NULL) {
 		setusercontext(lc, (struct passwd*)NULL, 0,
+		    LOGIN_SETENV |
 		    LOGIN_SETPRIORITY | LOGIN_SETRESOURCES |
 		    LOGIN_SETLOGINCLASS | LOGIN_SETCPUMASK);
 		login_close(lc);

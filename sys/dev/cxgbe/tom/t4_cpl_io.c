@@ -108,7 +108,7 @@ send_flowc_wr(struct toepcb *toep, struct tcpcb *tp)
 
 	flowclen = sizeof(*flowc) + nparams * sizeof(struct fw_flowc_mnemval);
 
-	wr = alloc_wrqe(roundup2(flowclen, 16), toep->ofld_txq);
+	wr = alloc_wrqe(roundup2(flowclen, 16), &toep->ofld_txq->wrq);
 	if (wr == NULL) {
 		/* XXX */
 		panic("%s: allocation failure.", __func__);
@@ -135,11 +135,12 @@ send_flowc_wr(struct toepcb *toep, struct tcpcb *tp)
 	FLOWC_PARAM(PORT, pi->tx_chan);
 	FLOWC_PARAM(IQID, toep->ofld_rxq->iq.abs_id);
 	FLOWC_PARAM(SNDBUF, toep->params.sndbuf);
-	FLOWC_PARAM(MSS, toep->params.emss);
 	if (tp) {
+		FLOWC_PARAM(MSS, toep->params.emss);
 		FLOWC_PARAM(SNDNXT, tp->snd_nxt);
 		FLOWC_PARAM(RCVNXT, tp->rcv_nxt);
-	}
+	} else
+		FLOWC_PARAM(MSS, 512);
 	CTR6(KTR_CXGBE,
 	    "%s: tid %u, mss %u, sndbuf %u, snd_nxt 0x%x, rcv_nxt 0x%x",
 	    __func__, toep->tid, toep->params.emss, toep->params.sndbuf,
@@ -201,7 +202,8 @@ update_tx_rate_limit(struct adapter *sc, struct toepcb *toep, u_int Bps)
 		    fw_flowc_mnemval);
 		flowclen16 = howmany(flowclen, 16);
 		if (toep->tx_credits < flowclen16 || toep->txsd_avail == 0 ||
-		    (wr = alloc_wrqe(roundup2(flowclen, 16), toep->ofld_txq)) == NULL) {
+		    (wr = alloc_wrqe(roundup2(flowclen, 16),
+		    &toep->ofld_txq->wrq)) == NULL) {
 			if (tc_idx >= 0)
 				t4_release_cl_rl(sc, port_id, tc_idx);
 			return (ENOMEM);
@@ -265,7 +267,7 @@ send_reset(struct adapter *sc, struct toepcb *toep, uint32_t snd_nxt)
 	KASSERT(toep->flags & TPF_FLOWC_WR_SENT,
 	    ("%s: flowc_wr not sent for tid %d.", __func__, tid));
 
-	wr = alloc_wrqe(sizeof(*req), toep->ofld_txq);
+	wr = alloc_wrqe(sizeof(*req), &toep->ofld_txq->wrq);
 	if (wr == NULL) {
 		/* XXX */
 		panic("%s: allocation failure.", __func__);
@@ -391,6 +393,9 @@ make_established(struct toepcb *toep, uint32_t iss, uint32_t irs, uint16_t opt)
 	send_flowc_wr(toep, tp);
 
 	soisconnected(so);
+
+	if (ulp_mode(toep) == ULP_MODE_TLS)
+		tls_establish(toep);
 }
 
 int
@@ -445,16 +450,6 @@ t4_rcvd_locked(struct toedev *tod, struct tcpcb *tp)
 	SOCKBUF_LOCK_ASSERT(sb);
 
 	rx_credits = sbspace(sb) > tp->rcv_wnd ? sbspace(sb) - tp->rcv_wnd : 0;
-	if (ulp_mode(toep) == ULP_MODE_TLS) {
-		if (toep->tls.rcv_over >= rx_credits) {
-			toep->tls.rcv_over -= rx_credits;
-			rx_credits = 0;
-		} else {
-			rx_credits -= toep->tls.rcv_over;
-			toep->tls.rcv_over = 0;
-		}
-	}
-
 	if (rx_credits > 0 &&
 	    (tp->rcv_wnd <= 32 * 1024 || rx_credits >= 64 * 1024 ||
 	    (rx_credits >= 16 * 1024 && tp->rcv_wnd <= 128 * 1024) ||
@@ -497,7 +492,7 @@ t4_close_conn(struct adapter *sc, struct toepcb *toep)
 	KASSERT(toep->flags & TPF_FLOWC_WR_SENT,
 	    ("%s: flowc_wr not sent for tid %u.", __func__, tid));
 
-	wr = alloc_wrqe(sizeof(*req), toep->ofld_txq);
+	wr = alloc_wrqe(sizeof(*req), &toep->ofld_txq->wrq);
 	if (wr == NULL) {
 		/* XXX */
 		panic("%s: allocation failure.", __func__);
@@ -609,8 +604,9 @@ write_tx_sgl(void *dst, struct mbuf *start, struct mbuf *stop, int nsegs, int n)
 
 	i = -1;
 	for (m = start; m != stop; m = m->m_next) {
-		if (m->m_flags & M_NOMAP)
-			rc = sglist_append_mb_ext_pgs(&sg, m);
+		if (m->m_flags & M_EXTPG)
+			rc = sglist_append_mbuf_epg(&sg, m,
+			    mtod(m, vm_offset_t), m->m_len);
 		else
 			rc = sglist_append(&sg, mtod(m, void *), m->m_len);
 		if (__predict_false(rc != 0))
@@ -729,9 +725,11 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 		for (m = sndptr; m != NULL; m = m->m_next) {
 			int n;
 
-			if (m->m_flags & M_NOMAP) {
+			if ((m->m_flags & M_NOTAVAIL) != 0)
+				break;
+			if (m->m_flags & M_EXTPG) {
 #ifdef KERN_TLS
-				if (m->m_ext.ext_pgs->tls != NULL) {
+				if (m->m_epg_tls != NULL) {
 					toep->flags |= TPF_KTLS;
 					if (plen == 0) {
 						SOCKBUF_UNLOCK(sb);
@@ -741,7 +739,8 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 					break;
 				}
 #endif
-				n = sglist_count_mb_ext_pgs(m);
+				n = sglist_count_mbuf_epg(m,
+				    mtod(m, vm_offset_t), m->m_len);
 			} else
 				n = sglist_count(mtod(m, void *), m->m_len);
 
@@ -769,7 +768,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 				break;
 			}
 
-			if (m->m_flags & M_NOMAP)
+			if (m->m_flags & M_EXTPG)
 				nomap_mbuf_seen = true;
 			if (max_nsegs_1mbuf < n)
 				max_nsegs_1mbuf = n;
@@ -810,8 +809,9 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 
 		/* nothing to send */
 		if (plen == 0) {
-			KASSERT(m == NULL,
-			    ("%s: nothing to send, but m != NULL", __func__));
+			KASSERT(m == NULL || (m->m_flags & M_NOTAVAIL) != 0,
+			    ("%s: nothing to send, but m != NULL is ready",
+			    __func__));
 			break;
 		}
 
@@ -824,7 +824,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 			/* Immediate data tx */
 
 			wr = alloc_wrqe(roundup2(sizeof(*txwr) + plen, 16),
-					toep->ofld_txq);
+					&toep->ofld_txq->wrq);
 			if (wr == NULL) {
 				/* XXX: how will we recover from this? */
 				toep->flags |= TPF_TX_SUSPENDED;
@@ -842,7 +842,8 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 
 			wr_len = sizeof(*txwr) + sizeof(struct ulptx_sgl) +
 			    ((3 * (nsegs - 1)) / 2 + ((nsegs - 1) & 1)) * 8;
-			wr = alloc_wrqe(roundup2(wr_len, 16), toep->ofld_txq);
+			wr = alloc_wrqe(roundup2(wr_len, 16),
+			    &toep->ofld_txq->wrq);
 			if (wr == NULL) {
 				/* XXX: how will we recover from this? */
 				toep->flags |= TPF_TX_SUSPENDED;
@@ -899,7 +900,7 @@ t4_push_frames(struct adapter *sc, struct toepcb *toep, int drop)
 		toep->txsd_avail--;
 
 		t4_l2t_send(sc, wr, toep->l2te);
-	} while (m != NULL);
+	} while (m != NULL && (m->m_flags & M_NOTAVAIL) == 0);
 
 	/* Send a FIN if requested, but only if there's no more data to send */
 	if (m == NULL && toep->flags & TPF_SEND_FIN)
@@ -926,10 +927,10 @@ rqdrop_locked(struct mbufq *q, int plen)
 	}
 }
 
-void
-t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop)
+static struct wrqe *
+write_iscsi_mbuf_wr(struct toepcb *toep, struct mbuf *sndptr)
 {
-	struct mbuf *sndptr, *m;
+	struct mbuf *m;
 	struct fw_ofld_tx_data_wr *txwr;
 	struct wrqe *wr;
 	u_int plen, nsegs, credits, max_imm, max_nsegs, max_nsegs_1mbuf;
@@ -937,9 +938,129 @@ t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop)
 	struct inpcb *inp = toep->inp;
 	struct tcpcb *tp = intotcpcb(inp);
 	int tx_credits, shove;
+	static const u_int ulp_extra_len[] = {0, 4, 4, 8};
+
+	M_ASSERTPKTHDR(sndptr);
+
+	tx_credits = min(toep->tx_credits, MAX_OFLD_TX_CREDITS);
+	if (mbuf_raw_wr(sndptr)) {
+		plen = sndptr->m_pkthdr.len;
+		KASSERT(plen <= SGE_MAX_WR_LEN,
+		    ("raw WR len %u is greater than max WR len", plen));
+		if (plen > tx_credits * 16)
+			return (NULL);
+
+		wr = alloc_wrqe(roundup2(plen, 16), &toep->ofld_txq->wrq);
+		if (__predict_false(wr == NULL))
+			return (NULL);
+
+		m_copydata(sndptr, 0, plen, wrtod(wr));
+		return (wr);
+	}
+
+	max_imm = max_imm_payload(tx_credits);
+	max_nsegs = max_dsgl_nsegs(tx_credits);
+
+	plen = 0;
+	nsegs = 0;
+	max_nsegs_1mbuf = 0; /* max # of SGL segments in any one mbuf */
+	for (m = sndptr; m != NULL; m = m->m_next) {
+		int n = sglist_count(mtod(m, void *), m->m_len);
+
+		nsegs += n;
+		plen += m->m_len;
+
+		/*
+		 * This mbuf would send us _over_ the nsegs limit.
+		 * Suspend tx because the PDU can't be sent out.
+		 */
+		if (plen > max_imm && nsegs > max_nsegs)
+			return (NULL);
+
+		if (max_nsegs_1mbuf < n)
+			max_nsegs_1mbuf = n;
+	}
+
+	if (__predict_false(toep->flags & TPF_FIN_SENT))
+		panic("%s: excess tx.", __func__);
+
+	/*
+	 * We have a PDU to send.  All of it goes out in one WR so 'm'
+	 * is NULL.  A PDU's length is always a multiple of 4.
+	 */
+	MPASS(m == NULL);
+	MPASS((plen & 3) == 0);
+	MPASS(sndptr->m_pkthdr.len == plen);
+
+	shove = !(tp->t_flags & TF_MORETOCOME);
+	ulp_submode = mbuf_ulp_submode(sndptr);
+	MPASS(ulp_submode < nitems(ulp_extra_len));
+
+	/*
+	 * plen doesn't include header and data digests, which are
+	 * generated and inserted in the right places by the TOE, but
+	 * they do occupy TCP sequence space and need to be accounted
+	 * for.
+	 */
+	adjusted_plen = plen + ulp_extra_len[ulp_submode];
+	if (plen <= max_imm) {
+
+		/* Immediate data tx */
+
+		wr = alloc_wrqe(roundup2(sizeof(*txwr) + plen, 16),
+				&toep->ofld_txq->wrq);
+		if (wr == NULL) {
+			/* XXX: how will we recover from this? */
+			return (NULL);
+		}
+		txwr = wrtod(wr);
+		credits = howmany(wr->wr_len, 16);
+		write_tx_wr(txwr, toep, plen, adjusted_plen, credits,
+		    shove, ulp_submode);
+		m_copydata(sndptr, 0, plen, (void *)(txwr + 1));
+		nsegs = 0;
+	} else {
+		int wr_len;
+
+		/* DSGL tx */
+		wr_len = sizeof(*txwr) + sizeof(struct ulptx_sgl) +
+		    ((3 * (nsegs - 1)) / 2 + ((nsegs - 1) & 1)) * 8;
+		wr = alloc_wrqe(roundup2(wr_len, 16),
+		    &toep->ofld_txq->wrq);
+		if (wr == NULL) {
+			/* XXX: how will we recover from this? */
+			return (NULL);
+		}
+		txwr = wrtod(wr);
+		credits = howmany(wr_len, 16);
+		write_tx_wr(txwr, toep, 0, adjusted_plen, credits,
+		    shove, ulp_submode);
+		write_tx_sgl(txwr + 1, sndptr, m, nsegs, max_nsegs_1mbuf);
+		if (wr_len & 0xf) {
+			uint64_t *pad = (uint64_t *)((uintptr_t)txwr + wr_len);
+			*pad = 0;
+		}
+	}
+
+	tp->snd_nxt += adjusted_plen;
+	tp->snd_max += adjusted_plen;
+
+	counter_u64_add(toep->ofld_txq->tx_iscsi_pdus, 1);
+	counter_u64_add(toep->ofld_txq->tx_iscsi_octets, plen);
+
+	return (wr);
+}
+
+void
+t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop)
+{
+	struct mbuf *sndptr, *m;
+	struct fw_wr_hdr *wrhdr;
+	struct wrqe *wr;
+	u_int plen, credits;
+	struct inpcb *inp = toep->inp;
 	struct ofld_tx_sdesc *txsd = &toep->txsd[toep->txsd_pidx];
 	struct mbufq *pduq = &toep->ulp_pduq;
-	static const u_int ulp_extra_len[] = {0, 4, 4, 8};
 
 	INP_WLOCK_ASSERT(inp);
 	KASSERT(toep->flags & TPF_FLOWC_WR_SENT,
@@ -960,102 +1081,44 @@ t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop)
 		return;
 	}
 
-	if (drop)
+	if (drop) {
+		struct socket *so = inp->inp_socket;
+		struct sockbuf *sb = &so->so_snd;
+		int sbu;
+
+		/*
+		 * An unlocked read is ok here as the data should only
+		 * transition from a non-zero value to either another
+		 * non-zero value or zero.  Once it is zero it should
+		 * stay zero.
+		 */
+		if (__predict_false(sbused(sb)) > 0) {
+			SOCKBUF_LOCK(sb);
+			sbu = sbused(sb);
+			if (sbu > 0) {
+				/*
+				 * The data transmitted before the
+				 * tid's ULP mode changed to ISCSI is
+				 * still in so_snd.  Incoming credits
+				 * should account for so_snd first.
+				 */
+				sbdrop_locked(sb, min(sbu, drop));
+				drop -= min(sbu, drop);
+			}
+			sowwakeup_locked(so);	/* unlocks so_snd */
+		}
 		rqdrop_locked(&toep->ulp_pdu_reclaimq, drop);
+	}
 
 	while ((sndptr = mbufq_first(pduq)) != NULL) {
-		M_ASSERTPKTHDR(sndptr);
-
-		tx_credits = min(toep->tx_credits, MAX_OFLD_TX_CREDITS);
-		max_imm = max_imm_payload(tx_credits);
-		max_nsegs = max_dsgl_nsegs(tx_credits);
-
-		plen = 0;
-		nsegs = 0;
-		max_nsegs_1mbuf = 0; /* max # of SGL segments in any one mbuf */
-		for (m = sndptr; m != NULL; m = m->m_next) {
-			int n = sglist_count(mtod(m, void *), m->m_len);
-
-			nsegs += n;
-			plen += m->m_len;
-
-			/*
-			 * This mbuf would send us _over_ the nsegs limit.
-			 * Suspend tx because the PDU can't be sent out.
-			 */
-			if (plen > max_imm && nsegs > max_nsegs) {
-				toep->flags |= TPF_TX_SUSPENDED;
-				return;
-			}
-
-			if (max_nsegs_1mbuf < n)
-				max_nsegs_1mbuf = n;
+		wr = write_iscsi_mbuf_wr(toep, sndptr);
+		if (wr == NULL) {
+			toep->flags |= TPF_TX_SUSPENDED;
+			return;
 		}
 
-		if (__predict_false(toep->flags & TPF_FIN_SENT))
-			panic("%s: excess tx.", __func__);
-
-		/*
-		 * We have a PDU to send.  All of it goes out in one WR so 'm'
-		 * is NULL.  A PDU's length is always a multiple of 4.
-		 */
-		MPASS(m == NULL);
-		MPASS((plen & 3) == 0);
-		MPASS(sndptr->m_pkthdr.len == plen);
-
-		shove = !(tp->t_flags & TF_MORETOCOME);
-		ulp_submode = mbuf_ulp_submode(sndptr);
-		MPASS(ulp_submode < nitems(ulp_extra_len));
-
-		/*
-		 * plen doesn't include header and data digests, which are
-		 * generated and inserted in the right places by the TOE, but
-		 * they do occupy TCP sequence space and need to be accounted
-		 * for.
-		 */
-		adjusted_plen = plen + ulp_extra_len[ulp_submode];
-		if (plen <= max_imm) {
-
-			/* Immediate data tx */
-
-			wr = alloc_wrqe(roundup2(sizeof(*txwr) + plen, 16),
-					toep->ofld_txq);
-			if (wr == NULL) {
-				/* XXX: how will we recover from this? */
-				toep->flags |= TPF_TX_SUSPENDED;
-				return;
-			}
-			txwr = wrtod(wr);
-			credits = howmany(wr->wr_len, 16);
-			write_tx_wr(txwr, toep, plen, adjusted_plen, credits,
-			    shove, ulp_submode);
-			m_copydata(sndptr, 0, plen, (void *)(txwr + 1));
-			nsegs = 0;
-		} else {
-			int wr_len;
-
-			/* DSGL tx */
-			wr_len = sizeof(*txwr) + sizeof(struct ulptx_sgl) +
-			    ((3 * (nsegs - 1)) / 2 + ((nsegs - 1) & 1)) * 8;
-			wr = alloc_wrqe(roundup2(wr_len, 16), toep->ofld_txq);
-			if (wr == NULL) {
-				/* XXX: how will we recover from this? */
-				toep->flags |= TPF_TX_SUSPENDED;
-				return;
-			}
-			txwr = wrtod(wr);
-			credits = howmany(wr_len, 16);
-			write_tx_wr(txwr, toep, 0, adjusted_plen, credits,
-			    shove, ulp_submode);
-			write_tx_sgl(txwr + 1, sndptr, m, nsegs,
-			    max_nsegs_1mbuf);
-			if (wr_len & 0xf) {
-				uint64_t *pad = (uint64_t *)
-				    ((uintptr_t)txwr + wr_len);
-				*pad = 0;
-			}
-		}
-
+		plen = sndptr->m_pkthdr.len;
+		credits = howmany(wr->wr_len, 16);
 		KASSERT(toep->tx_credits >= credits,
 			("%s: not enough credits", __func__));
 
@@ -1066,15 +1129,18 @@ t4_push_pdus(struct adapter *sc, struct toepcb *toep, int drop)
 		toep->tx_credits -= credits;
 		toep->tx_nocompl += credits;
 		toep->plen_nocompl += plen;
-		if (toep->tx_credits <= toep->tx_total * 3 / 8 &&
+
+		/*
+		 * Ensure there are enough credits for a full-sized WR
+		 * as page pod WRs can be full-sized.
+		 */
+		if (toep->tx_credits <= SGE_MAX_WR_LEN * 5 / 4 &&
 		    toep->tx_nocompl >= toep->tx_total / 4) {
-			txwr->op_to_immdlen |= htobe32(F_FW_WR_COMPL);
+			wrhdr = wrtod(wr);
+			wrhdr->hi |= htobe32(F_FW_WR_COMPL);
 			toep->tx_nocompl = 0;
 			toep->plen_nocompl = 0;
 		}
-
-		tp->snd_nxt += adjusted_plen;
-		tp->snd_max += adjusted_plen;
 
 		toep->flags |= TPF_TX_DATA_SENT;
 		if (toep->tx_credits < MIN_OFLD_TX_CREDITS)
@@ -1258,6 +1324,7 @@ do_peer_close(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		break;
 
 	case TCPS_FIN_WAIT_2:
+		restore_so_proto(so, inp->inp_vflag & INP_IPV6);
 		tcp_twstart(tp);
 		INP_UNLOCK_ASSERT(inp);	 /* safe, we have a ref on the inp */
 		NET_EPOCH_EXIT(et);
@@ -1318,6 +1385,7 @@ do_close_con_rpl(struct sge_iq *iq, const struct rss_header *rss,
 
 	switch (tp->t_state) {
 	case TCPS_CLOSING:	/* see TCPS_FIN_WAIT_2 in do_peer_close too */
+		restore_so_proto(so, inp->inp_vflag & INP_IPV6);
 		tcp_twstart(tp);
 release:
 		INP_UNLOCK_ASSERT(inp);	/* safe, we have a ref on the  inp */
@@ -1352,13 +1420,13 @@ done:
 }
 
 void
-send_abort_rpl(struct adapter *sc, struct sge_wrq *ofld_txq, int tid,
+send_abort_rpl(struct adapter *sc, struct sge_ofld_txq *ofld_txq, int tid,
     int rst_status)
 {
 	struct wrqe *wr;
 	struct cpl_abort_rpl *cpl;
 
-	wr = alloc_wrqe(sizeof(*cpl), ofld_txq);
+	wr = alloc_wrqe(sizeof(*cpl), &ofld_txq->wrq);
 	if (wr == NULL) {
 		/* XXX */
 		panic("%s: allocation failure.", __func__);
@@ -1398,7 +1466,7 @@ do_abort_req(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	const struct cpl_abort_req_rss *cpl = (const void *)(rss + 1);
 	unsigned int tid = GET_TID(cpl);
 	struct toepcb *toep = lookup_tid(sc, tid);
-	struct sge_wrq *ofld_txq = toep->ofld_txq;
+	struct sge_ofld_txq *ofld_txq = toep->ofld_txq;
 	struct inpcb *inp;
 	struct tcpcb *tp;
 	struct epoch_tracker et;
@@ -1543,6 +1611,15 @@ do_rx_data(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 	}
 
 	tp = intotcpcb(inp);
+
+	if (__predict_false(ulp_mode(toep) == ULP_MODE_TLS &&
+	   toep->flags & TPF_TLS_RECEIVE)) {
+		/* Received "raw" data on a TLS socket. */
+		CTR3(KTR_CXGBE, "%s: tid %u, raw TLS data (%d bytes)",
+		    __func__, tid, len);
+		do_rx_data_tls(cpl, toep, m);
+		return (0);
+	}
 
 	if (__predict_false(tp->rcv_nxt != be32toh(cpl->seq)))
 		ddp_placed = be32toh(cpl->seq) - tp->rcv_nxt;
@@ -1768,13 +1845,12 @@ do_fw4_ack(struct sge_iq *iq, const struct rss_header *rss, struct mbuf *m)
 		SOCKBUF_LOCK(sb);
 		sbu = sbused(sb);
 		if (ulp_mode(toep) == ULP_MODE_ISCSI) {
-
 			if (__predict_false(sbu > 0)) {
 				/*
-				 * The data trasmitted before the tid's ULP mode
-				 * changed to ISCSI is still in so_snd.
-				 * Incoming credits should account for so_snd
-				 * first.
+				 * The data transmitted before the
+				 * tid's ULP mode changed to ISCSI is
+				 * still in so_snd.  Incoming credits
+				 * should account for so_snd first.
 				 */
 				sbdrop_locked(sb, min(sbu, plen));
 				plen -= min(sbu, plen);
@@ -1833,7 +1909,7 @@ t4_set_tcb_field(struct adapter *sc, struct sge_wrq *wrq, struct toepcb *toep,
 	req->word_cookie = htobe16(V_WORD(word) | V_COOKIE(cookie));
 	req->mask = htobe64(mask);
 	req->val = htobe64(val);
-	if ((wrq->eq.flags & EQ_TYPEMASK) == EQ_OFLD) {
+	if (wrq->eq.type == EQ_OFLD) {
 		txsd = &toep->txsd[toep->txsd_pidx];
 		txsd->tx_credits = howmany(sizeof(*req), 16);
 		txsd->plen = 0;
@@ -1921,20 +1997,18 @@ aiotx_free_job(struct kaiocb *job)
 static void
 aiotx_free_pgs(struct mbuf *m)
 {
-	struct mbuf_ext_pgs *ext_pgs;
 	struct kaiocb *job;
 	vm_page_t pg;
 
-	MBUF_EXT_PGS_ASSERT(m);
-	ext_pgs = m->m_ext.ext_pgs;
+	M_ASSERTEXTPG(m);
 	job = m->m_ext.ext_arg1;
 #ifdef VERBOSE_TRACES
 	CTR3(KTR_CXGBE, "%s: completed %d bytes for tid %d", __func__,
 	    m->m_len, jobtotid(job));
 #endif
 
-	for (int i = 0; i < ext_pgs->npgs; i++) {
-		pg = PHYS_TO_VM_PAGE(ext_pgs->pa[i]);
+	for (int i = 0; i < m->m_epg_npgs; i++) {
+		pg = PHYS_TO_VM_PAGE(m->m_epg_pa[i]);
 		vm_page_unwire(pg, PQ_ACTIVE);
 	}
 
@@ -1951,7 +2025,6 @@ alloc_aiotx_mbuf(struct kaiocb *job, int len)
 	struct vmspace *vm;
 	vm_page_t pgs[MBUF_PEXT_MAX_PGS];
 	struct mbuf *m, *top, *last;
-	struct mbuf_ext_pgs *ext_pgs;
 	vm_map_t map;
 	vm_offset_t start;
 	int i, mlen, npages, pgoff;
@@ -1983,26 +2056,25 @@ alloc_aiotx_mbuf(struct kaiocb *job, int len)
 		if (npages < 0)
 			break;
 
-		m = mb_alloc_ext_pgs(M_WAITOK, false, aiotx_free_pgs);
+		m = mb_alloc_ext_pgs(M_WAITOK, aiotx_free_pgs);
 		if (m == NULL) {
 			vm_page_unhold_pages(pgs, npages);
 			break;
 		}
 
-		ext_pgs = m->m_ext.ext_pgs;
-		ext_pgs->first_pg_off = pgoff;
-		ext_pgs->npgs = npages;
+		m->m_epg_1st_off = pgoff;
+		m->m_epg_npgs = npages;
 		if (npages == 1) {
 			KASSERT(mlen + pgoff <= PAGE_SIZE,
 			    ("%s: single page is too large (off %d len %d)",
 			    __func__, pgoff, mlen));
-			ext_pgs->last_pg_len = mlen;
+			m->m_epg_last_len = mlen;
 		} else {
-			ext_pgs->last_pg_len = mlen - (PAGE_SIZE - pgoff) -
+			m->m_epg_last_len = mlen - (PAGE_SIZE - pgoff) -
 			    (npages - 2) * PAGE_SIZE;
 		}
 		for (i = 0; i < npages; i++)
-			ext_pgs->pa[i] = VM_PAGE_TO_PHYS(pgs[i]);
+			m->m_epg_pa[i] = VM_PAGE_TO_PHYS(pgs[i]);
 
 		m->m_len = mlen;
 		m->m_ext.ext_size = npages * PAGE_SIZE;
@@ -2192,8 +2264,7 @@ out:
 		job->aio_error = (void *)(intptr_t)error;
 		aiotx_free_job(job);
 	}
-	if (m != NULL)
-		m_free(m);
+	m_freem(m);
 	SOCKBUF_LOCK(sb);
 }
 

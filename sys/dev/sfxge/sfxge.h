@@ -93,11 +93,6 @@
 #define	IFM_40G_CR4 IFM_UNKNOWN
 #endif
 
-#if (__FreeBSD_version >= 800501 && __FreeBSD_version < 900000) || \
-	__FreeBSD_version >= 900003
-#define	SFXGE_HAVE_DESCRIBE_INTR
-#endif
-
 #ifdef IFM_ETH_RXPAUSE
 #define	SFXGE_HAVE_PAUSE_MEDIAOPTS
 #endif
@@ -114,7 +109,6 @@
 #define	SFXGE_IP_ALIGN	2
 
 #define	SFXGE_ETHERTYPE_LOOPBACK	0x9000	/* Xerox loopback */
-
 
 #define	SFXGE_MAGIC_RESERVED		0x8000
 

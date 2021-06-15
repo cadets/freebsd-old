@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #endif
 #include "opt_cpu.h"
 #include "opt_ddb.h"
+#include "opt_gdb.h"
 #include "opt_kstack_pages.h"
 #include "opt_pmap.h"
 #include "opt_sched.h"
@@ -47,6 +48,7 @@ __FBSDID("$FreeBSD$");
 #ifdef GPROF 
 #include <sys/gmon.h>
 #endif
+#include <sys/interrupt.h>
 #include <sys/kdb.h>
 #include <sys/kernel.h>
 #include <sys/ktr.h>
@@ -1106,7 +1108,7 @@ smp_after_idle_runnable(void *arg __unused)
 
 	for (cpu = 1; cpu < mp_ncpus; cpu++) {
 		pc = pcpu_find(cpu);
-		while (atomic_load_ptr(&pc->pc_curpcb) == (uintptr_t)NULL)
+		while (atomic_load_ptr(&pc->pc_curpcb) == NULL)
 			cpu_spinwait();
 		kmem_free((vm_offset_t)bootstacks[cpu], kstack_pages *
 		    PAGE_SIZE);
@@ -1145,12 +1147,12 @@ set_interrupt_apic_ids(void)
 	}
 }
 
-
 #ifdef COUNT_XINVLTLB_HITS
 u_int xhits_gbl[MAXCPU];
 u_int xhits_pg[MAXCPU];
 u_int xhits_rng[MAXCPU];
-static SYSCTL_NODE(_debug, OID_AUTO, xhits, CTLFLAG_RW, 0, "");
+static SYSCTL_NODE(_debug, OID_AUTO, xhits, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "");
 SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, global, CTLFLAG_RW, &xhits_gbl,
     sizeof(xhits_gbl), "IU", "");
 SYSCTL_OPAQUE(_debug_xhits, OID_AUTO, page, CTLFLAG_RW, &xhits_pg,
@@ -1232,32 +1234,39 @@ ipi_startup(int apic_id, int vector)
 	DELAY(200);		/* wait ~200uS */
 }
 
-/*
- * Send an IPI to specified CPU handling the bitmap logic.
- */
-void
-ipi_send_cpu(int cpu, u_int ipi)
+static bool
+ipi_bitmap_set(int cpu, u_int ipi)
 {
 	u_int bitmap, old, new;
 	u_int *cpu_bitmap;
+
+	bitmap = 1 << ipi;
+	cpu_bitmap = &cpuid_to_pcpu[cpu]->pc_ipi_bitmap;
+	old = *cpu_bitmap;
+	for (;;) {
+		if ((old & bitmap) != 0)
+			break;
+		new = old | bitmap;
+		if (atomic_fcmpset_int(cpu_bitmap, &old, new))
+			break;
+	}
+	return (old != 0);
+}
+
+/*
+ * Send an IPI to specified CPU handling the bitmap logic.
+ */
+static void
+ipi_send_cpu(int cpu, u_int ipi)
+{
 
 	KASSERT((u_int)cpu < MAXCPU && cpu_apic_ids[cpu] != -1,
 	    ("IPI to non-existent CPU %d", cpu));
 
 	if (IPI_IS_BITMAPED(ipi)) {
-		bitmap = 1 << ipi;
-		ipi = IPI_BITMAP_VECTOR;
-		cpu_bitmap = &cpuid_to_pcpu[cpu]->pc_ipi_bitmap;
-		old = *cpu_bitmap;
-		for (;;) {
-			if ((old & bitmap) == bitmap)
-				break;
-			new = old | bitmap;
-			if (atomic_fcmpset_int(cpu_bitmap, &old, new))
-				break;
-		}
-		if (old)
+		if (ipi_bitmap_set(cpu, ipi))
 			return;
+		ipi = IPI_BITMAP_VECTOR;
 	}
 	lapic_ipi_vectored(ipi, cpu_apic_ids[cpu]);
 }
@@ -1365,24 +1374,44 @@ void
 ipi_all_but_self(u_int ipi)
 {
 	cpuset_t other_cpus;
-
-	other_cpus = all_cpus;
-	CPU_CLR(PCPU_GET(cpuid), &other_cpus);
-	if (IPI_IS_BITMAPED(ipi)) {
-		ipi_selected(other_cpus, ipi);
-		return;
-	}
+	int cpu, c;
 
 	/*
 	 * IPI_STOP_HARD maps to a NMI and the trap handler needs a bit
 	 * of help in order to understand what is the source.
 	 * Set the mask of receiving CPUs for this purpose.
 	 */
-	if (ipi == IPI_STOP_HARD)
+	if (ipi == IPI_STOP_HARD) {
+		other_cpus = all_cpus;
+		CPU_CLR(PCPU_GET(cpuid), &other_cpus);
 		CPU_OR_ATOMIC(&ipi_stop_nmi_pending, &other_cpus);
+	}
 
 	CTR2(KTR_SMP, "%s: ipi: %x", __func__, ipi);
+	if (IPI_IS_BITMAPED(ipi)) {
+		cpu = PCPU_GET(cpuid);
+		CPU_FOREACH(c) {
+			if (c != cpu)
+				ipi_bitmap_set(c, ipi);
+		}
+		ipi = IPI_BITMAP_VECTOR;
+	}
 	lapic_ipi_vectored(ipi, APIC_IPI_DEST_OTHERS);
+}
+
+void
+ipi_self_from_nmi(u_int vector)
+{
+
+	lapic_ipi_vectored(vector, APIC_IPI_DEST_SELF);
+
+	/* Wait for IPI to finish. */
+	if (!lapic_ipi_wait(50000)) {
+		if (KERNEL_PANICKED())
+			return;
+		else
+			panic("APIC: IPI is stuck");
+	}
 }
 
 int
@@ -1492,7 +1521,7 @@ cpustop_handler_post(u_int cpu)
 	 */
 	invltlb_glob();
 
-#if defined(__amd64__) && defined(DDB)
+#if defined(__amd64__) && (defined(DDB) || defined(GDB))
 	amd64_db_resume_dbreg();
 #endif
 
@@ -1592,26 +1621,14 @@ cpususpend_handler(void)
 	CPU_CLR_ATOMIC(cpu, &toresume_cpus);
 }
 
-
+/*
+ * Handle an IPI_SWI by waking delayed SWI thread.
+ */
 void
-invlcache_handler(void)
+ipi_swi_handler(struct trapframe frame)
 {
-	uint32_t generation;
 
-#ifdef COUNT_IPIS
-	(*ipi_invlcache_counts[PCPU_GET(cpuid)])++;
-#endif /* COUNT_IPIS */
-
-	/*
-	 * Reading the generation here allows greater parallelism
-	 * since wbinvd is a serializing instruction.  Without the
-	 * temporary, we'd wait for wbinvd to complete, then the read
-	 * would execute, then the dependent write, which must then
-	 * complete before return from interrupt.
-	 */
-	generation = smp_tlb_generation;
-	wbinvd();
-	PCPU_SET(smp_tlb_done, generation);
+	intr_event_handle(clk_intr_event, &frame);
 }
 
 /*
@@ -1661,197 +1678,3 @@ mp_ipi_intrcnt(void *dummy)
 }
 SYSINIT(mp_ipi_intrcnt, SI_SUB_INTR, SI_ORDER_MIDDLE, mp_ipi_intrcnt, NULL);
 #endif
-
-/*
- * Flush the TLB on other CPU's
- */
-
-/* Variables needed for SMP tlb shootdown. */
-vm_offset_t smp_tlb_addr1, smp_tlb_addr2;
-pmap_t smp_tlb_pmap;
-volatile uint32_t smp_tlb_generation;
-
-#ifdef __amd64__
-#define	read_eflags() read_rflags()
-#endif
-
-static void
-smp_targeted_tlb_shootdown(cpuset_t mask, u_int vector, pmap_t pmap,
-    vm_offset_t addr1, vm_offset_t addr2)
-{
-	cpuset_t other_cpus;
-	volatile uint32_t *p_cpudone;
-	uint32_t generation;
-	int cpu;
-
-	/* It is not necessary to signal other CPUs while in the debugger. */
-	if (kdb_active || KERNEL_PANICKED())
-		return;
-
-	/*
-	 * Check for other cpus.  Return if none.
-	 */
-	if (CPU_ISFULLSET(&mask)) {
-		if (mp_ncpus <= 1)
-			return;
-	} else {
-		CPU_CLR(PCPU_GET(cpuid), &mask);
-		if (CPU_EMPTY(&mask))
-			return;
-	}
-
-	if (!(read_eflags() & PSL_I))
-		panic("%s: interrupts disabled", __func__);
-	mtx_lock_spin(&smp_ipi_mtx);
-	smp_tlb_addr1 = addr1;
-	smp_tlb_addr2 = addr2;
-	smp_tlb_pmap = pmap;
-	generation = ++smp_tlb_generation;
-	if (CPU_ISFULLSET(&mask)) {
-		ipi_all_but_self(vector);
-		other_cpus = all_cpus;
-		CPU_CLR(PCPU_GET(cpuid), &other_cpus);
-	} else {
-		other_cpus = mask;
-		while ((cpu = CPU_FFS(&mask)) != 0) {
-			cpu--;
-			CPU_CLR(cpu, &mask);
-			CTR3(KTR_SMP, "%s: cpu: %d ipi: %x", __func__,
-			    cpu, vector);
-			ipi_send_cpu(cpu, vector);
-		}
-	}
-	while ((cpu = CPU_FFS(&other_cpus)) != 0) {
-		cpu--;
-		CPU_CLR(cpu, &other_cpus);
-		p_cpudone = &cpuid_to_pcpu[cpu]->pc_smp_tlb_done;
-		while (*p_cpudone != generation)
-			ia32_pause();
-	}
-	mtx_unlock_spin(&smp_ipi_mtx);
-}
-
-void
-smp_masked_invltlb(cpuset_t mask, pmap_t pmap)
-{
-
-	if (smp_started) {
-		smp_targeted_tlb_shootdown(mask, IPI_INVLTLB, pmap, 0, 0);
-#ifdef COUNT_XINVLTLB_HITS
-		ipi_global++;
-#endif
-	}
-}
-
-void
-smp_masked_invlpg(cpuset_t mask, vm_offset_t addr, pmap_t pmap)
-{
-
-	if (smp_started) {
-		smp_targeted_tlb_shootdown(mask, IPI_INVLPG, pmap, addr, 0);
-#ifdef COUNT_XINVLTLB_HITS
-		ipi_page++;
-#endif
-	}
-}
-
-void
-smp_masked_invlpg_range(cpuset_t mask, vm_offset_t addr1, vm_offset_t addr2,
-    pmap_t pmap)
-{
-
-	if (smp_started) {
-		smp_targeted_tlb_shootdown(mask, IPI_INVLRNG, pmap,
-		    addr1, addr2);
-#ifdef COUNT_XINVLTLB_HITS
-		ipi_range++;
-		ipi_range_size += (addr2 - addr1) / PAGE_SIZE;
-#endif
-	}
-}
-
-void
-smp_cache_flush(void)
-{
-
-	if (smp_started) {
-		smp_targeted_tlb_shootdown(all_cpus, IPI_INVLCACHE, NULL,
-		    0, 0);
-	}
-}
-
-/*
- * Handlers for TLB related IPIs
- */
-void
-invltlb_handler(void)
-{
-	uint32_t generation;
-  
-#ifdef COUNT_XINVLTLB_HITS
-	xhits_gbl[PCPU_GET(cpuid)]++;
-#endif /* COUNT_XINVLTLB_HITS */
-#ifdef COUNT_IPIS
-	(*ipi_invltlb_counts[PCPU_GET(cpuid)])++;
-#endif /* COUNT_IPIS */
-
-	/*
-	 * Reading the generation here allows greater parallelism
-	 * since invalidating the TLB is a serializing operation.
-	 */
-	generation = smp_tlb_generation;
-	if (smp_tlb_pmap == kernel_pmap)
-		invltlb_glob();
-#ifdef __amd64__
-	else
-		invltlb();
-#endif
-	PCPU_SET(smp_tlb_done, generation);
-}
-
-void
-invlpg_handler(void)
-{
-	uint32_t generation;
-
-#ifdef COUNT_XINVLTLB_HITS
-	xhits_pg[PCPU_GET(cpuid)]++;
-#endif /* COUNT_XINVLTLB_HITS */
-#ifdef COUNT_IPIS
-	(*ipi_invlpg_counts[PCPU_GET(cpuid)])++;
-#endif /* COUNT_IPIS */
-
-	generation = smp_tlb_generation;	/* Overlap with serialization */
-#ifdef __i386__
-	if (smp_tlb_pmap == kernel_pmap)
-#endif
-		invlpg(smp_tlb_addr1);
-	PCPU_SET(smp_tlb_done, generation);
-}
-
-void
-invlrng_handler(void)
-{
-	vm_offset_t addr, addr2;
-	uint32_t generation;
-
-#ifdef COUNT_XINVLTLB_HITS
-	xhits_rng[PCPU_GET(cpuid)]++;
-#endif /* COUNT_XINVLTLB_HITS */
-#ifdef COUNT_IPIS
-	(*ipi_invlrng_counts[PCPU_GET(cpuid)])++;
-#endif /* COUNT_IPIS */
-
-	addr = smp_tlb_addr1;
-	addr2 = smp_tlb_addr2;
-	generation = smp_tlb_generation;	/* Overlap with serialization */
-#ifdef __i386__
-	if (smp_tlb_pmap == kernel_pmap)
-#endif
-		do {
-			invlpg(addr);
-			addr += PAGE_SIZE;
-		} while (addr < addr2);
-
-	PCPU_SET(smp_tlb_done, generation);
-}

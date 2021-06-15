@@ -48,7 +48,7 @@
  *  Driver version
  *********************************************************************/
 #define IXL_DRIVER_VERSION_MAJOR	2
-#define IXL_DRIVER_VERSION_MINOR	1
+#define IXL_DRIVER_VERSION_MINOR	3
 #define IXL_DRIVER_VERSION_BUILD	0
 
 #define IXL_DRIVER_VERSION_STRING			\
@@ -82,6 +82,10 @@ static pci_vendor_info_t ixl_vendor_info_array[] =
 	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_SFP_I_X722, "Intel(R) Ethernet Connection X722 for 10GbE SFP+"),
 	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_25G_B, "Intel(R) Ethernet Controller XXV710 for 25GbE backplane"),
 	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_25G_SFP28, "Intel(R) Ethernet Controller XXV710 for 25GbE SFP28"),
+	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_10G_BASE_T_BC, "Intel(R) Ethernet Controller X710 for 10GBASE-T"),
+	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_10G_SFP, "Intel(R) Ethernet Controller X710 for 10GbE SFP+"),
+	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_10G_B, "Intel(R) Ethernet Controller X710 for 10GbE backplane"),
+	PVIDV(I40E_INTEL_VENDOR_ID, I40E_DEV_ID_5G_BASE_T_BC, "Intel(R) Ethernet Controller V710 for 5GBASE-T"),
 	/* required last entry */
 	PVID_END
 };
@@ -117,14 +121,16 @@ static void	 ixl_if_vlan_unregister(if_ctx_t ctx, u16 vtag);
 static uint64_t	 ixl_if_get_counter(if_ctx_t ctx, ift_counter cnt);
 static int	 ixl_if_i2c_req(if_ctx_t ctx, struct ifi2creq *req);
 static int	 ixl_if_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data);
+static bool	 ixl_if_needs_restart(if_ctx_t ctx, enum iflib_restart_event event);
 #ifdef PCI_IOV
 static void	 ixl_if_vflr_handle(if_ctx_t ctx);
 #endif
 
 /*** Other ***/
-static u_int	 ixl_mc_filter_apply(void *, struct sockaddr_dl *, u_int);
 static void	 ixl_save_pf_tunables(struct ixl_pf *);
 static int	 ixl_allocate_pci_resources(struct ixl_pf *);
+static void	 ixl_setup_ssctx(struct ixl_pf *pf);
+static void	 ixl_admin_timer(void *arg);
 
 /*********************************************************************
  *  FreeBSD Device Interface Entry Points
@@ -187,6 +193,7 @@ static device_method_t ixl_if_methods[] = {
 	DEVMETHOD(ifdi_get_counter, ixl_if_get_counter),
 	DEVMETHOD(ifdi_i2c_req, ixl_if_i2c_req),
 	DEVMETHOD(ifdi_priv_ioctl, ixl_if_priv_ioctl),
+	DEVMETHOD(ifdi_needs_restart, ixl_if_needs_restart),
 #ifdef PCI_IOV
 	DEVMETHOD(ifdi_iov_init, ixl_if_iov_init),
 	DEVMETHOD(ifdi_iov_uninit, ixl_if_iov_uninit),
@@ -206,9 +213,10 @@ static driver_t ixl_if_driver = {
 ** TUNEABLE PARAMETERS:
 */
 
-static SYSCTL_NODE(_hw, OID_AUTO, ixl, CTLFLAG_RD, 0,
+static SYSCTL_NODE(_hw, OID_AUTO, ixl, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "ixl driver parameters");
 
+#ifdef IXL_DEBUG_FC
 /*
  * Leave this on unless you need to send flow control
  * frames (or other control frames) from software
@@ -219,6 +227,16 @@ TUNABLE_INT("hw.ixl.enable_tx_fc_filter",
 SYSCTL_INT(_hw_ixl, OID_AUTO, enable_tx_fc_filter, CTLFLAG_RDTUN,
     &ixl_enable_tx_fc_filter, 0,
     "Filter out packets with Ethertype 0x8808 from being sent out by non-HW sources");
+#endif
+
+#ifdef IXL_DEBUG
+static int ixl_debug_recovery_mode = 0;
+TUNABLE_INT("hw.ixl.debug_recovery_mode",
+    &ixl_debug_recovery_mode);
+SYSCTL_INT(_hw_ixl, OID_AUTO, debug_recovery_mode, CTLFLAG_RDTUN,
+    &ixl_debug_recovery_mode, 0,
+    "Act like when FW entered recovery mode (for debuging)");
+#endif
 
 static int ixl_i2c_access_method = 0;
 TUNABLE_INT("hw.ixl.i2c_access_method",
@@ -286,6 +304,10 @@ TUNABLE_INT("hw.ixl.tx_itr", &ixl_tx_itr);
 SYSCTL_INT(_hw_ixl, OID_AUTO, tx_itr, CTLFLAG_RDTUN,
     &ixl_tx_itr, 0, "TX Interrupt Rate");
 
+static int ixl_flow_control = -1;
+SYSCTL_INT(_hw_ixl, OID_AUTO, flow_control, CTLFLAG_RDTUN,
+    &ixl_flow_control, 0, "Initial Flow Control setting");
+
 #ifdef IXL_IW
 int ixl_enable_iwarp = 0;
 TUNABLE_INT("hw.ixl.enable_iwarp", &ixl_enable_iwarp);
@@ -333,13 +355,11 @@ static struct if_shared_ctx ixl_sctx_init = {
 	.isc_ntxd_default = {IXL_DEFAULT_RING},
 };
 
-if_shared_ctx_t ixl_sctx = &ixl_sctx_init;
-
 /*** Functions ***/
 static void *
 ixl_register(device_t dev)
 {
-	return (ixl_sctx);
+	return (&ixl_sctx_init);
 }
 
 static int
@@ -353,7 +373,7 @@ ixl_allocate_pci_resources(struct ixl_pf *pf)
 	rid = PCIR_BAR(0);
 	pf->pci_mem = bus_alloc_resource_any(dev, SYS_RES_MEMORY,
 	    &rid, RF_ACTIVE);
- 
+
 	if (!(pf->pci_mem)) {
 		device_printf(dev, "Unable to allocate bus resource: PCI memory\n");
 		return (ENXIO);
@@ -382,9 +402,79 @@ ixl_allocate_pci_resources(struct ixl_pf *pf)
 
 	pf->hw.hw_addr = (u8 *) &pf->osdep.mem_bus_space_handle;
 	pf->hw.back = &pf->osdep;
- 
+
  	return (0);
- }
+}
+
+static void
+ixl_setup_ssctx(struct ixl_pf *pf)
+{
+	if_softc_ctx_t scctx = pf->vsi.shared;
+	struct i40e_hw *hw = &pf->hw;
+
+	if (IXL_PF_IN_RECOVERY_MODE(pf)) {
+		scctx->isc_ntxqsets_max = scctx->isc_nrxqsets_max = 1;
+		scctx->isc_ntxqsets = scctx->isc_nrxqsets = 1;
+	} else if (hw->mac.type == I40E_MAC_X722)
+		scctx->isc_ntxqsets_max = scctx->isc_nrxqsets_max = 128;
+	else
+		scctx->isc_ntxqsets_max = scctx->isc_nrxqsets_max = 64;
+
+	if (pf->vsi.enable_head_writeback) {
+		scctx->isc_txqsizes[0] = roundup2(scctx->isc_ntxd[0]
+		    * sizeof(struct i40e_tx_desc) + sizeof(u32), DBA_ALIGN);
+		scctx->isc_txrx = &ixl_txrx_hwb;
+	} else {
+		scctx->isc_txqsizes[0] = roundup2(scctx->isc_ntxd[0]
+		    * sizeof(struct i40e_tx_desc), DBA_ALIGN);
+		scctx->isc_txrx = &ixl_txrx_dwb;
+	}
+
+	scctx->isc_txrx->ift_legacy_intr = ixl_intr;
+	scctx->isc_rxqsizes[0] = roundup2(scctx->isc_nrxd[0]
+	    * sizeof(union i40e_32byte_rx_desc), DBA_ALIGN);
+	scctx->isc_msix_bar = PCIR_BAR(IXL_MSIX_BAR);
+	scctx->isc_tx_nsegments = IXL_MAX_TX_SEGS;
+	scctx->isc_tx_tso_segments_max = IXL_MAX_TSO_SEGS;
+	scctx->isc_tx_tso_size_max = IXL_TSO_SIZE;
+	scctx->isc_tx_tso_segsize_max = IXL_MAX_DMA_SEG_SIZE;
+	scctx->isc_rss_table_size = pf->hw.func_caps.rss_table_size;
+	scctx->isc_tx_csum_flags = CSUM_OFFLOAD;
+	scctx->isc_capabilities = scctx->isc_capenable = IXL_CAPS;
+}
+
+static void
+ixl_admin_timer(void *arg)
+{
+	struct ixl_pf *pf = (struct ixl_pf *)arg;
+
+	/* Fire off the admin task */
+	iflib_admin_intr_deferred(pf->vsi.ctx);
+
+	/* Reschedule the admin timer */
+	callout_schedule(&pf->admin_timer, hz/2);
+}
+
+static int
+ixl_attach_pre_recovery_mode(struct ixl_pf *pf)
+{
+	struct ixl_vsi *vsi = &pf->vsi;
+	struct i40e_hw *hw = &pf->hw;
+	device_t dev = pf->dev;
+
+	device_printf(dev, "Firmware recovery mode detected. Limiting functionality. Refer to Intel(R) Ethernet Adapters and Devices User Guide for details on firmware recovery mode.\n");
+
+	i40e_get_mac_addr(hw, hw->mac.addr);
+
+	if (vsi->shared->isc_intr == IFLIB_INTR_MSIX) {
+		ixl_configure_intr0_msix(pf);
+		ixl_enable_intr0(hw);
+	}
+
+	ixl_setup_ssctx(pf);
+
+	return (0);
+}
 
 static int
 ixl_if_attach_pre(if_ctx_t ctx)
@@ -393,15 +483,15 @@ ixl_if_attach_pre(if_ctx_t ctx)
 	struct ixl_pf *pf;
 	struct i40e_hw *hw;
 	struct ixl_vsi *vsi;
-	if_softc_ctx_t scctx;
+	enum i40e_get_fw_lldp_status_resp lldp_status;
 	struct i40e_filter_control_settings filter;
 	enum i40e_status_code status;
 	int error = 0;
 
-	INIT_DBG_DEV(dev, "begin");
-
 	dev = iflib_get_dev(ctx);
 	pf = iflib_get_softc(ctx);
+
+	INIT_DBG_DEV(dev, "begin");
 
 	vsi = &pf->vsi;
 	vsi->back = pf;
@@ -414,7 +504,12 @@ ixl_if_attach_pre(if_ctx_t ctx)
 	vsi->num_vlans = 0;
 	vsi->ctx = ctx;
 	vsi->media = iflib_get_media(ctx);
-	vsi->shared = scctx = iflib_get_softc_ctx(ctx);
+	vsi->shared = iflib_get_softc_ctx(ctx);
+
+	snprintf(pf->admin_mtx_name, sizeof(pf->admin_mtx_name),
+	    "%s:admin", device_get_nameunit(dev));
+	mtx_init(&pf->admin_mtx, pf->admin_mtx_name, NULL, MTX_DEF);
+	callout_init_mtx(&pf->admin_timer, &pf->admin_mtx, 0);
 
 	/* Save tunable values */
 	ixl_save_pf_tunables(pf);
@@ -428,13 +523,11 @@ ixl_if_attach_pre(if_ctx_t ctx)
 
 	/* Establish a clean starting point */
 	i40e_clear_hw(hw);
-	status = i40e_pf_reset(hw);
-	if (status) {
-		device_printf(dev, "PF reset failure %s\n",
-		    i40e_stat_str(hw, status));
-		error = EIO;
+	i40e_set_mac_type(hw);
+
+	error = ixl_pf_reset(pf);
+	if (error)
 		goto err_out;
-	}
 
 	/* Initialize the shared code */
 	status = i40e_init_shared_code(hw);
@@ -481,6 +574,13 @@ ixl_if_attach_pre(if_ctx_t ctx)
 		device_printf(dev, "Please update the NVM image.\n");
 	}
 
+	if (IXL_PF_IN_RECOVERY_MODE(pf)) {
+		error = ixl_attach_pre_recovery_mode(pf);
+		if (error)
+			goto err_out;
+		return (error);
+	}
+
 	/* Clear PXE mode */
 	i40e_clear_pxe_mode(hw);
 
@@ -493,26 +593,22 @@ ixl_if_attach_pre(if_ctx_t ctx)
 	}
 
 	/* Set up host memory cache */
-	status = i40e_init_lan_hmc(hw, hw->func_caps.num_tx_qp,
-	    hw->func_caps.num_rx_qp, 0, 0);
-	if (status) {
-		device_printf(dev, "init_lan_hmc failed: %s\n",
-		    i40e_stat_str(hw, status));
-		goto err_get_cap;
-	}
-	status = i40e_configure_lan_hmc(hw, I40E_HMC_MODEL_DIRECT_ONLY);
-	if (status) {
-		device_printf(dev, "configure_lan_hmc failed: %s\n",
-		    i40e_stat_str(hw, status));
+	error = ixl_setup_hmc(pf);
+	if (error)
 		goto err_mac_hmc;
-	}
 
 	/* Disable LLDP from the firmware for certain NVM versions */
 	if (((pf->hw.aq.fw_maj_ver == 4) && (pf->hw.aq.fw_min_ver < 3)) ||
 	    (pf->hw.aq.fw_maj_ver < 4)) {
-		i40e_aq_stop_lldp(hw, TRUE, NULL);
+		i40e_aq_stop_lldp(hw, true, false, NULL);
 		pf->state |= IXL_PF_STATE_FW_LLDP_DISABLED;
 	}
+
+	/* Try enabling Energy Efficient Ethernet (EEE) mode */
+	if (i40e_enable_eee(hw, true) == I40E_SUCCESS)
+		atomic_set_32(&pf->state, IXL_PF_STATE_EEE_ENABLED);
+	else
+		atomic_clear_32(&pf->state, IXL_PF_STATE_EEE_ENABLED);
 
 	/* Get MAC addresses from hardware */
 	i40e_get_mac_addr(hw, hw->mac.addr);
@@ -535,46 +631,36 @@ ixl_if_attach_pre(if_ctx_t ctx)
 		device_printf(dev, "i40e_set_filter_control() failed\n");
 
 	/* Query device FW LLDP status */
-	ixl_get_fw_lldp_status(pf);
+	if (i40e_get_fw_lldp_status(hw, &lldp_status) == I40E_SUCCESS) {
+		if (lldp_status == I40E_GET_FW_LLDP_STATUS_DISABLED) {
+			atomic_set_32(&pf->state,
+			    IXL_PF_STATE_FW_LLDP_DISABLED);
+		} else {
+			atomic_clear_32(&pf->state,
+			    IXL_PF_STATE_FW_LLDP_DISABLED);
+		}
+	}
+
 	/* Tell FW to apply DCB config on link up */
 	i40e_aq_set_dcb_parameters(hw, true, NULL);
 
 	/* Fill out iflib parameters */
-	if (hw->mac.type == I40E_MAC_X722)
-		scctx->isc_ntxqsets_max = scctx->isc_nrxqsets_max = 128;
-	else
-		scctx->isc_ntxqsets_max = scctx->isc_nrxqsets_max = 64;
-	if (vsi->enable_head_writeback) {
-		scctx->isc_txqsizes[0] = roundup2(scctx->isc_ntxd[0]
-		    * sizeof(struct i40e_tx_desc) + sizeof(u32), DBA_ALIGN);
-		scctx->isc_txrx = &ixl_txrx_hwb;
-	} else {
-		scctx->isc_txqsizes[0] = roundup2(scctx->isc_ntxd[0]
-		    * sizeof(struct i40e_tx_desc), DBA_ALIGN);
-		scctx->isc_txrx = &ixl_txrx_dwb;
-	}
-	scctx->isc_txrx->ift_legacy_intr = ixl_intr;
-	scctx->isc_rxqsizes[0] = roundup2(scctx->isc_nrxd[0]
-	    * sizeof(union i40e_32byte_rx_desc), DBA_ALIGN);
-	scctx->isc_msix_bar = PCIR_BAR(IXL_MSIX_BAR);
-	scctx->isc_tx_nsegments = IXL_MAX_TX_SEGS;
-	scctx->isc_tx_tso_segments_max = IXL_MAX_TSO_SEGS;
-	scctx->isc_tx_tso_size_max = IXL_TSO_SIZE;
-	scctx->isc_tx_tso_segsize_max = IXL_MAX_DMA_SEG_SIZE;
-	scctx->isc_rss_table_size = pf->hw.func_caps.rss_table_size;
-	scctx->isc_tx_csum_flags = CSUM_OFFLOAD;
-	scctx->isc_capabilities = scctx->isc_capenable = IXL_CAPS;
+	ixl_setup_ssctx(pf);
 
 	INIT_DBG_DEV(dev, "end");
 	return (0);
 
 err_mac_hmc:
-	i40e_shutdown_lan_hmc(hw);
+	ixl_shutdown_hmc(pf);
 err_get_cap:
 	i40e_shutdown_adminq(hw);
 err_out:
 	ixl_free_pci_resources(pf);
 err_pci_res:
+	mtx_lock(&pf->admin_mtx);
+	callout_stop(&pf->admin_timer);
+	mtx_unlock(&pf->admin_mtx);
+	mtx_destroy(&pf->admin_mtx);
 	return (error);
 }
 
@@ -588,10 +674,11 @@ ixl_if_attach_post(if_ctx_t ctx)
 	int error = 0;
 	enum i40e_status_code status;
 
-	INIT_DBG_DEV(dev, "begin");
-
 	dev = iflib_get_dev(ctx);
 	pf = iflib_get_softc(ctx);
+
+	INIT_DBG_DEV(dev, "begin");
+
 	vsi = &pf->vsi;
 	vsi->ifp = iflib_get_ifp(ctx);
 	hw = &pf->hw;
@@ -605,6 +692,22 @@ ixl_if_attach_post(if_ctx_t ctx)
 		device_printf(dev, "interface setup failed!\n");
 		error = EIO;
 		goto err;
+	}
+
+	if (IXL_PF_IN_RECOVERY_MODE(pf)) {
+		/* Keep admin queue interrupts active while driver is loaded */
+		if (vsi->shared->isc_intr == IFLIB_INTR_MSIX) {
+			ixl_configure_intr0_msix(pf);
+			ixl_enable_intr0(hw);
+		}
+
+		ixl_add_sysctls_recovery_mode(pf);
+
+		/* Start the admin timer */
+		mtx_lock(&pf->admin_mtx);
+		callout_reset(&pf->admin_timer, hz/2, ixl_admin_timer, pf);
+		mtx_unlock(&pf->admin_mtx);
+		return (0);
 	}
 
 	/* Determine link state */
@@ -669,6 +772,12 @@ ixl_if_attach_post(if_ctx_t ctx)
 	ixl_update_stats_counters(pf);
 	ixl_add_hw_stats(pf);
 
+	/*
+	 * Driver may have been reloaded. Ensure that the link state
+	 * is consistent with current settings.
+	 */
+	ixl_set_link(pf, (pf->state & IXL_PF_STATE_LINK_ACTIVE_ON_DOWN) != 0);
+
 	hw->phy.get_link_info = true;
 	i40e_get_link_status(hw, &pf->link_up);
 	ixl_update_link_status(pf);
@@ -697,6 +806,10 @@ ixl_if_attach_post(if_ctx_t ctx)
 		device_printf(dev, "The device is not iWARP enabled\n");
 	}
 #endif
+	/* Start the admin timer */
+	mtx_lock(&pf->admin_mtx);
+	callout_reset(&pf->admin_timer, hz/2, ixl_admin_timer, pf);
+	mtx_unlock(&pf->admin_mtx);
 
 	INIT_DBG_DEV(dev, "end");
 	return (0);
@@ -725,6 +838,12 @@ ixl_if_detach(if_ctx_t ctx)
 
 	INIT_DBG_DEV(dev, "begin");
 
+	/* Stop the admin timer */
+	mtx_lock(&pf->admin_mtx);
+	callout_stop(&pf->admin_timer);
+	mtx_unlock(&pf->admin_mtx);
+	mtx_destroy(&pf->admin_mtx);
+
 #ifdef IXL_IW
 	if (ixl_enable_iwarp && pf->iw_enabled) {
 		error = ixl_iw_pf_detach(pf);
@@ -738,13 +857,7 @@ ixl_if_detach(if_ctx_t ctx)
 	ifmedia_removeall(vsi->media);
 
 	/* Shutdown LAN HMC */
-	if (hw->hmc.hmc_obj) {
-		status = i40e_shutdown_lan_hmc(hw);
-		if (status)
-			device_printf(dev,
-			    "i40e_shutdown_lan_hmc() failed with status %s\n",
-			    i40e_stat_str(hw, status));
-	}
+	ixl_shutdown_hmc(pf);
 
 	/* Shutdown admin queue */
 	ixl_disable_intr0(hw);
@@ -756,7 +869,7 @@ ixl_if_detach(if_ctx_t ctx)
 
 	ixl_pf_qmgr_destroy(&pf->qmgr);
 	ixl_free_pci_resources(pf);
-	ixl_free_mac_filters(vsi);
+	ixl_free_filters(&vsi->ftl);
 	INIT_DBG_DEV(dev, "end");
 	return (0);
 }
@@ -816,6 +929,8 @@ ixl_if_init(if_ctx_t ctx)
 	u8		tmpaddr[ETHER_ADDR_LEN];
 	int		ret;
 
+	if (IXL_PF_IN_RECOVERY_MODE(pf))
+		return;
 	/*
 	 * If the aq is dead here, it probably means something outside of the driver
 	 * did something to the adapter, like a PF reset.
@@ -824,14 +939,14 @@ ixl_if_init(if_ctx_t ctx)
 	if (!i40e_check_asq_alive(&pf->hw)) {
 		device_printf(dev, "Admin Queue is down; resetting...\n");
 		ixl_teardown_hw_structs(pf);
-		ixl_rebuild_hw_structs_after_reset(pf);
+		ixl_rebuild_hw_structs_after_reset(pf, false);
 	}
 
 	/* Get the latest mac address... User might use a LAA */
 	bcopy(IF_LLADDR(vsi->ifp), tmpaddr, ETH_ALEN);
-	if (!cmp_etheraddr(hw->mac.addr, tmpaddr) &&
+	if (!ixl_ether_is_equal(hw->mac.addr, tmpaddr) &&
 	    (i40e_validate_mac_addr(tmpaddr) == I40E_SUCCESS)) {
-		ixl_del_filter(vsi, hw->mac.addr, IXL_VLAN_ANY);
+		ixl_del_all_vlan_filters(vsi, hw->mac.addr);
 		bcopy(tmpaddr, hw->mac.addr, ETH_ALEN);
 		ret = i40e_aq_mac_address_write(hw,
 		    I40E_AQC_WRITE_TYPE_LAA_ONLY,
@@ -840,7 +955,10 @@ ixl_if_init(if_ctx_t ctx)
 			device_printf(dev, "LLA address change failed!!\n");
 			return;
 		}
-		ixl_add_filter(vsi, hw->mac.addr, IXL_VLAN_ANY);
+		/*
+		 * New filters are configured by ixl_reconfigure_filters
+		 * at the end of ixl_init_locked.
+		 */
 	}
 
 	iflib_set_mac(ctx, hw->mac.addr);
@@ -850,7 +968,9 @@ ixl_if_init(if_ctx_t ctx)
 		device_printf(dev, "initialize vsi failed!!\n");
 		return;
 	}
-	
+
+	ixl_set_link(pf, true);
+
 	/* Reconfigure multicast filters in HW */
 	ixl_if_multi_set(ctx);
 
@@ -893,9 +1013,13 @@ void
 ixl_if_stop(if_ctx_t ctx)
 {
 	struct ixl_pf *pf = iflib_get_softc(ctx);
+	struct ifnet *ifp = iflib_get_ifp(ctx);
 	struct ixl_vsi *vsi = &pf->vsi;
 
 	INIT_DEBUGOUT("ixl_if_stop: begin\n");
+
+	if (IXL_PF_IN_RECOVERY_MODE(pf))
+		return;
 
 	// TODO: This may need to be reworked
 #ifdef IXL_IW
@@ -906,6 +1030,15 @@ ixl_if_stop(if_ctx_t ctx)
 
 	ixl_disable_rings_intr(vsi);
 	ixl_disable_rings(pf, vsi, &pf->qtag);
+
+	/*
+	 * Don't set link state if only reconfiguring
+	 * e.g. on MTU change.
+	 */
+	if ((if_getflags(ifp) & IFF_UP) == 0 &&
+	    (atomic_load_acq_32(&pf->state) &
+	    IXL_PF_STATE_LINK_ACTIVE_ON_DOWN) == 0)
+		ixl_set_link(pf, false);
 }
 
 static int
@@ -940,7 +1073,7 @@ ixl_if_msix_intr_assign(if_ctx_t ctx, int msix)
 
 		snprintf(buf, sizeof(buf), "rxq%d", i);
 		err = iflib_irq_alloc_generic(ctx, &rx_que->que_irq, rid,
-		    IFLIB_INTR_RX, ixl_msix_que, rx_que, rx_que->rxr.me, buf);
+		    IFLIB_INTR_RXTX, ixl_msix_que, rx_que, rx_que->rxr.me, buf);
 		/* XXX: Does the driver work as expected if there are fewer num_rx_queues than
 		 * what's expected in the iflib context? */
 		if (err) {
@@ -1062,7 +1195,7 @@ ixl_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs, uint64_t *paddrs, int ntxq
 		device_printf(iflib_get_dev(ctx), "Unable to allocate TX ring memory\n");
 		return (ENOMEM);
 	}
-	
+
 	for (i = 0, que = vsi->tx_queues; i < ntxqsets; i++, que++) {
 		struct tx_ring *txr = &que->txr;
 
@@ -1086,7 +1219,7 @@ ixl_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs, uint64_t *paddrs, int ntxq
 		txr->tx_paddr = paddrs[i * ntxqs];
 		txr->que = que;
 	}
-	
+
 	return (0);
 fail:
 	ixl_if_queues_free(ctx);
@@ -1142,7 +1275,7 @@ ixl_if_queues_free(if_ctx_t ctx)
 	struct ixl_pf *pf = iflib_get_softc(ctx);
 	struct ixl_vsi *vsi = &pf->vsi;
 
-	if (!vsi->enable_head_writeback) {
+	if (vsi->tx_queues != NULL && !vsi->enable_head_writeback) {
 		struct ixl_tx_queue *que;
 		int i = 0;
 
@@ -1163,6 +1296,9 @@ ixl_if_queues_free(if_ctx_t ctx)
 		free(vsi->rx_queues, M_IXL);
 		vsi->rx_queues = NULL;
 	}
+
+	if (!IXL_PF_IN_RECOVERY_MODE(pf))
+		sysctl_ctx_free(&vsi->sysctl_ctx);
 }
 
 void
@@ -1172,7 +1308,7 @@ ixl_update_link_status(struct ixl_pf *pf)
 	struct i40e_hw *hw = &pf->hw;
 	u64 baudrate;
 
-	if (pf->link_up) { 
+	if (pf->link_up) {
 		if (vsi->link_active == FALSE) {
 			vsi->link_active = TRUE;
 			baudrate = ixl_max_aq_speed_to_value(hw->phy.link_info.link_speed);
@@ -1181,7 +1317,6 @@ ixl_update_link_status(struct ixl_pf *pf)
 #ifdef PCI_IOV
 			ixl_broadcast_link_state(pf);
 #endif
-      
 		}
 	} else { /* Link down */
 		if (vsi->link_active == TRUE) {
@@ -1268,20 +1403,27 @@ ixl_process_adminq(struct ixl_pf *pf, u16 *pending)
 static void
 ixl_if_update_admin_status(if_ctx_t ctx)
 {
-	struct ixl_pf			*pf = iflib_get_softc(ctx);
-	struct i40e_hw			*hw = &pf->hw;
-	u16				pending;
+	struct ixl_pf	*pf = iflib_get_softc(ctx);
+	struct i40e_hw	*hw = &pf->hw;
+	u16		pending;
 
-	if (pf->state & IXL_PF_STATE_ADAPTER_RESETTING)
+	if (IXL_PF_IS_RESETTING(pf))
 		ixl_handle_empr_reset(pf);
+
+	/*
+	 * Admin Queue is shut down while handling reset.
+	 * Don't proceed if it hasn't been re-initialized
+	 * e.g due to an issue with new FW.
+	 */
+	if (!i40e_check_asq_alive(&pf->hw))
+		return;
 
 	if (pf->state & IXL_PF_STATE_MDD_PENDING)
 		ixl_handle_mdd_event(pf);
 
 	ixl_process_adminq(pf, &pending);
 	ixl_update_link_status(pf);
-	ixl_update_stats_counters(pf);
-	
+
 	/*
 	 * If there are still messages to process, reschedule ourselves.
 	 * Otherwise, re-enable our interrupt and go to sleep.
@@ -1298,32 +1440,22 @@ ixl_if_multi_set(if_ctx_t ctx)
 	struct ixl_pf *pf = iflib_get_softc(ctx);
 	struct ixl_vsi *vsi = &pf->vsi;
 	struct i40e_hw *hw = vsi->hw;
-	int mcnt, flags;
-	int del_mcnt;
+	int mcnt;
 
 	IOCTL_DEBUGOUT("ixl_if_multi_set: begin");
 
-	mcnt = min(if_llmaddr_count(iflib_get_ifp(ctx)), MAX_MULTICAST_ADDR);
 	/* Delete filters for removed multicast addresses */
-	del_mcnt = ixl_del_multi(vsi);
-	vsi->num_macs -= del_mcnt;
+	ixl_del_multi(vsi, false);
 
+	mcnt = min(if_llmaddr_count(iflib_get_ifp(ctx)), MAX_MULTICAST_ADDR);
 	if (__predict_false(mcnt == MAX_MULTICAST_ADDR)) {
 		i40e_aq_set_vsi_multicast_promiscuous(hw,
 		    vsi->seid, TRUE, NULL);
+		ixl_del_multi(vsi, true);
 		return;
 	}
-	/* (re-)install filters for all mcast addresses */
-	/* XXX: This bypasses filter count tracking code! */
-	mcnt = if_foreach_llmaddr(iflib_get_ifp(ctx), ixl_mc_filter_apply, vsi);
-	if (mcnt > 0) {
-		vsi->num_macs += mcnt;
-		flags = (IXL_FILTER_ADD | IXL_FILTER_USED | IXL_FILTER_MC);
-		ixl_add_hw_filters(vsi, flags, mcnt);
-	}
 
-	ixl_dbg_filter(pf, "%s: filter mac total: %d\n",
-	    __func__, vsi->num_macs);
+	ixl_add_multi(vsi);
 	IOCTL_DEBUGOUT("ixl_if_multi_set: end");
 }
 
@@ -1380,6 +1512,14 @@ ixl_if_media_status(if_ctx_t ctx, struct ifmediareq *ifmr)
 			break;
 		case I40E_PHY_TYPE_1000BASE_T_OPTICAL:
 			ifmr->ifm_active |= IFM_1000_T;
+			break;
+		/* 2.5 G */
+		case I40E_PHY_TYPE_2_5GBASE_T:
+			ifmr->ifm_active |= IFM_2500_T;
+			break;
+		/* 5 G */
+		case I40E_PHY_TYPE_5GBASE_T:
+			ifmr->ifm_active |= IFM_5000_T;
 			break;
 		/* 10 G */
 		case I40E_PHY_TYPE_10GBASE_SFPP_CU:
@@ -1519,11 +1659,12 @@ ixl_if_promisc_set(if_ctx_t ctx, int flags)
 static void
 ixl_if_timer(if_ctx_t ctx, uint16_t qid)
 {
+	struct ixl_pf *pf = iflib_get_softc(ctx);
+
 	if (qid != 0)
 		return;
 
-	/* Fire off the adminq task */
-	iflib_admin_intr_deferred(ctx);
+	ixl_update_stats_counters(pf);
 }
 
 static void
@@ -1532,12 +1673,35 @@ ixl_if_vlan_register(if_ctx_t ctx, u16 vtag)
 	struct ixl_pf *pf = iflib_get_softc(ctx);
 	struct ixl_vsi *vsi = &pf->vsi;
 	struct i40e_hw	*hw = vsi->hw;
+	if_t ifp = iflib_get_ifp(ctx);
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
 
+	/*
+	 * Keep track of registered VLANS to know what
+	 * filters have to be configured when VLAN_HWFILTER
+	 * capability is enabled.
+	 */
 	++vsi->num_vlans;
-	ixl_add_filter(vsi, hw->mac.addr, vtag);
+	bit_set(vsi->vlans_map, vtag);
+
+	if ((if_getcapenable(ifp) & IFCAP_VLAN_HWFILTER) == 0)
+		return;
+
+	if (vsi->num_vlans < IXL_MAX_VLAN_FILTERS)
+		ixl_add_filter(vsi, hw->mac.addr, vtag);
+	else if (vsi->num_vlans == IXL_MAX_VLAN_FILTERS) {
+		/*
+		 * There is not enough HW resources to add filters
+		 * for all registered VLANs. Re-configure filtering
+		 * to allow reception of all expected traffic.
+		 */
+		device_printf(vsi->dev,
+		    "Not enough HW filters for all VLANs. VLAN HW filtering disabled");
+		ixl_del_all_vlan_filters(vsi, hw->mac.addr);
+		ixl_add_filter(vsi, hw->mac.addr, IXL_VLAN_ANY);
+	}
 }
 
 static void
@@ -1546,12 +1710,23 @@ ixl_if_vlan_unregister(if_ctx_t ctx, u16 vtag)
 	struct ixl_pf *pf = iflib_get_softc(ctx);
 	struct ixl_vsi *vsi = &pf->vsi;
 	struct i40e_hw	*hw = vsi->hw;
+	if_t ifp = iflib_get_ifp(ctx);
 
 	if ((vtag == 0) || (vtag > 4095))	/* Invalid */
 		return;
 
 	--vsi->num_vlans;
-	ixl_del_filter(vsi, hw->mac.addr, vtag);
+	bit_clear(vsi->vlans_map, vtag);
+
+	if ((if_getcapenable(ifp) & IFCAP_VLAN_HWFILTER) == 0)
+		return;
+
+	if (vsi->num_vlans < IXL_MAX_VLAN_FILTERS)
+		ixl_del_filter(vsi, hw->mac.addr, vtag);
+	else if (vsi->num_vlans == IXL_MAX_VLAN_FILTERS) {
+		ixl_del_filter(vsi, hw->mac.addr, IXL_VLAN_ANY);
+		ixl_add_vlan_filters(vsi, hw->mac.addr);
+	}
 }
 
 static uint64_t
@@ -1651,13 +1826,22 @@ ixl_if_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 	return (error);
 }
 
-static u_int
-ixl_mc_filter_apply(void *arg, struct sockaddr_dl *sdl, u_int count __unused)
+/* ixl_if_needs_restart - Tell iflib when the driver needs to be reinitialized
+ * @ctx: iflib context
+ * @event: event code to check
+ *
+ * Defaults to returning false for every event.
+ *
+ * @returns true if iflib needs to reinit the interface, false otherwise
+ */
+static bool
+ixl_if_needs_restart(if_ctx_t ctx __unused, enum iflib_restart_event event)
 {
-	struct ixl_vsi *vsi = arg;
-
-	ixl_add_mc_filter(vsi, (u8*)LLADDR(sdl));
-	return (1);
+	switch (event) {
+	case IFLIB_RESTART_VLAN_CONFIG:
+	default:
+		return (false);
+	}
 }
 
 /*
@@ -1669,7 +1853,12 @@ ixl_save_pf_tunables(struct ixl_pf *pf)
 	device_t dev = pf->dev;
 
 	/* Save tunable information */
+#ifdef IXL_DEBUG_FC
 	pf->enable_tx_fc_filter = ixl_enable_tx_fc_filter;
+#endif
+#ifdef IXL_DEBUG
+	pf->recovery_mode = ixl_debug_recovery_mode;
+#endif
 	pf->dbg_mask = ixl_core_debug_mask;
 	pf->hw.debug_mask = ixl_shared_debug_mask;
 	pf->vsi.enable_head_writeback = !!(ixl_enable_head_writeback);
@@ -1707,5 +1896,20 @@ ixl_save_pf_tunables(struct ixl_pf *pf)
 		pf->rx_itr = IXL_ITR_8K;
 	} else
 		pf->rx_itr = ixl_rx_itr;
+
+	pf->fc = -1;
+	if (ixl_flow_control != -1) {
+		if (ixl_flow_control < 0 || ixl_flow_control > 3) {
+			device_printf(dev,
+			    "Invalid flow_control value of %d set!\n",
+			    ixl_flow_control);
+			device_printf(dev,
+			    "flow_control must be between %d and %d, "
+			    "inclusive\n", 0, 3);
+			device_printf(dev,
+			    "Using default configuration instead\n");
+		} else
+			pf->fc = ixl_flow_control;
+	}
 }
 

@@ -70,7 +70,7 @@ static struct mtx intr_lock;
 MTX_SYSINIT(intr_lock, &intr_lock, "stack intr", MTX_DEF);
 #endif
 
-static void
+static void __nosanitizeaddress
 stack_capture(struct thread *td, struct stack *st, register_t fp)
 {
 	x86_frame_t frame;
@@ -79,9 +79,7 @@ stack_capture(struct thread *td, struct stack *st, register_t fp)
 	stack_zero(st);
 	frame = (x86_frame_t)fp;
 	while (1) {
-		if ((vm_offset_t)frame < td->td_kstack ||
-		    (vm_offset_t)frame >= td->td_kstack +
-		    td->td_kstack_pages * PAGE_SIZE)
+		if (!kstack_contains(td, (vm_offset_t)frame, sizeof(*frame)))
 			break;
 		callpc = frame->f_retaddr;
 		if (!INKERNEL(callpc))

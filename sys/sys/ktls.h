@@ -29,8 +29,10 @@
 #ifndef _SYS_KTLS_H_
 #define	_SYS_KTLS_H_
 
+#ifdef _KERNEL
 #include <sys/refcount.h>
 #include <sys/_task.h>
+#endif
 
 struct tls_record_layer {
 	uint8_t  tls_type;
@@ -44,6 +46,7 @@ struct tls_record_layer {
 #define	TLS_MAX_PARAM_SIZE	1024	/* Max key/mac/iv in sockopt */
 #define	TLS_AEAD_GCM_LEN	4
 #define	TLS_1_3_GCM_IV_LEN	12
+#define	TLS_CHACHA20_IV_LEN	12
 #define	TLS_CBC_IMPLICIT_IV_LEN	16
 
 /* Type values for the record layer */
@@ -98,8 +101,9 @@ struct tls_mac_data {
 #define	TLS_MINOR_VER_TWO	3	/* 3, 3 */
 #define	TLS_MINOR_VER_THREE	4	/* 3, 4 */
 
-/* For TCP_TXTLS_ENABLE */
-struct tls_enable {
+/* For TCP_TXTLS_ENABLE and TCP_RXTLS_ENABLE. */
+#ifdef _KERNEL
+struct tls_enable_v0 {
 	const uint8_t *cipher_key;
 	const uint8_t *iv;		/* Implicit IV. */
 	const uint8_t *auth_key;
@@ -112,6 +116,33 @@ struct tls_enable {
 	uint8_t tls_vmajor;
 	uint8_t tls_vminor;
 };
+#endif
+
+struct tls_enable {
+	const uint8_t *cipher_key;
+	const uint8_t *iv;		/* Implicit IV. */
+	const uint8_t *auth_key;
+	int	cipher_algorithm;	/* e.g. CRYPTO_AES_CBC */
+	int	cipher_key_len;
+	int	iv_len;
+	int	auth_algorithm;		/* e.g. CRYPTO_SHA2_256_HMAC */
+	int	auth_key_len;
+	int	flags;
+	uint8_t tls_vmajor;
+	uint8_t tls_vminor;
+	uint8_t rec_seq[8];
+};
+
+/* Structure for TLS_GET_RECORD. */
+struct tls_get_record {
+	/* TLS record header. */
+	uint8_t  tls_type;
+	uint8_t  tls_vmajor;
+	uint8_t  tls_vminor;
+	uint16_t tls_length;
+};
+
+#ifdef _KERNEL
 
 struct tls_session_params {
 	uint8_t *cipher_key;
@@ -131,60 +162,57 @@ struct tls_session_params {
 	uint8_t flags;
 };
 
-#ifdef _KERNEL
-
-#define	KTLS_API_VERSION 6
+/* Used in APIs to request RX vs TX sessions. */
+#define	KTLS_TX		1
+#define	KTLS_RX		2
 
 struct iovec;
 struct ktls_session;
 struct m_snd_tag;
 struct mbuf;
-struct mbuf_ext_pgs;
 struct sockbuf;
 struct socket;
 
-struct ktls_crypto_backend {
-	LIST_ENTRY(ktls_crypto_backend) next;
-	int (*try)(struct socket *so, struct ktls_session *tls);
-	int prio;
-	int api_version;
-	int use_count;
-	const char *name;
-};
-
 struct ktls_session {
-	int	(*sw_encrypt)(struct ktls_session *tls,
-	    const struct tls_record_layer *hdr, uint8_t *trailer,
-	    struct iovec *src, struct iovec *dst, int iovcnt,
-	    uint64_t seqno, uint8_t record_type);
+	union {
+		int	(*sw_encrypt)(struct ktls_session *tls, struct mbuf *m,
+		    struct iovec *dst, int iovcnt);
+		int	(*sw_decrypt)(struct ktls_session *tls,
+		    const struct tls_record_layer *hdr, struct mbuf *m,
+		    uint64_t seqno, int *trailer_len);
+	};
 	union {
 		void *cipher;
 		struct m_snd_tag *snd_tag;
 	};
-	struct ktls_crypto_backend *be;
-	void (*free)(struct ktls_session *tls);
 	struct tls_session_params params;
 	u_int	wq_index;
 	volatile u_int refcount;
 	int mode;
+	bool reset_pending;
 
 	struct task reset_tag_task;
 	struct inpcb *inp;
-	bool reset_pending;
 } __aligned(CACHE_LINE_SIZE);
 
-int ktls_crypto_backend_register(struct ktls_crypto_backend *be);
-int ktls_crypto_backend_deregister(struct ktls_crypto_backend *be);
+void ktls_check_rx(struct sockbuf *sb);
+int ktls_enable_rx(struct socket *so, struct tls_enable *en);
 int ktls_enable_tx(struct socket *so, struct tls_enable *en);
 void ktls_destroy(struct ktls_session *tls);
-int ktls_frame(struct mbuf *m, struct ktls_session *tls, int *enqueue_cnt,
+void ktls_frame(struct mbuf *m, struct ktls_session *tls, int *enqueue_cnt,
     uint8_t record_type);
+void ktls_ocf_free(struct ktls_session *tls);
+int ktls_ocf_try(struct socket *so, struct ktls_session *tls, int direction);
 void ktls_seq(struct sockbuf *sb, struct mbuf *m);
 void ktls_enqueue(struct mbuf *m, struct socket *so, int page_count);
-void ktls_enqueue_to_free(struct mbuf_ext_pgs *pgs);
+void ktls_enqueue_to_free(struct mbuf *m);
+int ktls_get_rx_mode(struct socket *so);
 int ktls_set_tx_mode(struct socket *so, int mode);
 int ktls_get_tx_mode(struct socket *so);
 int ktls_output_eagain(struct inpcb *inp, struct ktls_session *tls);
+#ifdef RATELIMIT
+int ktls_modify_txrtlmt(struct ktls_session *tls, uint64_t max_pacing_rate);
+#endif
 
 static inline struct ktls_session *
 ktls_hold(struct ktls_session *tls)

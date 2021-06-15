@@ -87,6 +87,7 @@ nvme_ns_ioctl(struct cdev *cdev, u_long cmd, caddr_t arg, int flag,
 		struct nvme_get_nsid *gnsid = (struct nvme_get_nsid *)arg;
 		strncpy(gnsid->cdev, device_get_nameunit(ctrlr->dev),
 		    sizeof(gnsid->cdev));
+		gnsid->cdev[sizeof(gnsid->cdev) - 1] = '\0';
 		gnsid->nsid = ns->id;
 		break;
 	}
@@ -472,7 +473,7 @@ nvme_ns_bio_process(struct nvme_namespace *ns, struct bio *bp,
 	case BIO_DELETE:
 		dsm_range =
 		    malloc(sizeof(struct nvme_dsm_range), M_NVME,
-		    M_ZERO | M_WAITOK);
+		    M_ZERO | M_NOWAIT);
 		if (!dsm_range) {
 			err = ENOMEM;
 			break;
@@ -488,7 +489,7 @@ nvme_ns_bio_process(struct nvme_namespace *ns, struct bio *bp,
 			free(dsm_range, M_NVME);
 		break;
 	default:
-		err = EIO;
+		err = EOPNOTSUPP;
 		break;
 	}
 
@@ -617,7 +618,8 @@ nvme_ns_construct(struct nvme_namespace *ns, uint32_t id,
 	return (0);
 }
 
-void nvme_ns_destruct(struct nvme_namespace *ns)
+void
+nvme_ns_destruct(struct nvme_namespace *ns)
 {
 
 	if (ns->cdev != NULL)

@@ -76,8 +76,6 @@ static int	aout_fixup(uintptr_t *stack_base, struct image_params *imgp);
 struct sysentvec aout_sysvec = {
 	.sv_size	= SYS_MAXSYSCALL,
 	.sv_table	= sysent,
-	.sv_errsize	= 0,
-	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
 	.sv_fixup	= aout_fixup,
 	.sv_sendsig	= sendsig,
@@ -117,8 +115,6 @@ extern u_long ia32_maxssiz;
 struct sysentvec aout_sysvec = {
 	.sv_size	= FREEBSD32_SYS_MAXSYSCALL,
 	.sv_table	= freebsd32_sysent,
-	.sv_errsize	= 0,
-	.sv_errtbl	= NULL,
 	.sv_transtrap	= NULL,
 	.sv_fixup	= aout_fixup,
 	.sv_sendsig	= ia32_sendsig,
@@ -200,7 +196,7 @@ exec_aout_imgact(struct image_params *imgp)
 		file_offset = 0;
 		/* Pass PS_STRINGS for BSD/OS binaries only. */
 		if (N_GETMID(*a_out) == MID_ZERO)
-			imgp->ps_strings = aout_sysvec.sv_psstrings;
+			imgp->ps_strings = (void *)aout_sysvec.sv_psstrings;
 		break;
 	default:
 		/* NetBSD compatibility */

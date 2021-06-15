@@ -36,7 +36,22 @@ __elfN(powerpc_copyout_auxargs)(struct image_params *imgp, uintptr_t base)
 	Elf_Auxinfo *argarray, *pos;
 	int error;
 
-	if (imgp->proc->p_osrel >= P_OSREL_POWERPC_NEW_AUX_ARGS)
+	/*
+	 * XXX If we can't find image's OSREL, assume it uses the new auxv
+	 * format.
+	 *
+	 * This is specially important for rtld, that is not tagged. Using
+	 * direct exec mode with new (ELFv2) binaries that expect the new auxv
+	 * format would result in crashes otherwise.
+	 *
+	 * Unfortunately, this may break direct exec'ing old binaries,
+	 * but it seems better to correctly support new binaries by default,
+	 * considering the transition to ELFv2 happened quite some time
+	 * ago. If needed, a sysctl may be added to allow old auxv format to
+	 * be used when OSREL is not found.
+	 */
+	if (imgp->proc->p_osrel >= P_OSREL_POWERPC_NEW_AUX_ARGS ||
+	    imgp->proc->p_osrel == 0)
 		return (__elfN(freebsd_copyout_auxargs)(imgp, base));
 
 	args = (Elf_Auxargs *)imgp->auxargs;
@@ -54,16 +69,16 @@ __elfN(powerpc_copyout_auxargs)(struct image_params *imgp, uintptr_t base)
 	AUXARGS_ENTRY(pos, AT_OLD_BASE, args->base);
 	AUXARGS_ENTRY(pos, AT_OLD_EHDRFLAGS, args->hdr_eflags);
 	if (imgp->execpathp != 0)
-		AUXARGS_ENTRY(pos, AT_OLD_EXECPATH, imgp->execpathp);
+		AUXARGS_ENTRY_PTR(pos, AT_OLD_EXECPATH, imgp->execpathp);
 	AUXARGS_ENTRY(pos, AT_OLD_OSRELDATE,
 	    imgp->proc->p_ucred->cr_prison->pr_osreldate);
 	if (imgp->canary != 0) {
-		AUXARGS_ENTRY(pos, AT_OLD_CANARY, imgp->canary);
+		AUXARGS_ENTRY_PTR(pos, AT_OLD_CANARY, imgp->canary);
 		AUXARGS_ENTRY(pos, AT_OLD_CANARYLEN, imgp->canarylen);
 	}
 	AUXARGS_ENTRY(pos, AT_OLD_NCPUS, mp_ncpus);
 	if (imgp->pagesizes != 0) {
-		AUXARGS_ENTRY(pos, AT_OLD_PAGESIZES, imgp->pagesizes);
+		AUXARGS_ENTRY_PTR(pos, AT_OLD_PAGESIZES, imgp->pagesizes);
 		AUXARGS_ENTRY(pos, AT_OLD_PAGESIZESLEN, imgp->pagesizeslen);
 	}
 	if (imgp->sysent->sv_timekeep_base != 0) {

@@ -64,7 +64,6 @@ struct mdthread {
 	int		md_pc_count;	/* performance counter */
 	int		md_pc_spill;	/* performance counter spill */
 	void		*md_tls;
-	size_t		md_tls_tcb_offset;	/* TCB offset */
 #ifdef	CPU_CNMIPS
 	struct octeon_cop2_state	*md_cop2; /* kernel context */
 	struct octeon_cop2_state	*md_ucop2; /* userland context */
@@ -79,16 +78,14 @@ struct mdthread {
 #define	MDTD_COP2USED	0x0002		/* Process used the COP2 */
 
 struct mdproc {
-	/* Avoid empty structs because they are undefined behavior. */
-	long	md_spare;
+	size_t		md_tls_tcb_offset;	/* TCB offset */
 };
 
+#define	MAXARGS		8
 struct syscall_args {
 	u_int code;
 	struct sysent *callp;
-	register_t args[8];
-	int narg;
-	struct trapframe *trapframe;
+	register_t args[MAXARGS];
 };
 
 #ifdef __mips_n64

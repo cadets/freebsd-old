@@ -173,6 +173,12 @@
 		(d)->__bits[__i] = (s1)->__bits[__i] ^ (s2)->__bits[__i];\
 } while (0)
 
+/*
+ * Note, the atomic(9) API is not consistent between clear/set and
+ * testandclear/testandset in whether the value argument is a mask
+ * or a bit index.
+ */
+
 #define	BIT_CLR_ATOMIC(_s, n, p)					\
 	atomic_clear_long(&(p)->__bits[__bitset_word(_s, n)],		\
 	    __bitset_mask((_s), n))
@@ -184,6 +190,14 @@
 #define	BIT_SET_ATOMIC_ACQ(_s, n, p)					\
 	atomic_set_acq_long(&(p)->__bits[__bitset_word(_s, n)],		\
 	    __bitset_mask((_s), n))
+
+#define	BIT_TEST_CLR_ATOMIC(_s, n, p)					\
+	(atomic_testandclear_long(					\
+	    &(p)->__bits[__bitset_word((_s), (n))], (n)) != 0)
+
+#define	BIT_TEST_SET_ATOMIC(_s, n, p)					\
+	(atomic_testandset_long(					\
+	    &(p)->__bits[__bitset_word((_s), (n))], (n)) != 0)
 
 /* Convenience functions catering special cases. */
 #define	BIT_AND_ATOMIC(_s, d, s) do {					\
@@ -207,24 +221,34 @@
 		    (f)->__bits[__i]);					\
 } while (0)
 
-#define	BIT_FFS(_s, p) __extension__ ({					\
+/*
+ * Note that `start` and the returned value from BIT_FFS_AT are
+ * 1-based bit indices.
+ */
+#define	BIT_FFS_AT(_s, p, start) __extension__ ({			\
 	__size_t __i;							\
-	int __bit;							\
+	long __bit, __mask;						\
 									\
+	__mask = ~0UL << ((start) % _BITSET_BITS);			\
 	__bit = 0;							\
-	for (__i = 0; __i < __bitset_words((_s)); __i++) {		\
-		if ((p)->__bits[__i] != 0) {				\
-			__bit = ffsl((p)->__bits[__i]);			\
+	for (__i = __bitset_word((_s), (start));			\
+	    __i < __bitset_words((_s));					\
+	    __i++) {							\
+		if (((p)->__bits[__i] & __mask) != 0) {			\
+			__bit = ffsl((p)->__bits[__i] & __mask);	\
 			__bit += __i * _BITSET_BITS;			\
 			break;						\
 		}							\
+		__mask = ~0UL;						\
 	}								\
 	__bit;								\
 })
 
+#define	BIT_FFS(_s, p) BIT_FFS_AT((_s), (p), 0)
+
 #define	BIT_FLS(_s, p) __extension__ ({					\
 	__size_t __i;							\
-	int __bit;							\
+	long __bit;							\
 									\
 	__bit = 0;							\
 	for (__i = __bitset_words((_s)); __i > 0; __i--) {		\
@@ -239,7 +263,7 @@
 
 #define	BIT_COUNT(_s, p) __extension__ ({				\
 	__size_t __i;							\
-	int __count;							\
+	long __count;							\
 									\
 	__count = 0;							\
 	for (__i = 0; __i < __bitset_words((_s)); __i++)		\

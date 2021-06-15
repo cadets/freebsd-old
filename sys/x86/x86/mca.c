@@ -102,7 +102,7 @@ static volatile int mca_count;	/* Number of records stored. */
 static int mca_banks;		/* Number of per-CPU register banks. */
 static int mca_maxcount = -1;	/* Limit on records stored. (-1 = unlimited) */
 
-static SYSCTL_NODE(_hw, OID_AUTO, mca, CTLFLAG_RD, NULL,
+static SYSCTL_NODE(_hw, OID_AUTO, mca, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
     "Machine Check Architecture");
 
 static int mca_enabled = 1;
@@ -789,7 +789,7 @@ mca_scan(enum scan_mode mode, int *recoverablep)
 			}
 			mca_record_entry(mode, &rec);
 		}
-	
+
 #ifdef DEV_APIC
 		/*
 		 * If this is a bank this CPU monitors via CMCI,
@@ -1041,7 +1041,8 @@ mca_setup(uint64_t mcg_cap)
 	    0, sysctl_positive_int, "I",
 	    "Periodic interval in seconds to scan for machine checks");
 	SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(_hw_mca), OID_AUTO,
-	    "records", CTLFLAG_RD, sysctl_mca_records, "Machine check records");
+	    "records", CTLFLAG_RD | CTLFLAG_MPSAFE, sysctl_mca_records,
+	    "Machine check records");
 	SYSCTL_ADD_PROC(NULL, SYSCTL_STATIC_CHILDREN(_hw_mca), OID_AUTO,
 	    "force_scan", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, NULL, 0,
 	    sysctl_mca_scan, "I", "Force an immediate scan for machine checks");
@@ -1068,6 +1069,20 @@ cmci_monitor(int i)
 	uint64_t ctl;
 
 	KASSERT(i < mca_banks, ("CPU %d has more MC banks", PCPU_GET(cpuid)));
+
+	/*
+	 * It is possible for some APs to report CMCI support even if the BSP
+	 * does not, apparently due to a BIOS bug.
+	 */
+	if (cmc_state == NULL) {
+		if (bootverbose) {
+			printf(
+		    "AP %d (%d,%d) reports CMCI support but the BSP does not\n",
+			    PCPU_GET(cpuid), PCPU_GET(apic_id),
+			    PCPU_GET(acpi_id));
+		}
+		return;
+	}
 
 	ctl = rdmsr(MSR_MC_CTL2(i));
 	if (ctl & MC_CTL2_CMCI_EN)
@@ -1112,6 +1127,10 @@ cmci_resume(int i)
 	uint64_t ctl;
 
 	KASSERT(i < mca_banks, ("CPU %d has more MC banks", PCPU_GET(cpuid)));
+
+	/* See cmci_monitor(). */
+	if (cmc_state == NULL)
+		return;
 
 	/* Ignore banks not monitored by this CPU. */
 	if (!(PCPU_GET(cmci_mask) & 1 << i))

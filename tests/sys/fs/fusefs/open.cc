@@ -32,7 +32,9 @@
 
 extern "C" {
 #include <sys/wait.h>
+
 #include <fcntl.h>
+#include <semaphore.h>
 }
 
 #include "mockfs.hh"
@@ -65,7 +67,7 @@ void test_ok(int os_flags, int fuse_flags) {
 	})));
 
 	fd = open(FULLPATH, os_flags);
-	EXPECT_LE(0, fd) << strerror(errno);
+	ASSERT_LE(0, fd) << strerror(errno);
 	leak(fd);
 }
 };
@@ -105,6 +107,9 @@ TEST_F(Open, enoent)
 	const char FULLPATH[] = "mountpoint/some_file.txt";
 	const char RELPATH[] = "some_file.txt";
 	uint64_t ino = 42;
+	sem_t sem;
+
+	ASSERT_EQ(0, sem_init(&sem, 0, 0)) << strerror(errno);
 
 	expect_lookup(RELPATH, ino, S_IFREG | 0644, 0, 1);
 	EXPECT_CALL(*m_mock, process(
@@ -114,8 +119,15 @@ TEST_F(Open, enoent)
 		}, Eq(true)),
 		_)
 	).WillOnce(Invoke(ReturnErrno(ENOENT)));
+	// Since FUSE_OPEN returns ENOENT, the kernel will reclaim the vnode
+	// and send a FUSE_FORGET
+	expect_forget(ino, 1, &sem);
+
 	ASSERT_EQ(-1, open(FULLPATH, O_RDONLY));
 	EXPECT_EQ(ENOENT, errno);
+
+	sem_wait(&sem);
+	sem_destroy(&sem);
 }
 
 /* 
@@ -189,7 +201,7 @@ TEST_F(Open, multiple_creds)
 		expect_release(ino, fh1);
 
 		fd1 = open(FULLPATH, O_RDONLY);
-		EXPECT_LE(0, fd1) << strerror(errno);
+		ASSERT_LE(0, fd1) << strerror(errno);
 	}, [] {
 		int fd0;
 

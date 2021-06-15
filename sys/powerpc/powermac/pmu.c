@@ -167,7 +167,6 @@ static device_method_t  pmuextint_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		pmuextint_probe),
 	DEVMETHOD(device_attach,	pmuextint_attach),
-	
 	{0,0}
 };
 
@@ -304,7 +303,6 @@ pmu_probe(device_t dev)
 	return (0);
 }
 
-
 static int
 setup_pmu_intr(device_t dev, device_t extint)
 {
@@ -352,10 +350,10 @@ pmu_attach(device_t dev)
 	phandle_t node,child;
 	struct sysctl_ctx_list *ctx;
 	struct sysctl_oid *tree;
-	
+
 	sc = device_get_softc(dev);
 	sc->sc_dev = dev;
-	
+
 	sc->sc_memrid = 0;
 	sc->sc_memr = bus_alloc_resource_any(dev, SYS_RES_MEMORY, 
 		          &sc->sc_memrid, RF_ACTIVE);
@@ -433,7 +431,7 @@ pmu_attach(device_t dev)
 	tree = device_get_sysctl_tree(dev);
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "server_mode", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
+	    "server_mode", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE, sc, 0,
 	    pmu_server_mode, "I", "Enable reboot after power failure");
 
 	if (sc->sc_batteries > 0) {
@@ -443,59 +441,68 @@ pmu_attach(device_t dev)
 		/* Only start the battery monitor if we have a battery. */
 		kproc_start(&pmu_batt_kp);
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "monitor_batteries", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
+		    "monitor_batteries",
+		    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
 		    pmu_battmon, "I", "Post battery events to devd");
 
-
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "acline", CTLTYPE_INT | CTLFLAG_RD, sc, 0,
-		    pmu_acline_state, "I", "AC Line Status");
+		    "acline", CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+		    0, pmu_acline_state, "I", "AC Line Status");
 
 		battroot = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		    "batteries", CTLFLAG_RD, 0, "Battery Information");
+		    "batteries", CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+		    "Battery Information");
 
 		for (i = 0; i < sc->sc_batteries; i++) {
 			battnum[0] = i + '0';
 			battnum[1] = '\0';
 
 			oid = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(battroot),
-			    OID_AUTO, battnum, CTLFLAG_RD, 0, 
+			    OID_AUTO, battnum, CTLFLAG_RD | CTLFLAG_MPSAFE, 0, 
 			    "Battery Information");
 		
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "present", CTLTYPE_INT | CTLFLAG_RD, sc, 
-			    PMU_BATSYSCTL_PRESENT | i, pmu_battquery_sysctl, 
+			    "present",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_PRESENT | i, pmu_battquery_sysctl,
 			    "I", "Battery present");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "charging", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_CHARGING | i, pmu_battquery_sysctl, 
+			    "charging",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_CHARGING | i, pmu_battquery_sysctl,
 			    "I", "Battery charging");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "charge", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_CHARGE | i, pmu_battquery_sysctl, 
+			    "charge",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_CHARGE | i, pmu_battquery_sysctl,
 			    "I", "Battery charge (mAh)");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "maxcharge", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_MAXCHARGE | i, pmu_battquery_sysctl, 
+			    "maxcharge",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_MAXCHARGE | i, pmu_battquery_sysctl,
 			    "I", "Maximum battery capacity (mAh)");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "rate", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_CURRENT | i, pmu_battquery_sysctl, 
+			    "rate",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_CURRENT | i, pmu_battquery_sysctl,
 			    "I", "Battery discharge rate (mA)");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "voltage", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_VOLTAGE | i, pmu_battquery_sysctl, 
+			    "voltage",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_VOLTAGE | i, pmu_battquery_sysctl,
 			    "I", "Battery voltage (mV)");
 
 			/* Knobs for mental compatibility with ACPI */
 
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "time", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_TIME | i, pmu_battquery_sysctl, 
+			    "time",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_TIME | i, pmu_battquery_sysctl,
 			    "I", "Time Remaining (minutes)");
 			SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			    "life", CTLTYPE_INT | CTLFLAG_RD, sc,
-			    PMU_BATSYSCTL_LIFE | i, pmu_battquery_sysctl, 
+			    "life",
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE, sc,
+			    PMU_BATSYSCTL_LIFE | i, pmu_battquery_sysctl,
 			    "I", "Capacity remaining (percent)");
 		}
 	}
@@ -638,7 +645,6 @@ done:
 
 	return rcv_len;
 }
-
 
 static u_int
 pmu_poll(device_t dev)
@@ -804,7 +810,7 @@ pmu_adb_autopoll(device_t dev, uint16_t mask)
 		pmu_send(sc, PMU_ADB_POLL_OFF, 0, NULL, 16, resp);
 
 	mtx_unlock(&sc->sc_mutex);
-	
+
 	return 0;
 }
 
@@ -813,7 +819,7 @@ pmu_shutdown(void *xsc, int howto)
 {
 	struct pmu_softc *sc = xsc;
 	uint8_t cmd[] = {'M', 'A', 'T', 'T'};
-	
+
 	if (howto & RB_HALT)
 		pmu_send(sc, PMU_POWER_OFF, 4, cmd, 0, NULL);
 	else
@@ -829,7 +835,7 @@ pmu_set_sleepled(void *xsc, int onoff)
 	uint8_t cmd[] = {4, 0, 0};
 
 	cmd[2] = onoff;
-	
+
 	mtx_lock(&sc->sc_mutex);
 	pmu_send(sc, PMU_SET_SLEEPLED, 3, cmd, 0, NULL);
 	mtx_unlock(&sc->sc_mutex);
@@ -839,7 +845,7 @@ static int
 pmu_server_mode(SYSCTL_HANDLER_ARGS)
 {
 	struct pmu_softc *sc = arg1;
-	
+
 	u_int server_mode = 0;
 	uint8_t getcmd[] = {PMU_PWR_GET_POWERUP_EVENTS};
 	uint8_t setcmd[] = {0, 0, PMU_PWR_WAKEUP_AC_INSERT};
@@ -990,7 +996,7 @@ pmu_battmon(SYSCTL_HANDLER_ARGS)
 
 	if (error || !req->newptr)
 		return (error);
-	
+
 	if (!result && pmu_battmon_enabled)
 		error = kproc_suspend(pmubattproc, hz);
 	else if (result && pmu_battmon_enabled == 0)
@@ -1014,7 +1020,7 @@ pmu_acline_state(SYSCTL_HANDLER_ARGS)
 
 	if (error != 0)
 		return (error);
-	
+
 	result = (batt.state & PMU_PWR_AC_PRESENT) ? 1 : 0;
 	error = sysctl_handle_int(oidp, &result, 0, req);
 

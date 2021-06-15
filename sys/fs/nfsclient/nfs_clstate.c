@@ -80,7 +80,6 @@ __FBSDID("$FreeBSD$");
  *     (Since we are done with them, they do not need to be recovered.)
  */
 
-#ifndef APPLEKEXT
 #include <fs/nfs/nfsport.h>
 
 /*
@@ -98,19 +97,23 @@ int nfscl_inited = 0;
 struct nfsclhead nfsclhead;	/* Head of clientid list */
 int nfscl_deleghighwater = NFSCLDELEGHIGHWATER;
 int nfscl_layouthighwater = NFSCLLAYOUTHIGHWATER;
-#endif	/* !APPLEKEXT */
 
 static int nfscl_delegcnt = 0;
 static int nfscl_layoutcnt = 0;
-static int nfscl_getopen(struct nfsclownerhead *, u_int8_t *, int, u_int8_t *,
-    u_int8_t *, u_int32_t, struct nfscllockowner **, struct nfsclopen **);
+static int nfscl_getopen(struct nfsclownerhead *, struct nfsclopenhash *,
+    u_int8_t *, int, u_int8_t *, u_int8_t *, u_int32_t,
+    struct nfscllockowner **, struct nfsclopen **);
+static bool nfscl_checkown(struct nfsclowner *, struct nfsclopen *, uint8_t *,
+    uint8_t *, struct nfscllockowner **, struct nfsclopen **,
+    struct nfsclopen **);
 static void nfscl_clrelease(struct nfsclclient *);
 static void nfscl_cleanclient(struct nfsclclient *);
 static void nfscl_expireclient(struct nfsclclient *, struct nfsmount *,
     struct ucred *, NFSPROC_T *);
 static int nfscl_expireopen(struct nfsclclient *, struct nfsclopen *,
     struct nfsmount *, struct ucred *, NFSPROC_T *);
-static void nfscl_recover(struct nfsclclient *, struct ucred *, NFSPROC_T *);
+static void nfscl_recover(struct nfsclclient *, bool *, struct ucred *,
+    NFSPROC_T *);
 static void nfscl_insertlock(struct nfscllockowner *, struct nfscllock *,
     struct nfscllock *, int);
 static int nfscl_updatelock(struct nfscllockowner *, struct nfscllock **,
@@ -150,11 +153,13 @@ static int nfscl_trylock(struct nfsmount *, vnode_t , u_int8_t *,
     struct ucred *, NFSPROC_T *);
 static int nfsrpc_reopen(struct nfsmount *, u_int8_t *, int, u_int32_t,
     struct nfsclopen *, struct nfscldeleg **, struct ucred *, NFSPROC_T *);
-static void nfscl_freedeleg(struct nfscldeleghead *, struct nfscldeleg *);
+static void nfscl_freedeleg(struct nfscldeleghead *, struct nfscldeleg *,
+    bool);
 static int nfscl_errmap(struct nfsrv_descript *, u_int32_t);
 static void nfscl_cleanup_common(struct nfsclclient *, u_int8_t *);
 static int nfscl_recalldeleg(struct nfsclclient *, struct nfsmount *,
-    struct nfscldeleg *, vnode_t, struct ucred *, NFSPROC_T *, int);
+    struct nfscldeleg *, vnode_t, struct ucred *, NFSPROC_T *, int,
+    vnode_t *);
 static void nfscl_freeopenowner(struct nfsclowner *, int);
 static void nfscl_cleandeleg(struct nfscldeleg *);
 static int nfscl_trydelegreturn(struct nfscldeleg *, struct ucred *,
@@ -210,7 +215,7 @@ static short *nfscl_cberrmap[] = {
  * Called for an open operation.
  * If the nfhp argument is NULL, just get an openowner.
  */
-APPLESTATIC int
+int
 nfscl_open(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t amode, int usedeleg,
     struct ucred *cred, NFSPROC_T *p, struct nfsclowner **owpp,
     struct nfsclopen **opp, int *newonep, int *retp, int lockit)
@@ -236,10 +241,12 @@ nfscl_open(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t amode, int usedeleg,
 	 */
 	nowp = malloc(sizeof (struct nfsclowner),
 	    M_NFSCLOWNER, M_WAITOK);
-	if (nfhp != NULL)
+	if (nfhp != NULL) {
 	    nop = malloc(sizeof (struct nfsclopen) +
 		fhlen - 1, M_NFSCLOPEN, M_WAITOK);
-	ret = nfscl_getcl(vnode_mount(vp), cred, p, 1, &clp);
+	    nop->nfso_hash.le_prev = NULL;
+	}
+	ret = nfscl_getcl(vp->v_mount, cred, p, 1, &clp);
 	if (ret != 0) {
 		free(nowp, M_NFSCLOWNER);
 		if (nop != NULL)
@@ -268,17 +275,15 @@ nfscl_open(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t amode, int usedeleg,
 		}
 	}
 
-	if (dp != NULL) {
+	/* For NFSv4.1/4.2 and this option, use a single open_owner. */
+	if (NFSHASONEOPENOWN(VFSTONFS(vp->v_mount)))
+		nfscl_filllockowner(NULL, own, F_POSIX);
+	else
 		nfscl_filllockowner(p->td_proc, own, F_POSIX);
+	if (dp != NULL)
 		ohp = &dp->nfsdl_owner;
-	} else {
-		/* For NFSv4.1 and this option, use a single open_owner. */
-		if (NFSHASONEOPENOWN(VFSTONFS(vnode_mount(vp))))
-			nfscl_filllockowner(NULL, own, F_POSIX);
-		else
-			nfscl_filllockowner(p->td_proc, own, F_POSIX);
+	else
 		ohp = &clp->nfsc_owner;
-	}
 	/* Now, search for an openowner */
 	LIST_FOREACH(owp, ohp, nfsow_list) {
 		if (!NFSBCMP(owp->nfsow_owner, own, NFSV4CL_LOCKNAMELEN))
@@ -316,7 +321,7 @@ nfscl_open(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t amode, int usedeleg,
 	 * exclusive lock for this case.
 	 */
 	if (lockit != 0) {
-		if (NFSHASONEOPENOWN(VFSTONFS(vnode_mount(vp)))) {
+		if (NFSHASONEOPENOWN(VFSTONFS(vp->v_mount))) {
 			/*
 			 * Get a shared lock on the OpenOwner, but first
 			 * wait for any pending exclusive lock, so that the
@@ -410,6 +415,8 @@ nfscl_newopen(struct nfsclclient *clp, struct nfscldeleg *dp,
 				dp->nfsdl_timestamp = NFSD_MONOSEC + 120;
 				nfsstatsv1.cllocalopens++;
 			} else {
+				LIST_INSERT_HEAD(NFSCLOPENHASH(clp, fhp, fhlen),
+				    nop, nfso_hash);
 				nfsstatsv1.clopens++;
 			}
 			LIST_INSERT_HEAD(&owp->nfsow_open, nop, nfso_list);
@@ -426,24 +433,36 @@ nfscl_newopen(struct nfsclclient *clp, struct nfscldeleg *dp,
 /*
  * Called to find/add a delegation to a client.
  */
-APPLESTATIC int
+int
 nfscl_deleg(mount_t mp, struct nfsclclient *clp, u_int8_t *nfhp,
     int fhlen, struct ucred *cred, NFSPROC_T *p, struct nfscldeleg **dpp)
 {
 	struct nfscldeleg *dp = *dpp, *tdp;
+	struct nfsmount *nmp;
 
+	KASSERT(mp != NULL, ("nfscl_deleg: mp NULL"));
+	nmp = VFSTONFS(mp);
 	/*
 	 * First, if we have received a Read delegation for a file on a
 	 * read/write file system, just return it, because they aren't
 	 * useful, imho.
 	 */
-	if (mp != NULL && dp != NULL && !NFSMNT_RDONLY(mp) &&
+	if (dp != NULL && !NFSMNT_RDONLY(mp) &&
 	    (dp->nfsdl_flags & NFSCLDL_READ)) {
-		(void) nfscl_trydelegreturn(dp, cred, VFSTONFS(mp), p);
+		nfscl_trydelegreturn(dp, cred, nmp, p);
 		free(dp, M_NFSCLDELEG);
 		*dpp = NULL;
 		return (0);
 	}
+
+	/*
+	 * Since a delegation might be added to the mount,
+	 * set NFSMNTP_DELEGISSUED now.  If a delegation already
+	 * exagain ists, setting this flag is harmless.
+	 */
+	NFSLOCKMNT(nmp);
+	nmp->nm_privflag |= NFSMNTP_DELEGISSUED;
+	NFSUNLOCKMNT(nmp);
 
 	/* Look for the correct deleg, based upon FH */
 	NFSLOCKCLSTATE();
@@ -497,20 +516,21 @@ nfscl_finddeleg(struct nfsclclient *clp, u_int8_t *fhp, int fhlen)
  * found, return either a lockowner stateid or the open stateid.
  * If no Open is found, just return error and the special stateid of all zeros.
  */
-APPLESTATIC int
+int
 nfscl_getstateid(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t mode,
     int fords, struct ucred *cred, NFSPROC_T *p, nfsv4stateid_t *stateidp,
     void **lckpp)
 {
 	struct nfsclclient *clp;
-	struct nfsclowner *owp;
 	struct nfsclopen *op = NULL, *top;
+	struct nfsclopenhash *oph;
 	struct nfscllockowner *lp;
 	struct nfscldeleg *dp;
 	struct nfsnode *np;
 	struct nfsmount *nmp;
 	u_int8_t own[NFSV4CL_LOCKNAMELEN];
-	int error, done;
+	int error;
+	bool done;
 
 	*lckpp = NULL;
 	/*
@@ -526,7 +546,7 @@ nfscl_getstateid(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t mode,
 	if (vnode_vtype(vp) != VREG)
 		return (EISDIR);
 	np = VTONFS(vp);
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	NFSLOCKCLSTATE();
 	clp = nfscl_findcl(nmp);
 	if (clp == NULL) {
@@ -575,13 +595,13 @@ nfscl_getstateid(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t mode,
 		 * If p != NULL, we want to search the parentage tree
 		 * for a matching OpenOwner and use that.
 		 */
-		if (NFSHASONEOPENOWN(VFSTONFS(vnode_mount(vp))))
+		if (NFSHASONEOPENOWN(VFSTONFS(vp->v_mount)))
 			nfscl_filllockowner(NULL, own, F_POSIX);
 		else
 			nfscl_filllockowner(p->td_proc, own, F_POSIX);
 		lp = NULL;
-		error = nfscl_getopen(&clp->nfsc_owner, nfhp, fhlen, own, own,
-		    mode, &lp, &op);
+		error = nfscl_getopen(NULL, clp->nfsc_openhash, nfhp, fhlen,
+		    own, own, mode, &lp, &op);
 		if (error == 0 && lp != NULL && fords == 0) {
 			/* Don't return a lock stateid for a DS. */
 			stateidp->seqid =
@@ -599,24 +619,23 @@ nfscl_getstateid(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t mode,
 	if (op == NULL) {
 		/* If not found, just look for any OpenOwner that will work. */
 		top = NULL;
-		done = 0;
-		owp = LIST_FIRST(&clp->nfsc_owner);
-		while (!done && owp != NULL) {
-			LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
-				if (op->nfso_fhlen == fhlen &&
-				    !NFSBCMP(op->nfso_fh, nfhp, fhlen)) {
-					if (top == NULL && (op->nfso_mode &
-					    NFSV4OPEN_ACCESSWRITE) != 0 &&
-					    (mode & NFSV4OPEN_ACCESSREAD) != 0)
-						top = op;
-					if ((mode & op->nfso_mode) == mode) {
-						done = 1;
-						break;
-					}
+		done = false;
+		oph = NFSCLOPENHASH(clp, nfhp, fhlen);
+		LIST_FOREACH(op, oph, nfso_hash) {
+			if (op->nfso_fhlen == fhlen &&
+			    !NFSBCMP(op->nfso_fh, nfhp, fhlen)) {
+				if (top == NULL && (op->nfso_mode &
+				    NFSV4OPEN_ACCESSWRITE) != 0 &&
+				    (mode & NFSV4OPEN_ACCESSREAD) != 0)
+					top = op;
+				if ((mode & op->nfso_mode) == mode) {
+					/* LRU order the hash list. */
+					LIST_REMOVE(op, nfso_hash);
+					LIST_INSERT_HEAD(oph, op, nfso_hash);
+					done = true;
+					break;
 				}
 			}
-			if (!done)
-				owp = LIST_NEXT(owp, nfsow_list);
 		}
 		if (!done) {
 			NFSCL_DEBUG(2, "openmode top=%p\n", top);
@@ -649,15 +668,17 @@ nfscl_getstateid(vnode_t vp, u_int8_t *nfhp, int fhlen, u_int32_t mode,
  * Search for a matching file, mode and, optionally, lockowner.
  */
 static int
-nfscl_getopen(struct nfsclownerhead *ohp, u_int8_t *nfhp, int fhlen,
-    u_int8_t *openown, u_int8_t *lockown, u_int32_t mode,
-    struct nfscllockowner **lpp, struct nfsclopen **opp)
+nfscl_getopen(struct nfsclownerhead *ohp, struct nfsclopenhash *ohashp,
+    u_int8_t *nfhp, int fhlen, u_int8_t *openown, u_int8_t *lockown,
+    u_int32_t mode, struct nfscllockowner **lpp, struct nfsclopen **opp)
 {
 	struct nfsclowner *owp;
 	struct nfsclopen *op, *rop, *rop2;
-	struct nfscllockowner *lp;
-	int keep_looping;
+	struct nfsclopenhash *oph;
+	bool keep_looping;
 
+	KASSERT(ohp == NULL || ohashp == NULL, ("nfscl_getopen: "
+	    "only one of ohp and ohashp can be set"));
 	if (lpp != NULL)
 		*lpp = NULL;
 	/*
@@ -672,42 +693,40 @@ nfscl_getopen(struct nfsclownerhead *ohp, u_int8_t *nfhp, int fhlen,
 	 */
 	rop = NULL;
 	rop2 = NULL;
-	keep_looping = 1;
+	keep_looping = true;
 	/* Search the client list */
-	owp = LIST_FIRST(ohp);
-	while (owp != NULL && keep_looping != 0) {
-		/* and look for the correct open */
-		op = LIST_FIRST(&owp->nfsow_open);
-		while (op != NULL && keep_looping != 0) {
+	if (ohashp == NULL) {
+		/* Search the local opens on the delegation. */
+		LIST_FOREACH(owp, ohp, nfsow_list) {
+			/* and look for the correct open */
+			LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
+				if (op->nfso_fhlen == fhlen &&
+				    !NFSBCMP(op->nfso_fh, nfhp, fhlen)
+				    && (op->nfso_mode & mode) == mode)
+					keep_looping = nfscl_checkown(owp, op, openown,
+					    lockown, lpp, &rop, &rop2);
+				if (!keep_looping)
+					break;
+			}
+			if (!keep_looping)
+				break;
+		}
+	} else {
+		/* Search for matching opens on the hash list. */
+		oph = &ohashp[NFSCLOPENHASHFUNC(nfhp, fhlen)];
+		LIST_FOREACH(op, oph, nfso_hash) {
 			if (op->nfso_fhlen == fhlen &&
 			    !NFSBCMP(op->nfso_fh, nfhp, fhlen)
-			    && (op->nfso_mode & mode) == mode) {
-				if (lpp != NULL) {
-					/* Now look for a matching lockowner. */
-					LIST_FOREACH(lp, &op->nfso_lock,
-					    nfsl_list) {
-						if (!NFSBCMP(lp->nfsl_owner,
-						    lockown,
-						    NFSV4CL_LOCKNAMELEN)) {
-							*lpp = lp;
-							rop = op;
-							keep_looping = 0;
-							break;
-						}
-					}
-				}
-				if (rop == NULL && !NFSBCMP(owp->nfsow_owner,
-				    openown, NFSV4CL_LOCKNAMELEN)) {
-					rop = op;
-					if (lpp == NULL)
-						keep_looping = 0;
-				}
-				if (rop2 == NULL)
-					rop2 = op;
+			    && (op->nfso_mode & mode) == mode)
+				keep_looping = nfscl_checkown(op->nfso_own, op,
+				    openown, lockown, lpp, &rop, &rop2);
+			if (!keep_looping) {
+				/* LRU order the hash list. */
+				LIST_REMOVE(op, nfso_hash);
+				LIST_INSERT_HEAD(oph, op, nfso_hash);
+				break;
 			}
-			op = LIST_NEXT(op, nfso_list);
 		}
-		owp = LIST_NEXT(owp, nfsow_list);
 	}
 	if (rop == NULL)
 		rop = rop2;
@@ -717,11 +736,43 @@ nfscl_getopen(struct nfsclownerhead *ohp, u_int8_t *nfhp, int fhlen,
 	return (0);
 }
 
+/* Check for an owner match. */
+static bool
+nfscl_checkown(struct nfsclowner *owp, struct nfsclopen *op, uint8_t *openown,
+    uint8_t *lockown, struct nfscllockowner **lpp, struct nfsclopen **ropp,
+    struct nfsclopen **ropp2)
+{
+	struct nfscllockowner *lp;
+	bool keep_looping;
+
+	keep_looping = true;
+	if (lpp != NULL) {
+		/* Now look for a matching lockowner. */
+		LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
+			if (!NFSBCMP(lp->nfsl_owner, lockown,
+			    NFSV4CL_LOCKNAMELEN)) {
+				*lpp = lp;
+				*ropp = op;
+				return (false);
+			}
+		}
+	}
+	if (*ropp == NULL && !NFSBCMP(owp->nfsow_owner, openown,
+	    NFSV4CL_LOCKNAMELEN)) {
+		*ropp = op;
+		if (lpp == NULL)
+			keep_looping = false;
+	}
+	if (*ropp2 == NULL)
+		*ropp2 = op;
+	return (keep_looping);
+}
+
 /*
  * Release use of an open owner. Called when open operations are done
  * with the open owner.
  */
-APPLESTATIC void
+void
 nfscl_ownerrelease(struct nfsmount *nmp, struct nfsclowner *owp,
     __unused int error, __unused int candelete, int unlocked)
 {
@@ -742,7 +793,7 @@ nfscl_ownerrelease(struct nfsmount *nmp, struct nfsclowner *owp,
 /*
  * Release use of an open structure under an open owner.
  */
-APPLESTATIC void
+void
 nfscl_openrelease(struct nfsmount *nmp, struct nfsclopen *op, int error,
     int candelete)
 {
@@ -776,7 +827,7 @@ nfscl_openrelease(struct nfsmount *nmp, struct nfsclopen *op, int error,
  * thread if this creates a new clp.
  * It always clpp with a reference count on it, unless returning an error.
  */
-APPLESTATIC int
+int
 nfscl_getcl(struct mount *mp, struct ucred *cred, NFSPROC_T *p,
     int start_renewthread, struct nfsclclient **clpp)
 {
@@ -825,6 +876,8 @@ nfscl_getcl(struct mount *mp, struct ucred *cred, NFSPROC_T *p,
 		LIST_INIT(&clp->nfsc_devinfo);
 		for (i = 0; i < NFSCLDELEGHASHSIZE; i++)
 			LIST_INIT(&clp->nfsc_deleghash[i]);
+		for (i = 0; i < NFSCLOPENHASHSIZE; i++)
+			LIST_INIT(&clp->nfsc_openhash[i]);
 		for (i = 0; i < NFSCLLAYOUTHASHSIZE; i++)
 			LIST_INIT(&clp->nfsc_layouthash[i]);
 		clp->nfsc_flags = NFSCLFLAGS_INITED;
@@ -907,7 +960,7 @@ nfscl_getcl(struct mount *mp, struct ucred *cred, NFSPROC_T *p,
 			clidinusedelay = 120;
 		trystalecnt = 3;
 		do {
-			error = nfsrpc_setclient(nmp, clp, 0, cred, p);
+			error = nfsrpc_setclient(nmp, clp, 0, NULL, cred, p);
 			if (error == NFSERR_STALECLIENTID ||
 			    error == NFSERR_STALEDONTRECOVER ||
 			    error == NFSERR_BADSESSION ||
@@ -939,7 +992,7 @@ nfscl_getcl(struct mount *mp, struct ucred *cred, NFSPROC_T *p,
 /*
  * Get a reference to a clientid and return it, if valid.
  */
-APPLESTATIC struct nfsclclient *
+struct nfsclclient *
 nfscl_findcl(struct nfsmount *nmp)
 {
 	struct nfsclclient *clp;
@@ -966,7 +1019,7 @@ nfscl_clrelease(struct nfsclclient *clp)
 /*
  * External call for nfscl_clrelease.
  */
-APPLESTATIC void
+void
 nfscl_clientrelease(struct nfsclclient *clp)
 {
 
@@ -981,7 +1034,7 @@ nfscl_clientrelease(struct nfsclclient *clp)
 /*
  * Called when wanting to lock a byte region.
  */
-APPLESTATIC int
+int
 nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
     short type, struct ucred *cred, NFSPROC_T *p, struct nfsclclient *rclp,
     int recovery, void *id, int flags, u_int8_t *rownp, u_int8_t *ropenownp,
@@ -1032,7 +1085,7 @@ nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 		if (recovery)
 			clp = rclp;
 		else
-			error = nfscl_getcl(vnode_mount(vp), cred, p, 1, &clp);
+			error = nfscl_getcl(vp->v_mount, cred, p, 1, &clp);
 	}
 	if (error) {
 		free(nlp, M_NFSCLLOCKOWNER);
@@ -1048,7 +1101,7 @@ nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 	} else {
 		nfscl_filllockowner(id, own, flags);
 		ownp = own;
-		if (NFSHASONEOPENOWN(VFSTONFS(vnode_mount(vp))))
+		if (NFSHASONEOPENOWN(VFSTONFS(vp->v_mount)))
 			nfscl_filllockowner(NULL, openown, F_POSIX);
 		else
 			nfscl_filllockowner(p->td_proc, openown, F_POSIX);
@@ -1072,10 +1125,10 @@ nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 	}
 	if (dp != NULL) {
 		/* Now, find an open and maybe a lockowner. */
-		ret = nfscl_getopen(&dp->nfsdl_owner, np->n_fhp->nfh_fh,
+		ret = nfscl_getopen(&dp->nfsdl_owner, NULL, np->n_fhp->nfh_fh,
 		    np->n_fhp->nfh_len, openownp, ownp, mode, NULL, &op);
 		if (ret)
-			ret = nfscl_getopen(&clp->nfsc_owner,
+			ret = nfscl_getopen(NULL, clp->nfsc_openhash,
 			    np->n_fhp->nfh_fh, np->n_fhp->nfh_len, openownp,
 			    ownp, mode, NULL, &op);
 		if (!ret) {
@@ -1092,7 +1145,7 @@ nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 		/*
 		 * Get the related Open and maybe lockowner.
 		 */
-		error = nfscl_getopen(&clp->nfsc_owner,
+		error = nfscl_getopen(NULL, clp->nfsc_openhash,
 		    np->n_fhp->nfh_fh, np->n_fhp->nfh_len, openownp,
 		    ownp, mode, &lp, &op);
 		if (!error)
@@ -1181,14 +1234,13 @@ nfscl_getbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 /*
  * Called to unlock a byte range, for LockU.
  */
-APPLESTATIC int
+int
 nfscl_relbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
     __unused struct ucred *cred, NFSPROC_T *p, int callcnt,
     struct nfsclclient *clp, void *id, int flags,
     struct nfscllockowner **lpp, int *dorpcp)
 {
 	struct nfscllockowner *lp;
-	struct nfsclowner *owp;
 	struct nfsclopen *op;
 	struct nfscllock *nlop, *other_lop = NULL;
 	struct nfscldeleg *dp;
@@ -1250,24 +1302,21 @@ nfscl_relbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 	 */
 	lp = NULL;
 	fnd = 0;
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-	    LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, np->n_fhp->nfh_fh,
+	    np->n_fhp->nfh_len), nfso_hash) {
 		if (op->nfso_fhlen == np->n_fhp->nfh_len &&
 		    !NFSBCMP(op->nfso_fh, np->n_fhp->nfh_fh, op->nfso_fhlen)) {
-		    LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
-			if (lp->nfsl_inprog == NULL &&
-			    !NFSBCMP(lp->nfsl_owner, own,
-			     NFSV4CL_LOCKNAMELEN)) {
-				fnd = 1;
-				break;
+			LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
+				if (lp->nfsl_inprog == NULL &&
+				    !NFSBCMP(lp->nfsl_owner, own,
+				     NFSV4CL_LOCKNAMELEN)) {
+					fnd = 1;
+					break;
+				}
 			}
-		    }
-		    if (fnd)
-			break;
 		}
-	    }
-	    if (fnd)
-		break;
+		if (fnd)
+			break;
 	}
 
 	if (lp != NULL) {
@@ -1293,11 +1342,10 @@ nfscl_relbytelock(vnode_t vp, u_int64_t off, u_int64_t len,
 /*
  * Release all lockowners marked in progess for this process and file.
  */
-APPLESTATIC void
+void
 nfscl_releasealllocks(struct nfsclclient *clp, vnode_t vp, NFSPROC_T *p,
     void *id, int flags)
 {
-	struct nfsclowner *owp;
 	struct nfsclopen *op;
 	struct nfscllockowner *lp;
 	struct nfsnode *np;
@@ -1306,20 +1354,19 @@ nfscl_releasealllocks(struct nfsclclient *clp, vnode_t vp, NFSPROC_T *p,
 	np = VTONFS(vp);
 	nfscl_filllockowner(id, own, flags);
 	NFSLOCKCLSTATE();
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-	    LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, np->n_fhp->nfh_fh,
+	    np->n_fhp->nfh_len), nfso_hash) {
 		if (op->nfso_fhlen == np->n_fhp->nfh_len &&
 		    !NFSBCMP(op->nfso_fh, np->n_fhp->nfh_fh, op->nfso_fhlen)) {
-		    LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
-			if (lp->nfsl_inprog == p &&
-			    !NFSBCMP(lp->nfsl_owner, own,
-			    NFSV4CL_LOCKNAMELEN)) {
-			    lp->nfsl_inprog = NULL;
-			    nfscl_lockunlock(&lp->nfsl_rwlock);
+			LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
+				if (lp->nfsl_inprog == p &&
+				    !NFSBCMP(lp->nfsl_owner, own,
+				    NFSV4CL_LOCKNAMELEN)) {
+					lp->nfsl_inprog = NULL;
+					nfscl_lockunlock(&lp->nfsl_rwlock);
+				}
 			}
-		    }
 		}
-	    }
 	}
 	nfscl_clrelease(clp);
 	NFSUNLOCKCLSTATE();
@@ -1331,11 +1378,10 @@ nfscl_releasealllocks(struct nfsclclient *clp, vnode_t vp, NFSPROC_T *p,
  * is required before a LockU.
  * If in doubt, return 1, so the flush will occur.
  */
-APPLESTATIC int
+int
 nfscl_checkwritelocked(vnode_t vp, struct flock *fl,
     struct ucred *cred, NFSPROC_T *p, void *id, int flags)
 {
-	struct nfsclowner *owp;
 	struct nfscllockowner *lp;
 	struct nfsclopen *op;
 	struct nfsclclient *clp;
@@ -1370,7 +1416,7 @@ nfscl_checkwritelocked(vnode_t vp, struct flock *fl,
 		end = NFS64BITSSET;
 	}
 
-	error = nfscl_getcl(vnode_mount(vp), cred, p, 1, &clp);
+	error = nfscl_getcl(vp->v_mount, cred, p, 1, &clp);
 	if (error)
 		return (1);
 	nfscl_filllockowner(id, own, flags);
@@ -1404,30 +1450,29 @@ nfscl_checkwritelocked(vnode_t vp, struct flock *fl,
 	/*
 	 * Now, check state against the server.
 	 */
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-	    LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, np->n_fhp->nfh_fh,
+	    np->n_fhp->nfh_len), nfso_hash) {
 		if (op->nfso_fhlen == np->n_fhp->nfh_len &&
 		    !NFSBCMP(op->nfso_fh, np->n_fhp->nfh_fh, op->nfso_fhlen)) {
-		    LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
-			if (!NFSBCMP(lp->nfsl_owner, own,
-			    NFSV4CL_LOCKNAMELEN))
-			    break;
-		    }
-		    if (lp != NULL) {
-			LIST_FOREACH(lop, &lp->nfsl_lock, nfslo_list) {
-			    if (lop->nfslo_first >= end)
-				break;
-			    if (lop->nfslo_end <= off)
-				continue;
-			    if (lop->nfslo_type == F_WRLCK) {
-				nfscl_clrelease(clp);
-				NFSUNLOCKCLSTATE();
-				return (1);
-			    }
+			LIST_FOREACH(lp, &op->nfso_lock, nfsl_list) {
+				if (!NFSBCMP(lp->nfsl_owner, own,
+				    NFSV4CL_LOCKNAMELEN))
+					break;
 			}
-		    }
+			if (lp != NULL) {
+				LIST_FOREACH(lop, &lp->nfsl_lock, nfslo_list) {
+					if (lop->nfslo_first >= end)
+						break;
+					if (lop->nfslo_end <= off)
+						continue;
+					if (lop->nfslo_type == F_WRLCK) {
+						nfscl_clrelease(clp);
+						NFSUNLOCKCLSTATE();
+						return (1);
+					}
+				}
+			}
 		}
-	    }
 	}
 	nfscl_clrelease(clp);
 	NFSUNLOCKCLSTATE();
@@ -1437,7 +1482,7 @@ nfscl_checkwritelocked(vnode_t vp, struct flock *fl,
 /*
  * Release a byte range lock owner structure.
  */
-APPLESTATIC void
+void
 nfscl_lockrelease(struct nfscllockowner *lp, int error, int candelete)
 {
 	struct nfsclclient *clp;
@@ -1458,11 +1503,13 @@ nfscl_lockrelease(struct nfscllockowner *lp, int error, int candelete)
 /*
  * Free up an open structure and any associated byte range lock structures.
  */
-APPLESTATIC void
+void
 nfscl_freeopen(struct nfsclopen *op, int local)
 {
 
 	LIST_REMOVE(op, nfso_list);
+	if (op->nfso_hash.le_prev != NULL)
+		LIST_REMOVE(op, nfso_hash);
 	nfscl_freealllocks(&op->nfso_lock, local);
 	free(op, M_NFSCLOPEN);
 	if (local)
@@ -1555,7 +1602,7 @@ nfscl_freeopenowner(struct nfsclowner *owp, int local)
 /*
  * Free up a byte range lock owner structure.
  */
-APPLESTATIC void
+void
 nfscl_freelockowner(struct nfscllockowner *lp, int local)
 {
 	struct nfscllock *lop, *nlop;
@@ -1574,7 +1621,7 @@ nfscl_freelockowner(struct nfscllockowner *lp, int local)
 /*
  * Free up a byte range lock structure.
  */
-APPLESTATIC void
+void
 nfscl_freelock(struct nfscllock *lop, int local)
 {
 
@@ -1611,12 +1658,13 @@ nfscl_cleandeleg(struct nfscldeleg *dp)
  * Free a delegation.
  */
 static void
-nfscl_freedeleg(struct nfscldeleghead *hdp, struct nfscldeleg *dp)
+nfscl_freedeleg(struct nfscldeleghead *hdp, struct nfscldeleg *dp, bool freeit)
 {
 
 	TAILQ_REMOVE(hdp, dp, nfsdl_list);
 	LIST_REMOVE(dp, nfsdl_hash);
-	free(dp, M_NFSCLDELEG);
+	if (freeit)
+		free(dp, M_NFSCLDELEG);
 	nfsstatsv1.cldelegates--;
 	nfscl_delegcnt--;
 }
@@ -1693,6 +1741,8 @@ nfscl_expireclient(struct nfsclclient *clp, struct nfsmount *nmp,
 			    LIST_REMOVE(op, nfso_list);
 			    op->nfso_own = towp;
 			    LIST_INSERT_HEAD(&towp->nfsow_open, op, nfso_list);
+			    LIST_INSERT_HEAD(NFSCLOPENHASH(clp, op->nfso_fh,
+				op->nfso_fhlen), op, nfso_hash);
 			    nfsstatsv1.cllocalopens--;
 			    nfsstatsv1.clopens++;
 			}
@@ -1701,6 +1751,8 @@ nfscl_expireclient(struct nfsclclient *clp, struct nfsmount *nmp,
 			LIST_REMOVE(owp, nfsow_list);
 			owp->nfsow_clp = clp;
 			LIST_INSERT_HEAD(&clp->nfsc_owner, owp, nfsow_list);
+			LIST_INSERT_HEAD(NFSCLOPENHASH(clp, op->nfso_fh,
+			    op->nfso_fhlen), op, nfso_hash);
 			nfsstatsv1.cllocalopenowners--;
 			nfsstatsv1.clopenowners++;
 			nfsstatsv1.cllocalopens--;
@@ -1714,7 +1766,7 @@ nfscl_expireclient(struct nfsclclient *clp, struct nfsmount *nmp,
 		printf("nfsv4 expired locks lost\n");
 	    }
 	    nfscl_cleandeleg(dp);
-	    nfscl_freedeleg(&clp->nfsc_deleg, dp);
+	    nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 	    dp = ndp;
 	}
 	if (!TAILQ_EMPTY(&clp->nfsc_deleg))
@@ -1881,7 +1933,7 @@ static int	fake_global;	/* Used to force visibility of MNTK_UNMOUNTF */
 /*
  * Called from nfs umount to free up the clientid.
  */
-APPLESTATIC void
+void
 nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
 {
 	struct nfsclclient *clp;
@@ -1918,7 +1970,7 @@ nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
 	if (clp != NULL) {
 		if ((clp->nfsc_flags & NFSCLFLAGS_INITED) == 0)
 			panic("nfscl umount");
-	
+
 		/*
 		 * First, handshake with the nfscl renew thread, to terminate
 		 * it.
@@ -1927,7 +1979,7 @@ nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
 		while (clp->nfsc_flags & NFSCLFLAGS_HASTHREAD)
 			(void)mtx_sleep(clp, NFSCLSTATEMUTEXPTR, PWAIT,
 			    "nfsclumnt", hz);
-	
+
 		/*
 		 * Now, get the exclusive lock on the client state, so
 		 * that no uses of the state are still in progress.
@@ -1937,7 +1989,7 @@ nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
 			    NFSCLSTATEMUTEXPTR, NULL);
 		} while (!igotlock);
 		NFSUNLOCKCLSTATE();
-	
+
 		/*
 		 * Free up all the state. It will expire on the server, but
 		 * maybe we should do a SetClientId/SetClientIdConfirm so
@@ -1950,7 +2002,7 @@ nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
 			(void)nfsrpc_destroysession(nmp, clp, cred, p);
 			(void)nfsrpc_destroyclient(nmp, clp, cred, p);
 		} else
-			(void)nfsrpc_setclient(nmp, clp, 0, cred, p);
+			(void)nfsrpc_setclient(nmp, clp, 0, NULL, cred, p);
 		nfscl_cleanclient(clp);
 		nmp->nm_clp = NULL;
 		NFSFREECRED(cred);
@@ -1966,7 +2018,8 @@ nfscl_umount(struct nfsmount *nmp, NFSPROC_T *p)
  * corresponding state.
  */
 static void
-nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
+nfscl_recover(struct nfsclclient *clp, bool *retokp, struct ucred *cred,
+    NFSPROC_T *p)
 {
 	struct nfsclowner *owp, *nowp;
 	struct nfsclopen *op, *nop;
@@ -1982,6 +2035,7 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	u_int32_t delegtype = NFSV4OPEN_DELEGATEWRITE, mode;
 	int i, igotlock = 0, error, trycnt, firstlock;
 	struct nfscllayout *lyp, *nlyp;
+	bool recovered_one;
 
 	/*
 	 * First, lock the client structure, so everyone else will
@@ -2010,8 +2064,9 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 		LIST_INIT(&clp->nfsc_layouthash[i]);
 
 	trycnt = 5;
+	tcred = NULL;
 	do {
-		error = nfsrpc_setclient(nmp, clp, 1, cred, p);
+		error = nfsrpc_setclient(nmp, clp, 1, retokp, cred, p);
 	} while ((error == NFSERR_STALECLIENTID ||
 	     error == NFSERR_BADSESSION ||
 	     error == NFSERR_STALEDONTRECOVER) && --trycnt > 0);
@@ -2044,6 +2099,13 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	NFSUNLOCKREQ();
 
 	/*
+	 * If nfsrpc_setclient() returns *retokp == true,
+	 * no more recovery is needed.
+	 */
+	if (*retokp)
+		goto out;
+
+	/*
 	 * Now, mark all delegations "need reclaim".
 	 */
 	TAILQ_FOREACH(dp, &clp->nfsc_deleg, nfsdl_list)
@@ -2055,6 +2117,7 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	 * Now traverse the state lists, doing Open and Lock Reclaims.
 	 */
 	tcred = newnfs_getcred();
+	recovered_one = false;
 	owp = LIST_FIRST(&clp->nfsc_owner);
 	while (owp != NULL) {
 	    nowp = LIST_NEXT(owp, nfsow_list);
@@ -2088,6 +2151,7 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 			op->nfso_mode, op, NULL, 0, &ndp, 1, delegtype,
 			tcred, p);
 		    if (!error) {
+			recovered_one = true;
 			/* Handle any replied delegation */
 			if (ndp != NULL && ((ndp->nfsdl_flags & NFSCLDL_WRITE)
 			    || NFSMNT_RDONLY(nmp->nm_mountp))) {
@@ -2146,6 +2210,21 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 				nfscl_freelockowner(lp, 0);
 			    lp = nlp;
 			}
+		    } else if (error == NFSERR_NOGRACE && !recovered_one &&
+			NFSHASNFSV4N(nmp)) {
+			/*
+			 * For NFSv4.1/4.2, the NFSERR_EXPIRED case will
+			 * actually end up here, since the client will do
+			 * a recovery for NFSERR_BADSESSION, but will get
+			 * an NFSERR_NOGRACE reply for the first "reclaim"
+			 * attempt.
+			 * So, call nfscl_expireclient() to recover the
+			 * opens as best we can and then do a reclaim
+			 * complete and return.
+			 */
+			nfsrpc_reclaimcomplete(nmp, cred, p);
+			nfscl_expireclient(clp, nmp, tcred, p);
+			goto out;
 		    }
 		}
 		if (error != 0 && error != NFSERR_BADSESSION)
@@ -2232,13 +2311,31 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 		if (error) {
 		    if (nop != NULL)
 			free(nop, M_NFSCLOPEN);
+		    if (error == NFSERR_NOGRACE && !recovered_one &&
+			NFSHASNFSV4N(nmp)) {
+			/*
+			 * For NFSv4.1/4.2, the NFSERR_EXPIRED case will
+			 * actually end up here, since the client will do
+			 * a recovery for NFSERR_BADSESSION, but will get
+			 * an NFSERR_NOGRACE reply for the first "reclaim"
+			 * attempt.
+			 * So, call nfscl_expireclient() to recover the
+			 * opens as best we can and then do a reclaim
+			 * complete and return.
+			 */
+			nfsrpc_reclaimcomplete(nmp, cred, p);
+			nfscl_expireclient(clp, nmp, tcred, p);
+			free(nowp, M_NFSCLOWNER);
+			goto out;
+		    }
 		    /*
 		     * Couldn't reclaim it, so throw the state
 		     * away. Ouch!!
 		     */
 		    nfscl_cleandeleg(dp);
-		    nfscl_freedeleg(&clp->nfsc_deleg, dp);
+		    nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 		} else {
+		    recovered_one = true;
 		    LIST_INSERT_HEAD(&extra_open, nop, nfso_list);
 		}
 	    }
@@ -2276,12 +2373,14 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
 	if (NFSHASNFSV4N(nmp))
 		(void)nfsrpc_reclaimcomplete(nmp, cred, p);
 
+out:
 	NFSLOCKCLSTATE();
 	clp->nfsc_flags &= ~NFSCLFLAGS_RECVRINPROG;
 	wakeup(&clp->nfsc_flags);
 	nfsv4_unlock(&clp->nfsc_lock, 0);
 	NFSUNLOCKCLSTATE();
-	NFSFREECRED(tcred);
+	if (tcred != NULL)
+		NFSFREECRED(tcred);
 }
 
 /*
@@ -2290,7 +2389,7 @@ nfscl_recover(struct nfsclclient *clp, struct ucred *cred, NFSPROC_T *p)
  * XXX Someday it should post a signal to the process(es) that hold the
  * state, so they know that lock state has been lost.
  */
-APPLESTATIC int
+int
 nfscl_hasexpired(struct nfsclclient *clp, u_int32_t clidrev, NFSPROC_T *p)
 {
 	struct nfsmount *nmp;
@@ -2330,7 +2429,7 @@ nfscl_hasexpired(struct nfsclclient *clp, u_int32_t clidrev, NFSPROC_T *p)
 	cred = newnfs_getcred();
 	trycnt = 5;
 	do {
-		error = nfsrpc_setclient(nmp, clp, 0, cred, p);
+		error = nfsrpc_setclient(nmp, clp, 0, NULL, cred, p);
 	} while ((error == NFSERR_STALECLIENTID ||
 	     error == NFSERR_BADSESSION ||
 	     error == NFSERR_STALEDONTRECOVER) && --trycnt > 0);
@@ -2518,7 +2617,7 @@ nfscl_updatelock(struct nfscllockowner *lp, struct nfscllock **new_lopp,
  * This function must be run as a kernel thread.
  * It does Renew Ops and recovery, when required.
  */
-APPLESTATIC void
+void
 nfscl_renewthread(struct nfsclclient *clp, NFSPROC_T *p)
 {
 	struct nfsclowner *owp, *nowp;
@@ -2539,31 +2638,37 @@ nfscl_renewthread(struct nfsclclient *clp, NFSPROC_T *p)
 	struct nfscllayouthead rlh;
 	struct nfsclrecalllayout *recallp;
 	struct nfsclds *dsp;
+	bool retok;
+	struct mount *mp;
+	vnode_t vp;
 
 	cred = newnfs_getcred();
 	NFSLOCKCLSTATE();
 	clp->nfsc_flags |= NFSCLFLAGS_HASTHREAD;
+	mp = clp->nfsc_nmp->nm_mountp;
 	NFSUNLOCKCLSTATE();
 	for(;;) {
 		newnfs_setroot(cred);
 		cbpathdown = 0;
 		if (clp->nfsc_flags & NFSCLFLAGS_RECOVER) {
 			/*
-			 * Only allow one recover within 1/2 of the lease
+			 * Only allow one full recover within 1/2 of the lease
 			 * duration (nfsc_renew).
+			 * retok is value/result.  If passed in set to true,
+			 * it indicates only a CreateSession operation should
+			 * be attempted.
+			 * If it is returned true, it indicates that the
+			 * recovery only required a CreateSession.
 			 */
+			retok = true;
 			if (recover_done_time < NFSD_MONOSEC) {
 				recover_done_time = NFSD_MONOSEC +
 				    clp->nfsc_renew;
-				NFSCL_DEBUG(1, "Doing recovery..\n");
-				nfscl_recover(clp, cred, p);
-			} else {
-				NFSCL_DEBUG(1, "Clear Recovery dt=%u ms=%jd\n",
-				    recover_done_time, (intmax_t)NFSD_MONOSEC);
-				NFSLOCKCLSTATE();
-				clp->nfsc_flags &= ~NFSCLFLAGS_RECOVER;
-				NFSUNLOCKCLSTATE();
+				retok = false;
 			}
+			NFSCL_DEBUG(1, "Doing recovery, only "
+			    "createsession=%d\n", retok);
+			nfscl_recover(clp, &retok, cred, p);
 		}
 		if (clp->nfsc_expire <= NFSD_MONOSEC &&
 		    (clp->nfsc_flags & NFSCLFLAGS_HASCLIENTID)) {
@@ -2639,21 +2744,25 @@ tryagain:
 				    }
 				    dp->nfsdl_rwlock.nfslock_lock |=
 					NFSV4LOCK_WANTED;
-				    (void) nfsmsleep(&dp->nfsdl_rwlock,
-					NFSCLSTATEMUTEXPTR, PZERO, "nfscld",
-					NULL);
+				    msleep(&dp->nfsdl_rwlock,
+					NFSCLSTATEMUTEXPTR, PVFS, "nfscld",
+					5 * hz);
+				    if (NFSCL_FORCEDISM(mp))
+					goto terminate;
 				    goto tryagain;
 				}
 				while (!igotlock) {
 				    igotlock = nfsv4_lock(&clp->nfsc_lock, 1,
-					&islept, NFSCLSTATEMUTEXPTR, NULL);
+					&islept, NFSCLSTATEMUTEXPTR, mp);
+				    if (igotlock == 0 && NFSCL_FORCEDISM(mp))
+					goto terminate;
 				    if (islept)
 					goto tryagain;
 				}
 				NFSUNLOCKCLSTATE();
 				newnfs_copycred(&dp->nfsdl_cred, cred);
 				ret = nfscl_recalldeleg(clp, clp->nfsc_nmp, dp,
-				    NULL, cred, p, 1);
+				    NULL, cred, p, 1, &vp);
 				if (!ret) {
 				    nfscl_cleandeleg(dp);
 				    TAILQ_REMOVE(&clp->nfsc_deleg, dp,
@@ -2664,6 +2773,22 @@ tryagain:
 				    nfsstatsv1.cldelegates--;
 				}
 				NFSLOCKCLSTATE();
+				/*
+				 * The nfsc_lock must be released before doing
+				 * vrele(), since it might call nfs_inactive().
+				 * For the unlikely case where the vnode failed
+				 * to be acquired by nfscl_recalldeleg(), a
+				 * VOP_RECLAIM() should be in progress and it
+				 * will return the delegation.
+				 */
+				nfsv4_unlock(&clp->nfsc_lock, 0);
+				igotlock = 0;
+				if (vp != NULL) {
+					NFSUNLOCKCLSTATE();
+					vrele(vp);
+					NFSLOCKCLSTATE();
+				}
+				goto tryagain;
 			}
 			dp = ndp;
 		}
@@ -2726,9 +2851,11 @@ tryagain2:
 				     NFSV4LOCK_LOCK) != 0) {
 					lyp->nfsly_lock.nfslock_lock |=
 					    NFSV4LOCK_WANTED;
-					nfsmsleep(&lyp->nfsly_lock.nfslock_lock,
-					    NFSCLSTATEMUTEXPTR, PZERO, "nfslyp",
-					    NULL);
+					msleep(&lyp->nfsly_lock.nfslock_lock,
+					    NFSCLSTATEMUTEXPTR, PVFS, "nfslyp",
+					    5 * hz);
+					if (NFSCL_FORCEDISM(mp))
+					    goto terminate;
 					goto tryagain2;
 				}
 				/* Move the layout to the recall list. */
@@ -2837,6 +2964,7 @@ tryagain2:
 		if ((clp->nfsc_flags & NFSCLFLAGS_RECOVER) == 0)
 			(void)mtx_sleep(clp, NFSCLSTATEMUTEXPTR, PWAIT, "nfscl",
 			    hz);
+terminate:
 		if (clp->nfsc_flags & NFSCLFLAGS_UMOUNT) {
 			clp->nfsc_flags &= ~NFSCLFLAGS_HASTHREAD;
 			NFSUNLOCKCLSTATE();
@@ -2852,7 +2980,7 @@ tryagain2:
  * Initiate state recovery. Called when NFSERR_STALECLIENTID,
  * NFSERR_STALESTATEID or NFSERR_BADSESSION is received.
  */
-APPLESTATIC void
+void
 nfscl_initiate_recovery(struct nfsclclient *clp)
 {
 
@@ -2867,7 +2995,7 @@ nfscl_initiate_recovery(struct nfsclclient *clp)
 /*
  * Dump out the state stuff for debugging.
  */
-APPLESTATIC void
+void
 nfscl_dumpstate(struct nfsmount *nmp, int openowner, int opens,
     int lockowner, int locks)
 {
@@ -2963,7 +3091,7 @@ nfscl_dumpstate(struct nfsmount *nmp, int openowner, int opens,
  * Check for duplicate open owners and opens.
  * (Only used as a diagnostic aid.)
  */
-APPLESTATIC void
+void
 nfscl_dupopen(vnode_t vp, int dupopens)
 {
 	struct nfsclclient *clp;
@@ -2971,7 +3099,7 @@ nfscl_dupopen(vnode_t vp, int dupopens)
 	struct nfsclopen *op, *op2;
 	struct nfsfh *nfhp;
 
-	clp = VFSTONFS(vnode_mount(vp))->nm_clp;
+	clp = VFSTONFS(vp->v_mount)->nm_clp;
 	if (clp == NULL) {
 		printf("nfscl dupopen NULL clp\n");
 		return;
@@ -2990,7 +3118,7 @@ nfscl_dupopen(vnode_t vp, int dupopens)
 		    NFSV4CL_LOCKNAMELEN)) {
 			NFSUNLOCKCLSTATE();
 			printf("DUP OWNER\n");
-			nfscl_dumpstate(VFSTONFS(vnode_mount(vp)), 1, 1, 0, 0);
+			nfscl_dumpstate(VFSTONFS(vp->v_mount), 1, 1, 0, 0);
 			return;
 		}
 	    }
@@ -3013,8 +3141,7 @@ nfscl_dupopen(vnode_t vp, int dupopens)
 			    op->nfso_stateid.other[2] == op2->nfso_stateid.other[2]) {
 			    NFSUNLOCKCLSTATE();
 			    printf("DUP STATEID\n");
-			    nfscl_dumpstate(VFSTONFS(vnode_mount(vp)), 1, 1, 0,
-				0);
+			    nfscl_dumpstate(VFSTONFS(vp->v_mount), 1, 1, 0, 0);
 			    return;
 			}
 		    }
@@ -3048,8 +3175,8 @@ nfscl_dupopen(vnode_t vp, int dupopens)
 				    NFSUNLOCKCLSTATE();
 				    printf("DUP OPEN\n");
 				}
-				nfscl_dumpstate(VFSTONFS(vnode_mount(vp)), 1, 1,
-				    0, 0);
+				nfscl_dumpstate(VFSTONFS(vp->v_mount), 1, 1, 0,
+				    0);
 				return;
 			    }
 			}
@@ -3072,7 +3199,7 @@ nfscl_dupopen(vnode_t vp, int dupopens)
  * If it returns 0 for success, there will be a referenced
  * clp returned via clpp.
  */
-APPLESTATIC int
+int
 nfscl_getclose(vnode_t vp, struct nfsclclient **clpp)
 {
 	struct nfsclclient *clp;
@@ -3082,7 +3209,7 @@ nfscl_getclose(vnode_t vp, struct nfsclclient **clpp)
 	struct nfsfh *nfhp;
 	int error, notdecr;
 
-	error = nfscl_getcl(vnode_mount(vp), NULL, NULL, 1, &clp);
+	error = nfscl_getcl(vp->v_mount, NULL, NULL, 1, &clp);
 	if (error)
 		return (error);
 	*clpp = clp;
@@ -3120,23 +3247,22 @@ nfscl_getclose(vnode_t vp, struct nfsclclient **clpp)
 	}
 
 	/* Now process the opens against the server. */
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-		LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
-			if (op->nfso_fhlen == nfhp->nfh_len &&
-			    !NFSBCMP(op->nfso_fh, nfhp->nfh_fh,
-			    nfhp->nfh_len)) {
-				/* Found an open, decrement cnt if possible */
-				if (notdecr && op->nfso_opencnt > 0) {
-					notdecr = 0;
-					op->nfso_opencnt--;
-				}
-				/*
-				 * There are more opens, so just return.
-				 */
-				if (op->nfso_opencnt > 0) {
-					NFSUNLOCKCLSTATE();
-					return (0);
-				}
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, nfhp->nfh_fh, nfhp->nfh_len),
+	    nfso_hash) {
+		if (op->nfso_fhlen == nfhp->nfh_len &&
+		    !NFSBCMP(op->nfso_fh, nfhp->nfh_fh,
+		    nfhp->nfh_len)) {
+			/* Found an open, decrement cnt if possible */
+			if (notdecr && op->nfso_opencnt > 0) {
+				notdecr = 0;
+				op->nfso_opencnt--;
+			}
+			/*
+			 * There are more opens, so just return.
+			 */
+			if (op->nfso_opencnt > 0) {
+				NFSUNLOCKCLSTATE();
+				return (0);
 			}
 		}
 	}
@@ -3146,7 +3272,7 @@ nfscl_getclose(vnode_t vp, struct nfsclclient **clpp)
 	return (0);
 }
 
-APPLESTATIC int
+int
 nfscl_doclose(vnode_t vp, struct nfsclclient **clpp, NFSPROC_T *p)
 {
 	struct nfsclclient *clp;
@@ -3157,7 +3283,7 @@ nfscl_doclose(vnode_t vp, struct nfsclclient **clpp, NFSPROC_T *p)
 	struct nfsclrecalllayout *recallp;
 	int error;
 
-	error = nfscl_getcl(vnode_mount(vp), NULL, NULL, 1, &clp);
+	error = nfscl_getcl(vp->v_mount, NULL, NULL, 1, &clp);
 	if (error)
 		return (error);
 	*clpp = clp;
@@ -3187,25 +3313,21 @@ nfscl_doclose(vnode_t vp, struct nfsclclient **clpp, NFSPROC_T *p)
 
 	/* Now process the opens against the server. */
 lookformore:
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-		op = LIST_FIRST(&owp->nfsow_open);
-		while (op != NULL) {
-			if (op->nfso_fhlen == nfhp->nfh_len &&
-			    !NFSBCMP(op->nfso_fh, nfhp->nfh_fh,
-			    nfhp->nfh_len)) {
-				/* Found an open, close it. */
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, nfhp->nfh_fh, nfhp->nfh_len),
+	    nfso_hash) {
+		if (op->nfso_fhlen == nfhp->nfh_len &&
+		    !NFSBCMP(op->nfso_fh, nfhp->nfh_fh,
+		    nfhp->nfh_len)) {
+			/* Found an open, close it. */
 #ifdef DIAGNOSTIC
-				KASSERT((op->nfso_opencnt == 0),
-				    ("nfscl: bad open cnt on server (%d)",
-				     op->nfso_opencnt));
+			KASSERT((op->nfso_opencnt == 0),
+			    ("nfscl: bad open cnt on server (%d)",
+			     op->nfso_opencnt));
 #endif
-				NFSUNLOCKCLSTATE();
-				nfsrpc_doclose(VFSTONFS(vnode_mount(vp)), op,
-				    p);
-				NFSLOCKCLSTATE();
-				goto lookformore;
-			}
-			op = LIST_NEXT(op, nfso_list);
+			NFSUNLOCKCLSTATE();
+			nfsrpc_doclose(VFSTONFS(vp->v_mount), op, p);
+			NFSLOCKCLSTATE();
+			goto lookformore;
 		}
 	}
 	NFSUNLOCKCLSTATE();
@@ -3231,15 +3353,54 @@ nfscl_delegreturnall(struct nfsclclient *clp, NFSPROC_T *p)
 	TAILQ_FOREACH_SAFE(dp, &clp->nfsc_deleg, nfsdl_list, ndp) {
 		nfscl_cleandeleg(dp);
 		(void) nfscl_trydelegreturn(dp, cred, clp->nfsc_nmp, p);
-		nfscl_freedeleg(&clp->nfsc_deleg, dp);
+		nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 	}
+	NFSFREECRED(cred);
+}
+
+/*
+ * Return any delegation for this vp.
+ */
+void
+nfscl_delegreturnvp(vnode_t vp, NFSPROC_T *p)
+{
+	struct nfsclclient *clp;
+	struct nfscldeleg *dp;
+	struct ucred *cred;
+	struct nfsnode *np;
+	struct nfsmount *nmp;
+
+	nmp = VFSTONFS(vp->v_mount);
+	NFSLOCKMNT(nmp);
+	if ((nmp->nm_privflag & NFSMNTP_DELEGISSUED) == 0) {
+		NFSUNLOCKMNT(nmp);
+		return;
+	}
+	NFSUNLOCKMNT(nmp);
+	np = VTONFS(vp);
+	cred = newnfs_getcred();
+	dp = NULL;
+	NFSLOCKCLSTATE();
+	clp = nmp->nm_clp;
+	if (clp != NULL)
+		dp = nfscl_finddeleg(clp, np->n_fhp->nfh_fh,
+		    np->n_fhp->nfh_len);
+	if (dp != NULL) {
+		nfscl_cleandeleg(dp);
+		nfscl_freedeleg(&clp->nfsc_deleg, dp, false);
+		NFSUNLOCKCLSTATE();
+		newnfs_copycred(&dp->nfsdl_cred, cred);
+		nfscl_trydelegreturn(dp, cred, clp->nfsc_nmp, p);
+		free(dp, M_NFSCLDELEG);
+	} else
+		NFSUNLOCKCLSTATE();
 	NFSFREECRED(cred);
 }
 
 /*
  * Do a callback RPC.
  */
-APPLESTATIC void
+void
 nfscl_docb(struct nfsrv_descript *nd, NFSPROC_T *p)
 {
 	int clist, gotseq_ok, i, j, k, op, rcalls;
@@ -3484,11 +3645,18 @@ nfscl_docb(struct nfsrv_descript *nd, NFSPROC_T *p)
 							    len, stateid.seqid,
 							    0, 0, NULL,
 							    recallp);
+							if (error == 0 &&
+							    stateid.seqid >
+							    lyp->nfsly_stateid.seqid)
+								lyp->nfsly_stateid.seqid =
+								    stateid.seqid;
 							recallp = NULL;
 							wakeup(clp);
 							NFSCL_DEBUG(4,
-							    "aft layrcal=%d\n",
-							    error);
+							    "aft layrcal=%d "
+							    "layseqid=%d\n",
+							    error,
+							    lyp->nfsly_stateid.seqid);
 						} else
 							error =
 							  NFSERR_NOMATCHLAYOUT;
@@ -3796,7 +3964,6 @@ nfscl_localconflict(struct nfsclclient *clp, u_int8_t *fhp, int fhlen,
     struct nfscllock *nlop, u_int8_t *own, struct nfscldeleg *dp,
     struct nfscllock **lopp)
 {
-	struct nfsclowner *owp;
 	struct nfsclopen *op;
 	int ret;
 
@@ -3805,15 +3972,13 @@ nfscl_localconflict(struct nfsclclient *clp, u_int8_t *fhp, int fhlen,
 		if (ret)
 			return (ret);
 	}
-	LIST_FOREACH(owp, &clp->nfsc_owner, nfsow_list) {
-		LIST_FOREACH(op, &owp->nfsow_open, nfso_list) {
-			if (op->nfso_fhlen == fhlen &&
-			    !NFSBCMP(op->nfso_fh, fhp, fhlen)) {
-				ret = nfscl_checkconflict(&op->nfso_lock, nlop,
-				    own, lopp);
-				if (ret)
-					return (ret);
-			}
+	LIST_FOREACH(op, NFSCLOPENHASH(clp, fhp, fhlen), nfso_hash) {
+		if (op->nfso_fhlen == fhlen &&
+		    !NFSBCMP(op->nfso_fh, fhp, fhlen)) {
+			ret = nfscl_checkconflict(&op->nfso_lock, nlop,
+			    own, lopp);
+			if (ret)
+				return (ret);
 		}
 	}
 	return (0);
@@ -3849,7 +4014,7 @@ nfscl_checkconflict(struct nfscllockownerhead *lhp, struct nfscllock *nlop,
 /*
  * Check for a local conflicting lock.
  */
-APPLESTATIC int
+int
 nfscl_lockt(vnode_t vp, struct nfsclclient *clp, u_int64_t off,
     u_int64_t len, struct flock *fl, NFSPROC_T *p, void *id, int flags)
 {
@@ -3905,16 +4070,18 @@ nfscl_lockt(vnode_t vp, struct nfsclclient *clp, u_int64_t off,
 static int
 nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
     struct nfscldeleg *dp, vnode_t vp, struct ucred *cred, NFSPROC_T *p,
-    int called_from_renewthread)
+    int called_from_renewthread, vnode_t *vpp)
 {
 	struct nfsclowner *owp, *lowp, *nowp;
 	struct nfsclopen *op, *lop;
 	struct nfscllockowner *lp;
 	struct nfscllock *lckp;
 	struct nfsnode *np;
-	int error = 0, ret, gotvp = 0;
+	int error = 0, ret;
 
 	if (vp == NULL) {
+		KASSERT(vpp != NULL, ("nfscl_recalldeleg: vpp NULL"));
+		*vpp = NULL;
 		/*
 		 * First, get a vnode for the file. This is needed to do RPCs.
 		 */
@@ -3928,7 +4095,7 @@ nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
 			return (0);
 		}
 		vp = NFSTOV(np);
-		gotvp = 1;
+		*vpp = vp;
 	} else {
 		np = VTONFS(vp);
 	}
@@ -3955,8 +4122,6 @@ nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
 		 * return now, so that the dirty buffer will be flushed
 		 * later.
 		 */
-		if (gotvp != 0)
-			vrele(vp);
 		return (ret);
 	}
 
@@ -3980,11 +4145,8 @@ nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
 					    owp, dp, cred, p);
 					if (ret == NFSERR_STALECLIENTID ||
 					    ret == NFSERR_STALEDONTRECOVER ||
-					    ret == NFSERR_BADSESSION) {
-						if (gotvp)
-							vrele(vp);
+					    ret == NFSERR_BADSESSION)
 						return (ret);
-					}
 					if (ret) {
 						nfscl_freeopen(lop, 1);
 						if (!error)
@@ -4012,11 +4174,8 @@ nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
 					nfscl_freeopenowner(owp, 0);
 					if (ret == NFSERR_STALECLIENTID ||
 					    ret == NFSERR_STALEDONTRECOVER ||
-					    ret == NFSERR_BADSESSION) {
-						if (gotvp)
-							vrele(vp);
+					    ret == NFSERR_BADSESSION)
 						return (ret);
-					}
 					if (ret) {
 						nfscl_freeopen(lop, 1);
 						if (!error)
@@ -4037,17 +4196,12 @@ nfscl_recalldeleg(struct nfsclclient *clp, struct nfsmount *nmp,
 			if (ret == NFSERR_STALESTATEID ||
 			    ret == NFSERR_STALEDONTRECOVER ||
 			    ret == NFSERR_STALECLIENTID ||
-			    ret == NFSERR_BADSESSION) {
-				if (gotvp)
-					vrele(vp);
+			    ret == NFSERR_BADSESSION)
 				return (ret);
-			}
 			if (ret && !error)
 				error = ret;
 		}
 	}
-	if (gotvp)
-		vrele(vp);
 	return (error);
 }
 
@@ -4084,6 +4238,7 @@ nfscl_moveopen(vnode_t vp, struct nfsclclient *clp, struct nfsmount *nmp,
 	np = VTONFS(vp);
 	nop = malloc(sizeof (struct nfsclopen) +
 	    lop->nfso_fhlen - 1, M_NFSCLOPEN, M_WAITOK);
+	nop->nfso_hash.le_prev = NULL;
 	newone = 0;
 	nfscl_newopen(clp, NULL, &owp, NULL, &op, &nop, owp->nfsow_owner,
 	    lop->nfso_fh, lop->nfso_fhlen, cred, &newone);
@@ -4290,7 +4445,7 @@ nfscl_trydelegreturn(struct nfscldeleg *dp, struct ucred *cred,
  * retrying while NFSERR_DELAY. Also, try system credentials, if the passed in
  * credentials fail.
  */
-APPLESTATIC int
+int
 nfscl_tryclose(struct nfsclopen *op, struct ucred *cred,
     struct nfsmount *nmp, NFSPROC_T *p)
 {
@@ -4319,7 +4474,7 @@ nfscl_tryclose(struct nfsclopen *op, struct ucred *cred,
  * to the server. This might be a big performance win in some environments.
  * (Not useful until the client does caching on local stable storage.)
  */
-APPLESTATIC int
+int
 nfscl_mustflush(vnode_t vp)
 {
 	struct nfsclclient *clp;
@@ -4328,7 +4483,7 @@ nfscl_mustflush(vnode_t vp)
 	struct nfsmount *nmp;
 
 	np = VTONFS(vp);
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return (1);
 	NFSLOCKCLSTATE();
@@ -4353,7 +4508,7 @@ nfscl_mustflush(vnode_t vp)
 /*
  * See if a (write) delegation exists for this file.
  */
-APPLESTATIC int
+int
 nfscl_nodeleg(vnode_t vp, int writedeleg)
 {
 	struct nfsclclient *clp;
@@ -4362,9 +4517,15 @@ nfscl_nodeleg(vnode_t vp, int writedeleg)
 	struct nfsmount *nmp;
 
 	np = VTONFS(vp);
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return (1);
+	NFSLOCKMNT(nmp);
+	if ((nmp->nm_privflag & NFSMNTP_DELEGISSUED) == 0) {
+		NFSUNLOCKMNT(nmp);
+		return (1);
+	}
+	NFSUNLOCKMNT(nmp);
 	NFSLOCKCLSTATE();
 	clp = nfscl_findcl(nmp);
 	if (clp == NULL) {
@@ -4386,7 +4547,7 @@ nfscl_nodeleg(vnode_t vp, int writedeleg)
 /*
  * Look for an associated delegation that should be DelegReturned.
  */
-APPLESTATIC int
+int
 nfscl_removedeleg(vnode_t vp, NFSPROC_T *p, nfsv4stateid_t *stp)
 {
 	struct nfsclclient *clp;
@@ -4398,7 +4559,7 @@ nfscl_removedeleg(vnode_t vp, NFSPROC_T *p, nfsv4stateid_t *stp)
 	struct nfsnode *np;
 	int igotlock = 0, triedrecall = 0, needsrecall, retcnt = 0, islept;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	np = VTONFS(vp);
 	NFSLOCKCLSTATE();
 	/*
@@ -4459,7 +4620,7 @@ nfscl_removedeleg(vnode_t vp, NFSPROC_T *p, nfsv4stateid_t *stp)
 			NFSUNLOCKCLSTATE();
 			cred = newnfs_getcred();
 			newnfs_copycred(&dp->nfsdl_cred, cred);
-			(void) nfscl_recalldeleg(clp, nmp, dp, vp, cred, p, 0);
+			nfscl_recalldeleg(clp, nmp, dp, vp, cred, p, 0, NULL);
 			NFSFREECRED(cred);
 			triedrecall = 1;
 			NFSLOCKCLSTATE();
@@ -4470,7 +4631,7 @@ nfscl_removedeleg(vnode_t vp, NFSPROC_T *p, nfsv4stateid_t *stp)
 		    *stp = dp->nfsdl_stateid;
 		    retcnt = 1;
 		    nfscl_cleandeleg(dp);
-		    nfscl_freedeleg(&clp->nfsc_deleg, dp);
+		    nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 		}
 		if (igotlock)
 		    nfsv4_unlock(&clp->nfsc_lock, 0);
@@ -4482,7 +4643,7 @@ nfscl_removedeleg(vnode_t vp, NFSPROC_T *p, nfsv4stateid_t *stp)
 /*
  * Look for associated delegation(s) that should be DelegReturned.
  */
-APPLESTATIC int
+int
 nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
     nfsv4stateid_t *tstp, int *gottdp, NFSPROC_T *p)
 {
@@ -4495,7 +4656,7 @@ nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
 	struct nfsnode *np;
 	int igotlock = 0, triedrecall = 0, needsrecall, retcnt = 0, islept;
 
-	nmp = VFSTONFS(vnode_mount(fvp));
+	nmp = VFSTONFS(fvp->v_mount);
 	*gotfdp = 0;
 	*gottdp = 0;
 	NFSLOCKCLSTATE();
@@ -4558,7 +4719,7 @@ nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
 			NFSUNLOCKCLSTATE();
 			cred = newnfs_getcred();
 			newnfs_copycred(&dp->nfsdl_cred, cred);
-			(void) nfscl_recalldeleg(clp, nmp, dp, fvp, cred, p, 0);
+			nfscl_recalldeleg(clp, nmp, dp, fvp, cred, p, 0, NULL);
 			NFSFREECRED(cred);
 			triedrecall = 1;
 			NFSLOCKCLSTATE();
@@ -4570,7 +4731,7 @@ nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
 		    retcnt++;
 		    *gotfdp = 1;
 		    nfscl_cleandeleg(dp);
-		    nfscl_freedeleg(&clp->nfsc_deleg, dp);
+		    nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 		}
 		if (igotlock) {
 		    nfsv4_unlock(&clp->nfsc_lock, 0);
@@ -4606,7 +4767,7 @@ nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
 			retcnt++;
 			*gottdp = 1;
 			nfscl_cleandeleg(dp);
-			nfscl_freedeleg(&clp->nfsc_deleg, dp);
+			nfscl_freedeleg(&clp->nfsc_deleg, dp, true);
 		    }
 		}
 		NFSUNLOCKCLSTATE();
@@ -4618,7 +4779,7 @@ nfscl_renamedeleg(vnode_t fvp, nfsv4stateid_t *fstp, int *gotfdp, vnode_t tvp,
  * Get a reference on the clientid associated with the mount point.
  * Return 1 if success, 0 otherwise.
  */
-APPLESTATIC int
+int
 nfscl_getref(struct nfsmount *nmp)
 {
 	struct nfsclclient *clp;
@@ -4637,7 +4798,7 @@ nfscl_getref(struct nfsmount *nmp)
 /*
  * Release a reference on a clientid acquired with the above call.
  */
-APPLESTATIC void
+void
 nfscl_relref(struct nfsmount *nmp)
 {
 	struct nfsclclient *clp;
@@ -4656,7 +4817,7 @@ nfscl_relref(struct nfsmount *nmp)
  * Save the size attribute in the delegation, since the nfsnode
  * is going away.
  */
-APPLESTATIC void
+void
 nfscl_reclaimnode(vnode_t vp)
 {
 	struct nfsclclient *clp;
@@ -4664,7 +4825,7 @@ nfscl_reclaimnode(vnode_t vp)
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return;
 	NFSLOCKCLSTATE();
@@ -4683,7 +4844,7 @@ nfscl_reclaimnode(vnode_t vp)
  * Get the saved size attribute in the delegation, since it is a
  * newly allocated nfsnode.
  */
-APPLESTATIC void
+void
 nfscl_newnode(vnode_t vp)
 {
 	struct nfsclclient *clp;
@@ -4691,7 +4852,7 @@ nfscl_newnode(vnode_t vp)
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return;
 	NFSLOCKCLSTATE();
@@ -4710,7 +4871,7 @@ nfscl_newnode(vnode_t vp)
  * If there is a valid write delegation for this file, set the modtime
  * to the local clock time.
  */
-APPLESTATIC void
+void
 nfscl_delegmodtime(vnode_t vp)
 {
 	struct nfsclclient *clp;
@@ -4718,9 +4879,15 @@ nfscl_delegmodtime(vnode_t vp)
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return;
+	NFSLOCKMNT(nmp);
+	if ((nmp->nm_privflag & NFSMNTP_DELEGISSUED) == 0) {
+		NFSUNLOCKMNT(nmp);
+		return;
+	}
+	NFSUNLOCKMNT(nmp);
 	NFSLOCKCLSTATE();
 	clp = nfscl_findcl(nmp);
 	if (clp == NULL) {
@@ -4739,7 +4906,7 @@ nfscl_delegmodtime(vnode_t vp)
  * If there is a valid write delegation for this file with a modtime set,
  * put that modtime in mtime.
  */
-APPLESTATIC void
+void
 nfscl_deleggetmodtime(vnode_t vp, struct timespec *mtime)
 {
 	struct nfsclclient *clp;
@@ -4747,9 +4914,15 @@ nfscl_deleggetmodtime(vnode_t vp, struct timespec *mtime)
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsmount *nmp;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (!NFSHASNFSV4(nmp))
 		return;
+	NFSLOCKMNT(nmp);
+	if ((nmp->nm_privflag & NFSMNTP_DELEGISSUED) == 0) {
+		NFSUNLOCKMNT(nmp);
+		return;
+	}
+	NFSUNLOCKMNT(nmp);
 	NFSLOCKCLSTATE();
 	clp = nfscl_findcl(nmp);
 	if (clp == NULL) {
@@ -4800,7 +4973,7 @@ nfscl_errmap(struct nfsrv_descript *nd, u_int32_t minorvers)
  * error is returned.
  * If a layout is passed in via lypp, it is locked (exclusively locked).
  */
-APPLESTATIC int
+int
 nfscl_layout(struct nfsmount *nmp, vnode_t vp, u_int8_t *fhp, int fhlen,
     nfsv4stateid_t *stateidp, int layouttype, int retonclose,
     struct nfsclflayouthead *fhlp, struct nfscllayout **lypp,
@@ -4870,6 +5043,8 @@ nfscl_layout(struct nfsmount *nmp, vnode_t vp, u_int8_t *fhp, int fhlen,
 		} else {
 			if (retonclose != 0)
 				lyp->nfsly_flags |= NFSLY_RETONCLOSE;
+			if (stateidp->seqid > lyp->nfsly_stateid.seqid)
+				lyp->nfsly_stateid.seqid = stateidp->seqid;
 			TAILQ_REMOVE(&clp->nfsc_layout, lyp, nfsly_list);
 			TAILQ_INSERT_HEAD(&clp->nfsc_layout, lyp, nfsly_list);
 			lyp->nfsly_timestamp = NFSD_MONOSEC + 120;
@@ -4882,7 +5057,7 @@ nfscl_layout(struct nfsmount *nmp, vnode_t vp, u_int8_t *fhp, int fhlen,
 			return (EPERM);
 		}
 		*lypp = lyp;
-	} else
+	} else if (stateidp->seqid > lyp->nfsly_stateid.seqid)
 		lyp->nfsly_stateid.seqid = stateidp->seqid;
 
 	/* Merge the new list of File Layouts into the list. */
@@ -4961,7 +5136,7 @@ nfscl_retoncloselayout(vnode_t vp, struct nfsclclient *clp, uint8_t *fhp,
 	struct nfscllayout *lyp;
 	uint32_t iomode;
 
-	if (vp->v_type != VREG || !NFSHASPNFS(VFSTONFS(vnode_mount(vp))) ||
+	if (vp->v_type != VREG || !NFSHASPNFS(VFSTONFS(vp->v_mount)) ||
 	    nfscl_enablecallb == 0 || nfs_numnfscbd == 0 ||
 	    (VTONFS(vp)->n_flag & NNOLAYOUT) != 0)
 		return;
@@ -5022,7 +5197,7 @@ nfscl_dserr(uint32_t op, uint32_t stat, struct nfscldevinfo *dp,
  * If NFSCLDS_SAMECONN is set, the connection is shared with other DSs and
  * cannot be shut down.
  */
-APPLESTATIC void
+void
 nfscl_cancelreqs(struct nfsclds *dsp)
 {
 	struct __rpc_client *cl;
@@ -5163,7 +5338,7 @@ nfscl_mergeflayouts(struct nfsclflayouthead *fhlp,
  * Add this nfscldevinfo to the client, if it doesn't already exist.
  * This function consumes the structure pointed at by dip, if not NULL.
  */
-APPLESTATIC int
+int
 nfscl_adddevinfo(struct nfsmount *nmp, struct nfscldevinfo *dip, int ind,
     struct nfsclflayout *flp)
 {
@@ -5213,7 +5388,7 @@ nfscl_adddevinfo(struct nfsmount *nmp, struct nfscldevinfo *dip, int ind,
 /*
  * Free up a layout structure and associated file layout structure(s).
  */
-APPLESTATIC void
+void
 nfscl_freelayout(struct nfscllayout *layp)
 {
 	struct nfsclflayout *flp, *nflp;
@@ -5238,7 +5413,7 @@ nfscl_freelayout(struct nfscllayout *layp)
 /*
  * Free up a file layout structure.
  */
-APPLESTATIC void
+void
 nfscl_freeflayout(struct nfsclflayout *flp)
 {
 	int i, j;
@@ -5262,7 +5437,7 @@ nfscl_freeflayout(struct nfsclflayout *flp)
 /*
  * Free up a file layout devinfo structure.
  */
-APPLESTATIC void
+void
 nfscl_freedevinfo(struct nfscldevinfo *dip)
 {
 
@@ -5435,7 +5610,7 @@ nfscl_layoutcommit(vnode_t vp, NFSPROC_T *p)
 	mount_t mp;
 	struct nfsmount *nmp;
 
-	mp = vnode_mount(vp);
+	mp = vp->v_mount;
 	nmp = VFSTONFS(mp);
 	if (NFSHASNOLAYOUTCOMMIT(nmp))
 		return (0);
@@ -5468,4 +5643,3 @@ tryagain:
 	NFSUNLOCKCLSTATE();
 	return (0);
 }
-

@@ -14,6 +14,7 @@ CFLAGS+=	-I${SRCTOP}/tests
 .PATH: ${SRCTOP}/contrib/capsicum-test
 
 GTESTS+=	capsicum-test
+GTESTS_WRAPPER_SH.capsicum-test=	functional
 
 SRCS.capsicum-test+=	\
 	capsicum-test-main.cc \
@@ -34,7 +35,7 @@ SRCS.capsicum-test+=	\
 	overhead.cc \
 	rename.cc
 
-LIBADD.capsicum-test+=	gtest pthread
+LIBADD.capsicum-test+=	gtest pthread procstat
 TEST_METADATA.capsicum-test=	required_user="unprivileged"
 
 .for p in mini-me mini-me.noexec mini-me.setuid
@@ -50,8 +51,6 @@ BINMODE.mini-me.setuid=	4555
 
 WARNS.capsicum-test=	3
 
-.endif
-
-WARNS?=	6
+.endif # MK_GOOGLETEST
 
 .include <bsd.test.mk>

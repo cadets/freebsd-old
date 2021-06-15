@@ -22,10 +22,11 @@ SRCS=		dtrace.c \
 .PATH: ${SYSDIR}/cddl/dev/dtrace/x86
 SRCS+=		dis_tables.c \
 		instr_size.c
-CFLAGS+=	-I${SYSDIR}/cddl/contrib/opensolaris/uts/intel \
-		-I${SYSDIR}/cddl/dev/dtrace/x86
-CFLAGS+= -I${SRCTOP}/sys/cddl/dev/dtvirt
+CFLAGS+=       -I${SYSDIR}/cddl/contrib/opensolaris/uts/intel \
+               -I${SYSDIR}/cddl/dev/dtrace/x86
+CFLAGS+=       -I${SRCTOP}/sys/cddl/dev/dtvirt
 .endif
+CFLAGS+= ${OPENZFS_CFLAGS}
 
 SRCS+=		bus_if.h device_if.h vnode_if.h
 
@@ -50,8 +51,6 @@ CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris \
 		-I${SYSDIR}/cddl/contrib/opensolaris/common/util \
 		-I${SYSDIR} -DDIS_MEM
 
-CFLAGS+=	-DSMP
-
 EXPORT_SYMS=	dtrace_register \
 		dtrace_unregister \
 		dtrace_probe_lookup \
@@ -59,16 +58,15 @@ EXPORT_SYMS=	dtrace_register \
 		dtrace_konsumer_unregister \
 		dtrace_xcall \
 		dtrace_buffer_switch \
-		dtrace_epid2size \
-		dtrace_probe_lookup
+		dtrace_epid2size
 
 dtrace_asm.o:  assym.inc
 
 .include <bsd.kmod.mk>
 
 CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h
-
+CFLAGS.dtrace_asm.S+= -D_SYS_ERRNO_H_ -D_SYS_PARAM_H_ -DLOCORE
+CWARNFLAGS+=	${OPENZFS_CWARNFLAGS}
 CWARNFLAGS+=	-Wno-parentheses
-CWARNFLAGS+=	-Wno-uninitialized
 CWARNFLAGS+=	-Wno-cast-qual
 CWARNFLAGS+=	-Wno-unused

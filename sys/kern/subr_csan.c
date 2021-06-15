@@ -30,7 +30,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define	KCSAN_RUNTIME
+#define	SAN_RUNTIME
 
 #include "opt_ddb.h"
 
@@ -350,20 +350,6 @@ kcsan_strlen(const char *str)
 	return (s - str);
 }
 
-#undef copystr
-#undef copyin
-#undef copyin_nofault
-#undef copyinstr
-#undef copyout
-#undef copyout_nofault
-
-int
-kcsan_copystr(const void *kfaddr, void *kdaddr, size_t len, size_t *done)
-{
-	kcsan_access((uintptr_t)kdaddr, len, true, false, __RET_ADDR);
-	return copystr(kfaddr, kdaddr, len, done);
-}
-
 int
 kcsan_copyin(const void *uaddr, void *kaddr, size_t len)
 {
@@ -388,7 +374,8 @@ kcsan_copyout(const void *kaddr, void *uaddr, size_t len)
 /* -------------------------------------------------------------------------- */
 
 #include <machine/atomic.h>
-#include <sys/_cscan_atomic.h>
+#define	ATOMIC_SAN_PREFIX	kcsan
+#include <sys/atomic_san.h>
 
 #define	_CSAN_ATOMIC_FUNC_ADD(name, type)				\
 	void kcsan_atomic_add_##name(volatile type *ptr, type val)	\
@@ -538,7 +525,7 @@ CSAN_ATOMIC_FUNC_ADD(8, uint8_t)
 CSAN_ATOMIC_FUNC_CLEAR(8, uint8_t)
 CSAN_ATOMIC_FUNC_CMPSET(8, uint8_t)
 CSAN_ATOMIC_FUNC_FCMPSET(8, uint8_t)
-_CSAN_ATOMIC_FUNC_LOAD(8, uint8_t)
+CSAN_ATOMIC_FUNC_LOAD(8, uint8_t)
 CSAN_ATOMIC_FUNC_SET(8, uint8_t)
 CSAN_ATOMIC_FUNC_SUBTRACT(8, uint8_t)
 _CSAN_ATOMIC_FUNC_STORE(8, uint8_t)
@@ -554,11 +541,7 @@ CSAN_ATOMIC_FUNC_ADD(16, uint16_t)
 CSAN_ATOMIC_FUNC_CLEAR(16, uint16_t)
 CSAN_ATOMIC_FUNC_CMPSET(16, uint16_t)
 CSAN_ATOMIC_FUNC_FCMPSET(16, uint16_t)
-#if defined(__aarch64__)
-_CSAN_ATOMIC_FUNC_LOAD(16, uint16_t)
-#else
 CSAN_ATOMIC_FUNC_LOAD(16, uint16_t)
-#endif
 CSAN_ATOMIC_FUNC_SET(16, uint16_t)
 CSAN_ATOMIC_FUNC_SUBTRACT(16, uint16_t)
 _CSAN_ATOMIC_FUNC_STORE(16, uint16_t)
@@ -602,6 +585,38 @@ CSAN_ATOMIC_FUNC_TESTANDCLEAR(64, uint64_t)
 CSAN_ATOMIC_FUNC_TESTANDSET(64, uint64_t)
 #endif
 
+CSAN_ATOMIC_FUNC_ADD(char, uint8_t)
+CSAN_ATOMIC_FUNC_CLEAR(char, uint8_t)
+CSAN_ATOMIC_FUNC_CMPSET(char, uint8_t)
+CSAN_ATOMIC_FUNC_FCMPSET(char, uint8_t)
+CSAN_ATOMIC_FUNC_LOAD(char, uint8_t)
+CSAN_ATOMIC_FUNC_SET(char, uint8_t)
+CSAN_ATOMIC_FUNC_SUBTRACT(char, uint8_t)
+_CSAN_ATOMIC_FUNC_STORE(char, uint8_t)
+#if 0
+CSAN_ATOMIC_FUNC_FETCHADD(char, uint8_t)
+CSAN_ATOMIC_FUNC_READANDCLEAR(char, uint8_t)
+CSAN_ATOMIC_FUNC_SWAP(char, uint8_t)
+CSAN_ATOMIC_FUNC_TESTANDCLEAR(char, uint8_t)
+CSAN_ATOMIC_FUNC_TESTANDSET(char, uint8_t)
+#endif
+
+CSAN_ATOMIC_FUNC_ADD(short, uint16_t)
+CSAN_ATOMIC_FUNC_CLEAR(short, uint16_t)
+CSAN_ATOMIC_FUNC_CMPSET(short, uint16_t)
+CSAN_ATOMIC_FUNC_FCMPSET(short, uint16_t)
+CSAN_ATOMIC_FUNC_LOAD(short, uint16_t)
+CSAN_ATOMIC_FUNC_SET(short, uint16_t)
+CSAN_ATOMIC_FUNC_SUBTRACT(short, uint16_t)
+_CSAN_ATOMIC_FUNC_STORE(short, uint16_t)
+#if 0
+CSAN_ATOMIC_FUNC_FETCHADD(short, uint16_t)
+CSAN_ATOMIC_FUNC_READANDCLEAR(short, uint16_t)
+CSAN_ATOMIC_FUNC_SWAP(short, uint16_t)
+CSAN_ATOMIC_FUNC_TESTANDCLEAR(short, uint16_t)
+CSAN_ATOMIC_FUNC_TESTANDSET(short, uint16_t)
+#endif
+
 CSAN_ATOMIC_FUNC_ADD(int, u_int)
 CSAN_ATOMIC_FUNC_CLEAR(int, u_int)
 CSAN_ATOMIC_FUNC_CMPSET(int, u_int)
@@ -632,6 +647,7 @@ CSAN_ATOMIC_FUNC_SWAP(long, u_long)
 #if !defined(__aarch64__)
 CSAN_ATOMIC_FUNC_TESTANDCLEAR(long, u_long)
 CSAN_ATOMIC_FUNC_TESTANDSET(long, u_long)
+CSAN_ATOMIC_FUNC_TESTANDSET(acq_long, u_long)
 #endif
 
 CSAN_ATOMIC_FUNC_ADD(ptr, uintptr_t)
@@ -663,11 +679,18 @@ CSAN_ATOMIC_FUNC_THREAD_FENCE(acq_rel)
 CSAN_ATOMIC_FUNC_THREAD_FENCE(rel)
 CSAN_ATOMIC_FUNC_THREAD_FENCE(seq_cst)
 
+void
+kcsan_atomic_interrupt_fence(void)
+{
+	atomic_interrupt_fence();
+}
+
 /* -------------------------------------------------------------------------- */
 
 #include <sys/bus.h>
 #include <machine/bus.h>
-#include <sys/_cscan_bus.h>
+#define	BUS_SAN_PREFIX		kcsan
+#include <sys/bus_san.h>
 
 int
 kcsan_bus_space_map(bus_space_tag_t tag, bus_addr_t hnd, bus_size_t size,
@@ -858,3 +881,32 @@ CSAN_BUS_SET_FUNC(region_stream, 8, uint64_t)
 #endif
 #endif
 
+#define CSAN_BUS_PEEK_FUNC(width, type)					\
+	int kcsan_bus_space_peek_##width(bus_space_tag_t tag,		\
+	    bus_space_handle_t hnd, bus_size_t offset, type *value)	\
+	{								\
+		kcsan_access((uintptr_t)value, sizeof(type), true, false, \
+		    __RET_ADDR);					\
+		return (bus_space_peek_##width(tag, hnd, offset, value)); \
+	}
+
+CSAN_BUS_PEEK_FUNC(1, uint8_t)
+CSAN_BUS_PEEK_FUNC(2, uint16_t)
+CSAN_BUS_PEEK_FUNC(4, uint32_t)
+#if !defined(__i386__)
+CSAN_BUS_PEEK_FUNC(8, uint64_t)
+#endif
+
+#define CSAN_BUS_POKE_FUNC(width, type)					\
+	int kcsan_bus_space_poke_##width(bus_space_tag_t tag,		\
+	    bus_space_handle_t hnd, bus_size_t offset, type value)	\
+	{								\
+		return (bus_space_poke_##width(tag, hnd, offset, value)); \
+	}
+
+CSAN_BUS_POKE_FUNC(1, uint8_t)
+CSAN_BUS_POKE_FUNC(2, uint16_t)
+CSAN_BUS_POKE_FUNC(4, uint32_t)
+#if !defined(__i386__)
+CSAN_BUS_POKE_FUNC(8, uint64_t)
+#endif

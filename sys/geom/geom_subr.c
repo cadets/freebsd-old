@@ -101,7 +101,7 @@ g_dbg_printf(const char *classname, int lvl, struct bio *bp,
 	sbuf_cat(&sb, classname);
 	if (lvl >= 0)
 		sbuf_printf(&sb, "[%d]", lvl);
-	
+
 	va_start(ap, format);
 	sbuf_vprintf(&sb, format, ap);
 	va_end(ap);
@@ -391,7 +391,6 @@ g_new_geomf(struct g_class *mp, const char *fmt, ...)
 	gp->rank = 1;
 	LIST_INIT(&gp->consumer);
 	LIST_INIT(&gp->provider);
-	LIST_INIT(&gp->aliases);
 	LIST_INSERT_HEAD(&mp->geom, gp, geom);
 	TAILQ_INSERT_HEAD(&geoms, gp, geoms);
 	strcpy(gp->name, sbuf_data(sb));
@@ -412,7 +411,6 @@ g_new_geomf(struct g_class *mp, const char *fmt, ...)
 void
 g_destroy_geom(struct g_geom *gp)
 {
-	struct g_geom_alias *gap, *gaptmp;
 
 	g_topology_assert();
 	G_VALID_GEOM(gp);
@@ -426,8 +424,6 @@ g_destroy_geom(struct g_geom *gp)
 	g_cancel_event(gp);
 	LIST_REMOVE(gp, geom);
 	TAILQ_REMOVE(&geoms, gp, geoms);
-	LIST_FOREACH_SAFE(gap, &gp->aliases, ga_next, gaptmp)
-		g_free(gap);
 	g_free(gp->name);
 	g_free(gp);
 }
@@ -579,8 +575,8 @@ g_new_provider_event(void *arg, int flag)
 		return;
 	pp = arg;
 	G_VALID_PROVIDER(pp);
-	KASSERT(!(pp->flags & G_PF_WITHER),
-	    ("g_new_provider_event but withered"));
+	if ((pp->flags & G_PF_WITHER) != 0)
+		return;
 	LIST_FOREACH_SAFE(cp, &pp->consumers, consumers, next_cp) {
 		if ((cp->flags & G_CF_ORPHAN) == 0 &&
 		    cp->geom->attrchanged != NULL)
@@ -601,7 +597,6 @@ g_new_provider_event(void *arg, int flag)
 		g_topology_assert();
 	}
 }
-
 
 struct g_provider *
 g_new_providerf(struct g_geom *gp, const char *fmt, ...)
@@ -631,6 +626,7 @@ g_new_providerf(struct g_geom *gp, const char *fmt, ...)
 	strcpy(pp->name, sbuf_data(sb));
 	sbuf_delete(sb);
 	LIST_INIT(&pp->consumers);
+	LIST_INIT(&pp->aliases);
 	pp->error = ENXIO;
 	pp->geom = gp;
 	pp->stat = devstat_new_entry(pp, -1, 0, DEVSTAT_ALL_SUPPORTED,
@@ -638,6 +634,37 @@ g_new_providerf(struct g_geom *gp, const char *fmt, ...)
 	LIST_INSERT_HEAD(&gp->provider, pp, provider);
 	g_post_event(g_new_provider_event, pp, M_WAITOK, pp, gp, NULL);
 	return (pp);
+}
+
+void
+g_provider_add_alias(struct g_provider *pp, const char *fmt, ...)
+{
+	struct sbuf *sb;
+	struct g_geom_alias *gap;
+	va_list ap;
+
+	/*
+	 * Generate the alias string and save it in the list.
+	 */
+	sb = sbuf_new_auto();
+	va_start(ap, fmt);
+	sbuf_vprintf(sb, fmt, ap);
+	va_end(ap);
+	sbuf_finish(sb);
+
+	LIST_FOREACH(gap, &pp->aliases, ga_next) {
+		if (strcmp(gap->ga_alias, sbuf_data(sb)) != 0)
+			continue;
+		/* Don't re-add the same alias. */
+		sbuf_delete(sb);
+		return;
+	}
+
+	gap = g_malloc(sizeof(*gap) + sbuf_len(sb) + 1, M_WAITOK | M_ZERO);
+	memcpy((char *)(gap + 1), sbuf_data(sb), sbuf_len(sb));
+	sbuf_delete(sb);
+	gap->ga_alias = (const char *)(gap + 1);
+	LIST_INSERT_HEAD(&pp->aliases, gap, ga_next);
 }
 
 void
@@ -689,7 +716,7 @@ g_resize_provider_event(void *arg, int flag)
 	}
 
 	pp->mediasize = size;
-	
+
 	LIST_FOREACH_SAFE(cp, &pp->consumers, consumers, cp2) {
 		gp = cp->geom;
 		if ((gp->flags & G_GEOM_WITHER) == 0 && gp->resize != NULL)
@@ -732,10 +759,6 @@ g_resize_provider(struct g_provider *pp, off_t size)
 	g_post_event(g_resize_provider_event, hh, M_WAITOK, NULL);
 }
 
-#ifndef	_PATH_DEV
-#define	_PATH_DEV	"/dev/"
-#endif
-
 struct g_provider *
 g_provider_by_name(char const *arg)
 {
@@ -768,6 +791,7 @@ void
 g_destroy_provider(struct g_provider *pp)
 {
 	struct g_geom *gp;
+	struct g_geom_alias *gap, *gaptmp;
 
 	g_topology_assert();
 	G_VALID_PROVIDER(pp);
@@ -786,7 +810,8 @@ g_destroy_provider(struct g_provider *pp)
 	 */
 	if (gp->providergone != NULL)
 		gp->providergone(pp);
-
+	LIST_FOREACH_SAFE(gap, &pp->aliases, ga_next, gaptmp)
+		g_free(gap);
 	g_free(pp);
 	if ((gp->flags & G_GEOM_WITHER))
 		g_do_wither();
@@ -871,6 +896,8 @@ g_attach(struct g_consumer *cp, struct g_provider *pp)
 	G_VALID_PROVIDER(pp);
 	g_trace(G_T_TOPOLOGY, "g_attach(%p, %p)", cp, pp);
 	KASSERT(cp->provider == NULL, ("attach but attached"));
+	if ((pp->flags & (G_PF_ORPHAN | G_PF_WITHER)) != 0)
+		return (ENXIO);
 	cp->provider = pp;
 	cp->flags &= ~G_CF_ORPHAN;
 	LIST_INSERT_HEAD(&pp->consumers, cp, consumers);
@@ -1314,18 +1341,6 @@ g_compare_names(const char *namea, const char *nameb)
 	if (strcmp(namea + deva, nameb + devb) == 0)
 		return (1);
 	return (0);
-}
-
-void
-g_geom_add_alias(struct g_geom *gp, const char *alias)
-{
-	struct g_geom_alias *gap;
-
-	gap = (struct g_geom_alias *)g_malloc(
-		sizeof(struct g_geom_alias) + strlen(alias) + 1, M_WAITOK);
-	strcpy((char *)(gap + 1), alias);
-	gap->ga_alias = (const char *)(gap + 1);
-	LIST_INSERT_HEAD(&gp->aliases, gap, ga_next);
 }
 
 #if defined(DIAGNOSTIC) || defined(DDB)

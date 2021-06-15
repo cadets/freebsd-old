@@ -53,6 +53,7 @@
 #include <sys/eventhandler.h>
 #include <sys/syslog.h>
 #include <sys/priv.h>
+#include <sys/bitstring.h>
 
 #include <net/if.h>
 #include <net/if_var.h>
@@ -187,18 +188,27 @@
 #define IXL_BULK_LATENCY	2
 
 /* MacVlan Flags */
-#define IXL_FILTER_USED		(u16)(1 << 0)
-#define IXL_FILTER_VLAN		(u16)(1 << 1)
-#define IXL_FILTER_ADD		(u16)(1 << 2)
-#define IXL_FILTER_DEL		(u16)(1 << 3)
-#define IXL_FILTER_MC		(u16)(1 << 4)
+#define IXL_FILTER_VLAN		(u16)(1 << 0)
+#define IXL_FILTER_MC		(u16)(1 << 1)
 
 /* used in the vlan field of the filter when not a vlan */
 #define IXL_VLAN_ANY		-1
 
+/* Maximum number of MAC/VLAN filters supported by HW */
+#define IXL_MAX_VLAN_FILTERS	256
+
 #define CSUM_OFFLOAD_IPV4	(CSUM_IP|CSUM_TCP|CSUM_UDP|CSUM_SCTP)
 #define CSUM_OFFLOAD_IPV6	(CSUM_TCP_IPV6|CSUM_UDP_IPV6|CSUM_SCTP_IPV6)
 #define CSUM_OFFLOAD		(CSUM_OFFLOAD_IPV4|CSUM_OFFLOAD_IPV6|CSUM_TSO)
+
+/* Misc flags for ixl_vsi.flags */
+#define IXL_FLAGS_KEEP_TSO4	(1 << 0)
+#define IXL_FLAGS_KEEP_TSO6	(1 << 1)
+#define IXL_FLAGS_USES_MSIX	(1 << 2)
+#define IXL_FLAGS_IS_VF		(1 << 3)
+
+#define IXL_VSI_IS_PF(v)	((v->flags & IXL_FLAGS_IS_VF) == 0)
+#define IXL_VSI_IS_VF(v)	((v->flags & IXL_FLAGS_IS_VF) != 0)
 
 #define IXL_VF_RESET_TIMEOUT	100
 
@@ -292,7 +302,9 @@
 #endif
 
 /* For stats sysctl naming */
-#define QUEUE_NAME_LEN 32
+#define IXL_QUEUE_NAME_LEN 32
+
+MALLOC_DECLARE(M_IXL);
 
 #define IXL_DEV_ERR(_dev, _format, ...) \
 	device_printf(_dev, "%s: " _format " (%s:%d)\n", __func__, ##__VA_ARGS__, __FILE__, __LINE__)
@@ -300,10 +312,10 @@
 /*
  *****************************************************************************
  * vendor_info_array
- * 
+ *
  * This array contains the list of Subvendor/Subdevice IDs on which the driver
  * should load.
- * 
+ *
  *****************************************************************************
  */
 typedef struct _ixl_vendor_info_t {
@@ -319,7 +331,7 @@ typedef struct _ixl_vendor_info_t {
 ** addresses, vlans, and mac filters all use it.
 */
 struct ixl_mac_filter {
-	SLIST_ENTRY(ixl_mac_filter) next;
+	LIST_ENTRY(ixl_mac_filter) ftle;
 	u8	macaddr[ETHER_ADDR_LEN];
 	s16	vlan;
 	u16	flags;
@@ -378,6 +390,7 @@ struct rx_ring {
 	u64			rx_packets;
 	u64 			rx_bytes;
 	u64 			desc_errs;
+	u64			csum_errs;
 };
 
 /*
@@ -405,7 +418,7 @@ struct ixl_rx_queue {
 /*
 ** Virtual Station Interface
 */
-SLIST_HEAD(ixl_ftl_head, ixl_mac_filter);
+LIST_HEAD(ixl_ftl_head, ixl_mac_filter);
 struct ixl_vsi {
 	if_ctx_t		ctx;
 	if_softc_ctx_t		shared;
@@ -438,16 +451,19 @@ struct ixl_vsi {
 	/* MAC/VLAN Filter list */
 	struct ixl_ftl_head	ftl;
 	u16			num_macs;
+	u64			num_hw_filters;
 
 	/* Contains readylist & stat counter id */
 	struct i40e_aqc_vsi_properties_data info;
 
+#define IXL_VLANS_MAP_LEN EVL_VLID_MASK + 1
+	bitstr_t		bit_decl(vlans_map, IXL_VLANS_MAP_LEN);
 	u16			num_vlans;
 
 	/* Per-VSI stats from hardware */
 	struct i40e_eth_stats	eth_stats;
 	struct i40e_eth_stats	eth_stats_offsets;
-	bool 			stat_offsets_loaded;
+	bool			stat_offsets_loaded;
 	/* VSI stat counters */
 	u64			ipackets;
 	u64			ierrors;
@@ -461,45 +477,26 @@ struct ixl_vsi {
 	u64			oqdrops;
 	u64			noproto;
 
-	/* Driver statistics */
-	u64			hw_filters_del;
-	u64			hw_filters_add;
-
 	/* Misc. */
-	u64 			flags;
+	u64			flags;
 	/* Stats sysctls for this VSI */
 	struct sysctl_oid	*vsi_node;
+	struct sysctl_ctx_list  sysctl_ctx;
 };
 
-/*
-** Creates new filter with given MAC address and VLAN ID
-*/
-static inline struct ixl_mac_filter *
-ixl_new_filter(struct ixl_vsi *vsi, const u8 *macaddr, s16 vlan)
-{
-	struct ixl_mac_filter  *f;
-
-	/* create a new empty filter */
-	f = malloc(sizeof(struct ixl_mac_filter),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (f) {
-		SLIST_INSERT_HEAD(&vsi->ftl, f, next);
-		bcopy(macaddr, f->macaddr, ETHER_ADDR_LEN);
-		f->vlan = vlan;
-		f->flags |= (IXL_FILTER_ADD | IXL_FILTER_USED);
-	}
-
-	return (f);
-}
+struct ixl_add_maddr_arg {
+	struct ixl_ftl_head to_add;
+	struct ixl_vsi *vsi;
+};
 
 /*
 ** Compare two ethernet addresses
 */
 static inline bool
-cmp_etheraddr(const u8 *ea1, const u8 *ea2)
-{       
-	return (bcmp(ea1, ea2, 6) == 0);
-}       
+ixl_ether_is_equal(const u8 *ea1, const u8 *ea2)
+{
+	return (bcmp(ea1, ea2, ETHER_ADDR_LEN) == 0);
+}
 
 /*
  * Return next largest power of 2, unsigned
@@ -548,5 +545,6 @@ void		ixl_add_vsi_sysctls(device_t dev, struct ixl_vsi *vsi,
 void		ixl_add_sysctls_eth_stats(struct sysctl_ctx_list *ctx,
 		    struct sysctl_oid_list *child,
 		    struct i40e_eth_stats *eth_stats);
-void		ixl_add_queues_sysctls(device_t dev, struct ixl_vsi *vsi);
+void		ixl_vsi_add_queues_stats(struct ixl_vsi *vsi,
+		    struct sysctl_ctx_list *ctx);
 #endif /* _IXL_H_ */

@@ -28,7 +28,6 @@
  * SUCH DAMAGE.
  */
 
-
 #ifdef HAVE_KERNEL_OPTION_HEADERS
 #include "opt_snd.h"
 #endif
@@ -146,7 +145,7 @@ ua_mixer_set(struct snd_mixer *m, unsigned type, unsigned left, unsigned right)
 		do_unlock = 1;
 		mtx_lock(mtx);
 	}
-	uaudio_mixer_set(mix_getdevinfo(m), type, left, right);
+	uaudio_mixer_set(mix_getdevinfo(m), m, type, left, right);
 	if (do_unlock) {
 		mtx_unlock(mtx);
 	}
@@ -166,7 +165,7 @@ ua_mixer_setrecsrc(struct snd_mixer *m, uint32_t src)
 		do_unlock = 1;
 		mtx_lock(mtx);
 	}
-	retval = uaudio_mixer_setrecsrc(mix_getdevinfo(m), src);
+	retval = uaudio_mixer_setrecsrc(mix_getdevinfo(m), m, src);
 	if (do_unlock) {
 		mtx_unlock(mtx);
 	}
@@ -176,7 +175,7 @@ ua_mixer_setrecsrc(struct snd_mixer *m, uint32_t src)
 static int
 ua_mixer_uninit(struct snd_mixer *m)
 {
-	return (uaudio_mixer_uninit_sub(mix_getdevinfo(m)));
+	return (uaudio_mixer_uninit_sub(mix_getdevinfo(m), m));
 }
 
 static kobj_method_t ua_mixer_methods[] = {
@@ -189,7 +188,6 @@ static kobj_method_t ua_mixer_methods[] = {
 
 MIXER_DECLARE(ua_mixer);
 /************************************************************/
-
 
 static int
 ua_probe(device_t dev)

@@ -209,7 +209,6 @@
 #define	RT2860_H2M_BBPAGENT		0x7028
 #define	RT2860_BCN_BASE(vap)		(0x7800 + (vap) * 512)
 
-
 /* possible flags for register RT2860_PCI_EECTRL */
 #define	RT2860_C	(1 << 0)
 #define	RT2860_S	(1 << 1)
@@ -781,7 +780,7 @@ struct rt2860_txwi {
 #define	RT2860_PHY_MODE		0xc000
 #define	RT2860_PHY_CCK		(0 << 14)
 #define	RT2860_PHY_OFDM		(1 << 14)
-#define	RT2860_PHY_HT		(2 << 14)
+#define	RT2860_PHY_HT_MIX	(2 << 14)
 #define	RT2860_PHY_HT_GF	(3 << 14)
 #define	RT2860_PHY_SGI		(1 << 8)
 #define	RT2860_PHY_BW40		(1 << 7)
@@ -954,11 +953,6 @@ struct rt2860_rxwi {
 #define	RT5390_EEPROM_IQ_PHASE_CAL_TX1_CH100_TO_CH138_5GHZ	0x14d
 #define	RT5390_EEPROM_IQ_GAIN_CAL_TX1_CH140_TO_CH165_5GHZ	0x14e
 #define	RT5390_EEPROM_IQ_PHASE_CAL_TX1_CH140_TO_CH165_5GHZ	0x14f
-
-#define	RT2860_RIDX_CCK1	 0
-#define	RT2860_RIDX_CCK11	 3
-#define	RT2860_RIDX_OFDM6	 4
-#define	RT2860_RIDX_MAX		12
 
 /*
  * EEPROM access macro.

@@ -67,7 +67,8 @@ __FBSDID("$FreeBSD$");
 #define	URTW_RIDX_OFDM6		4
 #define	URTW_RIDX_OFDM24	8
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, urtw, CTLFLAG_RW, 0, "USB Realtek 8187L");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, urtw, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB Realtek 8187L");
 #ifdef URTW_DEBUG
 int urtw_debug = 0;
 SYSCTL_INT(_hw_usb_urtw, OID_AUTO, debug, CTLFLAG_RWTUN, &urtw_debug, 0,
@@ -885,7 +886,7 @@ urtw_attach(device_t dev)
 	    IEEE80211_C_WPA;		/* 802.11i */
 
 	/* XXX TODO: setup regdomain if URTW_EPROM_CHANPLAN_BY_HW bit is set.*/
- 
+
 	urtw_getradiocaps(ic, IEEE80211_CHAN_MAX, &ic->ic_nchans,
 	    ic->ic_channels);
 
@@ -2292,7 +2293,6 @@ fail:
 	return (error);
 }
 
-
 static usb_error_t
 urtw_get_txpwr(struct urtw_softc *sc)
 {
@@ -2357,7 +2357,6 @@ urtw_get_txpwr(struct urtw_softc *sc)
 fail:
 	return (error);
 }
-
 
 static usb_error_t
 urtw_get_rfchip(struct urtw_softc *sc)
@@ -2445,7 +2444,6 @@ fail:
 	return (error);
 }
 
-
 static usb_error_t
 urtw_led_init(struct urtw_softc *sc)
 {
@@ -2479,7 +2477,6 @@ urtw_led_init(struct urtw_softc *sc)
 fail:
 	return (error);
 }
-
 
 static usb_error_t
 urtw_8225_rf_init(struct urtw_softc *sc)
@@ -2827,7 +2824,6 @@ fail:
 	return (error);
 }
 
-
 static usb_error_t
 urtw_8225_rf_stop(struct urtw_softc *sc)
 {
@@ -3090,7 +3086,6 @@ urtw_8225_read(struct urtw_softc *sc, uint8_t addr, uint32_t *data)
 fail:
 	return (error);
 }
-
 
 static usb_error_t
 urtw_8225v2_set_txpwrlvl(struct urtw_softc *sc, int chan)
@@ -4385,13 +4380,13 @@ urtw_sysctl_node(struct urtw_softc *sc)
 	ctx = device_get_sysctl_ctx(sc->sc_dev);
 	child = SYSCTL_CHILDREN(device_get_sysctl_tree(sc->sc_dev));
 
-	tree = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "stats", CTLFLAG_RD,
-	    NULL, "URTW statistics");
+	tree = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "stats",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "URTW statistics");
 	parent = SYSCTL_CHILDREN(tree);
 
 	/* Tx statistics. */
-	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "tx", CTLFLAG_RD,
-	    NULL, "Tx MAC statistics");
+	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "tx",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "Tx MAC statistics");
 	child = SYSCTL_CHILDREN(tree);
 	URTW_SYSCTL_STAT_ADD32(ctx, child, "1m", &stats->txrates[0],
 	    "1 Mbit/s");

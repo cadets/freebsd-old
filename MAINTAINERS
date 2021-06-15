@@ -35,6 +35,7 @@ makes a commit to the specified subtree.
 
 subsystem	login	notes
 -----------------------------
+aio(4)		asomers	Pre-commit review requested.
 ath(4)		adrian	Pre-commit review requested, send to freebsd-wireless@freebsd.org
 contrib/atf		ngie,#test		Pre-commit review requested.
 contrib/capsicum-test	ngie,#capsicum,#test	Pre-commit review requested.
@@ -82,6 +83,8 @@ pci bus		imp,jhb	Pre-commit review requested.
 pmcstudy(8)	rrs		Pre-commit review requested.
 procfs		des	Pre-commit review requested, email only.
 pseudofs	des	Pre-commit review requested, email only.
+random(4),
+random(9)	csprng	Pre-commit discussion and review required,
 release/release.sh	gjb,re	Pre-commit review and regression tests
 				requested.
 sctp		rrs,tuexen	Pre-commit review requested (changes need to be backported to github).
@@ -99,10 +102,12 @@ sys/compat/linuxkpi	hselasky		If in doubt, ask.
 						#x11 phabricator group.
 						(to avoid drm graphics drivers
 						impact)
+sys/contrib/dev/ice	erj	Pre-commit phabricator review requested.
 sys/contrib/ipfilter	cy	Pre-commit review requested.
 sys/dev/e1000	erj	Pre-commit phabricator review requested.
 sys/dev/ixgbe	erj	Pre-commit phabricator review requested.
 sys/dev/ixl	erj	Pre-commit phabricator review requested.
+sys/dev/ice	erj	Pre-commit phabricator review requested.
 sys/dev/sound/usb	hselasky	If in doubt, ask.
 sys/dev/usb	hselasky	If in doubt, ask.
 sys/dev/xen	royger		Pre-commit review recommended.
@@ -117,11 +122,11 @@ usr.sbin/bsdconfig	dteske	Pre-commit phabricator review requested.
 usr.sbin/dpv	dteske	Pre-commit review requested. Keep in sync with libdpv.
 usr.sbin/pkg	pkg@	Please coordinate behavior or flag changes with pkg team.
 usr.sbin/sysrc	dteske	Pre-commit phabricator review requested. Keep in sync with bsdconfig(8) sysrc.subr.
-vmm(4)		tychon, jhb	Pre-commit review requested via #bhyve
+vmm(4)		jhb, grehan	Pre-commit review requested via #bhyve
 				phabricator group.
-libvmmapi	tychon, jhb	Pre-commit review requested via #bhyve
+libvmmapi	jhb, grehan	Pre-commit review requested via #bhyve
 				phabricator group.
-usr.sbin/bhyve*	tychon, jhb	Pre-commit review requested via #bhyve
+usr.sbin/bhyve*	jhb, grehan	Pre-commit review requested via #bhyve
 				phabricator group.
 autofs(5)	trasz	Pre-commit review recommended.
 iscsi(4)	trasz	Pre-commit review recommended.

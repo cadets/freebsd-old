@@ -39,6 +39,12 @@ __FBSDID("$FreeBSD$");
 #include "vmm_util.h"
 
 bool
+vmm_is_hw_supported(void)
+{
+	return (vmm_is_intel() || vmm_is_svm());
+}
+
+bool
 vmm_is_intel(void)
 {
 
@@ -46,9 +52,10 @@ vmm_is_intel(void)
 }
 
 bool
-vmm_is_amd(void)
+vmm_is_svm(void)
 {
-	return (strcmp(cpu_vendor, "AuthenticAMD") == 0);
+	return (strcmp(cpu_vendor, "AuthenticAMD") == 0 ||
+	    strcmp(cpu_vendor, "HygonGenuine") == 0);
 }
 
 bool

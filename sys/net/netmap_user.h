@@ -55,7 +55,7 @@
  * To compute the next index in a circular ring you can use
  *	i = nm_ring_next(ring, i);
  *
- * To ease porting apps from pcap to netmap we supply a few fuctions
+ * To ease porting apps from pcap to netmap we supply a few functions
  * that can be called to open, close, read and write on netmap in a way
  * similar to libpcap. Note that the read/write function depend on
  * an ioctl()/select()/poll() being issued to refill rings or push
@@ -122,6 +122,21 @@
 #define NETMAP_BUF_IDX(ring, buf)			\
 	( ((char *)(buf) - ((char *)(ring) + (ring)->buf_ofs) ) / \
 		(ring)->nr_buf_size )
+
+/* read the offset field in a ring's slot */
+#define NETMAP_ROFFSET(ring, slot)			\
+	((slot)->ptr & (ring)->offset_mask)
+
+/* update the offset field in a ring's slot */
+#define NETMAP_WOFFSET(ring, slot, offset)		\
+	do { (slot)->ptr = ((slot)->ptr & ~(ring)->offset_mask) | \
+		((offset) & (ring)->offset_mask); } while (0)
+
+/* obtain the start of the buffer pointed to by  a ring's slot, taking the
+ * offset field into account
+ */
+#define NETMAP_BUF_OFFSET(ring, slot)			\
+	(NETMAP_BUF(ring, (slot)->buf_idx) + NETMAP_ROFFSET(ring, slot))
 
 
 static inline uint32_t
@@ -292,12 +307,9 @@ struct nm_desc {
  * when the descriptor is open correctly, d->self == d
  * Eventually we should also use some magic number.
  */
-#define P2NMD(p)		((struct nm_desc *)(p))
+#define P2NMD(p)		((const struct nm_desc *)(p))
 #define IS_NETMAP_DESC(d)	((d) && P2NMD(d)->self == P2NMD(d))
 #define NETMAP_FD(d)		(P2NMD(d)->fd)
-
-
-
 
 /*
  * The callback, invoked on each received packet. Same as libpcap
@@ -310,7 +322,7 @@ typedef void (*nm_cb_t)(u_char *, const struct nm_pkthdr *, const u_char *d);
  * nm_open() opens a file descriptor, binds to a port and maps memory.
  *
  * ifname	(netmap:foo or vale:foo) is the port name
- *		a suffix can indicate the follwing:
+ *		a suffix can indicate the following:
  *		^		bind the host (sw) ring pair
  *		*		bind host and NIC ring pairs
  *		-NN		bind individual NIC ring pair
@@ -623,7 +635,7 @@ nm_parse(const char *ifname, struct nm_desc *d, char *err)
 	const char *vpname = NULL;
 	u_int namelen;
 	uint32_t nr_ringid = 0, nr_flags;
-	char errmsg[MAXERRMSG] = "";
+	char errmsg[MAXERRMSG] = "", *tmp;
 	long num;
 	uint16_t nr_arg2 = 0;
 	enum { P_START, P_RNGSFXOK, P_GETNUM, P_FLAGS, P_FLAGSOK, P_MEMID } p_state;
@@ -689,7 +701,7 @@ nm_parse(const char *ifname, struct nm_desc *d, char *err)
 				nr_flags = NR_REG_PIPE_MASTER;
 				p_state = P_GETNUM;
 				break;
-			case '}': /* pipe (slave endoint) */
+			case '}': /* pipe (slave endpoint) */
 				nr_flags = NR_REG_PIPE_SLAVE;
 				p_state = P_GETNUM;
 				break;
@@ -720,12 +732,13 @@ nm_parse(const char *ifname, struct nm_desc *d, char *err)
 			port++;
 			break;
 		case P_GETNUM:
-			num = strtol(port, (char **)&port, 10);
+			num = strtol(port, &tmp, 10);
 			if (num < 0 || num >= NETMAP_RING_MASK) {
 				snprintf(errmsg, MAXERRMSG, "'%ld' out of range [0, %d)",
 						num, NETMAP_RING_MASK);
 				goto fail;
 			}
+			port = tmp;
 			nr_ringid = num & NETMAP_RING_MASK;
 			p_state = P_RNGSFXOK;
 			break;
@@ -767,11 +780,12 @@ nm_parse(const char *ifname, struct nm_desc *d, char *err)
 				snprintf(errmsg, MAXERRMSG, "double setting of memid");
 				goto fail;
 			}
-			num = strtol(port, (char **)&port, 10);
+			num = strtol(port, &tmp, 10);
 			if (num <= 0) {
 				snprintf(errmsg, MAXERRMSG, "invalid memid %ld, must be >0", num);
 				goto fail;
 			}
+			port = tmp;
 			nr_arg2 = num;
 			p_state = P_RNGSFXOK;
 			break;
@@ -1054,7 +1068,7 @@ nm_inject(struct nm_desc *d, const void *buf, size_t size)
 			ring->slot[i].flags = NS_MOREFRAG;
 			nm_pkt_copy(buf, NETMAP_BUF(ring, idx), ring->nr_buf_size);
 			i = nm_ring_next(ring, i);
-			buf = (char *)buf + ring->nr_buf_size;
+			buf = (const char *)buf + ring->nr_buf_size;
 		}
 		idx = ring->slot[i].buf_idx;
 		ring->slot[i].len = rem;
@@ -1117,7 +1131,7 @@ nm_dispatch(struct nm_desc *d, int cnt, nm_cb_t cb, u_char *arg)
 				slot = &ring->slot[i];
 				d->hdr.len += slot->len;
 				nbuf = (u_char *)NETMAP_BUF(ring, slot->buf_idx);
-				if (oldbuf != NULL && nbuf - oldbuf == (int)ring->nr_buf_size &&
+				if (oldbuf != NULL && nbuf - oldbuf == ring->nr_buf_size &&
 						oldlen == ring->nr_buf_size) {
 					d->hdr.caplen += slot->len;
 					oldbuf = nbuf;

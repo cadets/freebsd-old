@@ -75,6 +75,7 @@ static int
 unionfs_domount(struct mount *mp)
 {
 	int		error;
+	struct mount   *lowermp, *uppermp;
 	struct vnode   *lowerrootvp;
 	struct vnode   *upperrootvp;
 	struct unionfs_mount *ump;
@@ -83,7 +84,6 @@ unionfs_domount(struct mount *mp)
 	char           *tmp;
 	char           *ep;
 	int		len;
-	size_t		done;
 	int		below;
 	uid_t		uid;
 	gid_t		gid;
@@ -286,15 +286,28 @@ unionfs_domount(struct mount *mp)
 	error = unionfs_nodeget(mp, ump->um_uppervp, ump->um_lowervp,
 	    NULLVP, &(ump->um_rootvp), NULL, td);
 	vrele(upperrootvp);
-	if (error) {
+	if (error != 0) {
 		free(ump, M_UNIONFSMNT);
 		mp->mnt_data = NULL;
 		return (error);
 	}
 
+	lowermp = vfs_pin_from_vp(ump->um_lowervp);
+	uppermp = vfs_pin_from_vp(ump->um_uppervp);
+
+	if (lowermp == NULL || uppermp == NULL) {
+		if (lowermp != NULL)
+			vfs_unpin(lowermp);
+		if (uppermp != NULL)
+			vfs_unpin(uppermp);
+		free(ump, M_UNIONFSMNT);
+		mp->mnt_data = NULL;
+		return (ENOENT);
+	}
+
 	MNT_ILOCK(mp);
-	if ((ump->um_lowervp->v_mount->mnt_flag & MNT_LOCAL) &&
-	    (ump->um_uppervp->v_mount->mnt_flag & MNT_LOCAL))
+	if ((lowermp->mnt_flag & MNT_LOCAL) != 0 &&
+	    (uppermp->mnt_flag & MNT_LOCAL) != 0)
 		mp->mnt_flag |= MNT_LOCAL;
 	mp->mnt_kern_flag |= MNTK_NOMSYNC | MNTK_UNIONFS;
 	MNT_IUNLOCK(mp);
@@ -304,12 +317,8 @@ unionfs_domount(struct mount *mp)
 	 */
 	vfs_getnewfsid(mp);
 
-	len = MNAMELEN - 1;
-	tmp = mp->mnt_stat.f_mntfromname;
-	copystr((below ? "<below>:" : "<above>:"), tmp, len, &done);
-	len -= done - 1;
-	tmp += done - 1;
-	copystr(target, tmp, len, NULL);
+	snprintf(mp->mnt_stat.f_mntfromname, MNAMELEN, "<%s>:%s",
+	    below ? "below" : "above", target);
 
 	UNIONFSDEBUG("unionfs_mount: from %s, on %s\n",
 	    mp->mnt_stat.f_mntfromname, mp->mnt_stat.f_mntonname);
@@ -348,6 +357,8 @@ unionfs_unmount(struct mount *mp, int mntflags)
 	if (error)
 		return (error);
 
+	vfs_unpin(ump->um_lowervp->v_mount);
+	vfs_unpin(ump->um_uppervp->v_mount);
 	free(ump, M_UNIONFSMNT);
 	mp->mnt_data = NULL;
 
@@ -376,16 +387,38 @@ unionfs_root(struct mount *mp, int flags, struct vnode **vpp)
 }
 
 static int
-unionfs_quotactl(struct mount *mp, int cmd, uid_t uid, void *arg)
+unionfs_quotactl(struct mount *mp, int cmd, uid_t uid, void *arg,
+    bool *mp_busy)
 {
+	struct mount *uppermp;
 	struct unionfs_mount *ump;
+	int error;
+	bool unbusy;
 
 	ump = MOUNTTOUNIONFSMOUNT(mp);
-
+	uppermp = atomic_load_ptr(&ump->um_uppervp->v_mount);
+	KASSERT(*mp_busy == true, ("upper mount not busy"));
+	/*
+	 * See comment in sys_quotactl() for an explanation of why the
+	 * lower mount needs to be busied by the caller of VFS_QUOTACTL()
+	 * but may be unbusied by the implementation.  We must unbusy
+	 * the upper mount for the same reason; otherwise a namei lookup
+	 * issued by the VFS_QUOTACTL() implementation could traverse the
+	 * upper mount and deadlock.
+	 */
+	vfs_unbusy(mp);
+	*mp_busy = false;
+	unbusy = true;
+	error = vfs_busy(uppermp, 0);
 	/*
 	 * Writing is always performed to upper vnode.
 	 */
-	return (VFS_QUOTACTL(ump->um_uppervp->v_mount, cmd, uid, arg));
+	if (error == 0)
+		error = VFS_QUOTACTL(uppermp, cmd, uid, arg, &unbusy);
+	if (unbusy)
+		vfs_unbusy(uppermp);
+
+	return (error);
 }
 
 static int
@@ -420,7 +453,6 @@ unionfs_statfs(struct mount *mp, struct statfs *sbp)
 		free(mstat, M_STATFS);
 		return (error);
 	}
-
 
 	/*
 	 * The FS type etc is copy from upper vfs.
@@ -466,8 +498,8 @@ unionfs_fhtovp(struct mount *mp, struct fid *fidp, int flags,
 }
 
 static int
-unionfs_checkexp(struct mount *mp, struct sockaddr *nam, int *extflagsp,
-    struct ucred **credanonp, int *numsecflavors, int **secflavors)
+unionfs_checkexp(struct mount *mp, struct sockaddr *nam, uint64_t *extflagsp,
+    struct ucred **credanonp, int *numsecflavors, int *secflavors)
 {
 	return (EOPNOTSUPP);
 }

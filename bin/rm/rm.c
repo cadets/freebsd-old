@@ -54,7 +54,6 @@ __FBSDID("$FreeBSD$");
 #include <grp.h>
 #include <locale.h>
 #include <pwd.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,7 +207,7 @@ rm_tree(char **argv)
 			return;
 		err(1, "fts_open");
 	}
-	while ((p = fts_read(fts)) != NULL) {
+	while (errno = 0, (p = fts_read(fts)) != NULL) {
 		switch (p->fts_info) {
 		case FTS_DNR:
 			if (!fflag || p->fts_errno != ENOENT) {

@@ -52,8 +52,9 @@ __FBSDID("$FreeBSD$");
 extern dtrace_id_t	dtrace_probeid_error;
 extern int (*dtrace_invop_jump_addr)(struct trapframe *);
 extern void dtrace_getnanotime(struct timespec *tsp);
+extern void dtrace_getnanouptime(struct timespec *tsp);
 
-int dtrace_invop(uintptr_t, struct trapframe *, uintptr_t);
+int dtrace_invop(uintptr_t, struct trapframe *);
 void dtrace_invop_init(void);
 void dtrace_invop_uninit(void);
 
@@ -65,13 +66,13 @@ typedef struct dtrace_invop_hdlr {
 dtrace_invop_hdlr_t *dtrace_invop_hdlr;
 
 int
-dtrace_invop(uintptr_t addr, struct trapframe *frame, uintptr_t eax)
+dtrace_invop(uintptr_t addr, struct trapframe *frame)
 {
 	dtrace_invop_hdlr_t *hdlr;
 	int rval;
 
 	for (hdlr = dtrace_invop_hdlr; hdlr != NULL; hdlr = hdlr->dtih_next)
-		if ((rval = hdlr->dtih_func(addr, frame, eax)) != 0)
+		if ((rval = hdlr->dtih_func(addr, frame, 0)) != 0)
 			return (rval);
 
 	return (0);
@@ -165,7 +166,7 @@ dtrace_gethrtime()
 {
 	struct timespec curtime;
 
-	nanouptime(&curtime);
+	dtrace_getnanouptime(&curtime);
 
 	return (curtime.tv_sec * 1000000000UL + curtime.tv_nsec);
 
@@ -202,9 +203,9 @@ dtrace_trap(struct trapframe *frame, u_int type)
 		 * All the rest will be handled in the usual way.
 		 */
 		switch (type) {
-		case EXCP_FAULT_LOAD:
-		case EXCP_FAULT_STORE:
-		case EXCP_FAULT_FETCH:
+		case SCAUSE_LOAD_ACCESS_FAULT:
+		case SCAUSE_STORE_ACCESS_FAULT:
+		case SCAUSE_INST_ACCESS_FAULT:
 			/* Flag a bad address. */
 			cpu_core[curcpu].cpuc_dtrace_flags |= CPU_DTRACE_BADADDR;
 			cpu_core[curcpu].cpuc_dtrace_illval = 0;
@@ -254,7 +255,9 @@ dtrace_invop_start(struct trapframe *frame)
 	uint32_t imm;
 	int invop;
 
-	invop = dtrace_invop(frame->tf_sepc, frame, frame->tf_sepc);
+	invop = dtrace_invop(frame->tf_sepc, frame);
+	if (invop == 0)
+		return (-1);
 
 	if (match_opcode(invop, (MATCH_SD | RS2_RA | RS1_SP),
 	    (MASK_SD | RS2_MASK | RS1_MASK))) {
@@ -291,6 +294,10 @@ dtrace_invop_start(struct trapframe *frame)
 		frame->tf_sepc = frame->tf_ra;
 		return (0);
 	}
+
+#ifdef INVARIANTS
+	panic("Instruction %x doesn't match any opcode.", invop);
+#endif
 
 	return (-1);
 }

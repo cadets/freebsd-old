@@ -131,6 +131,7 @@ static int cur_fd = -1;
 static TAILQ_HEAD(, breakpoint) breakpoints;
 static struct vcpu_state *vcpu_state;
 static int cur_vcpu, stopped_vcpu;
+static bool gdb_active = false;
 
 const int gdb_regset[] = {
 	VM_REG_GUEST_RAX,
@@ -251,7 +252,8 @@ guest_paging_info(int vcpu, struct vm_guest_paging *paging)
 	else if (!(regs[2] & CR4_PAE))
 		paging->paging_mode = PAGING_MODE_32;
 	else if (regs[3] & EFER_LME)
-		paging->paging_mode = PAGING_MODE_64;
+		paging->paging_mode = (regs[2] & CR4_LA57) ?
+		    PAGING_MODE_64_LA57 :  PAGING_MODE_64;
 	else
 		paging->paging_mode = PAGING_MODE_PAE;
 	return (0);
@@ -747,6 +749,8 @@ void
 gdb_cpu_add(int vcpu)
 {
 
+	if (!gdb_active)
+		return;
 	debug("$vCPU %d starting\n", vcpu);
 	pthread_mutex_lock(&gdb_lock);
 	assert(vcpu < guest_ncpus);
@@ -801,6 +805,8 @@ void
 gdb_cpu_suspend(int vcpu)
 {
 
+	if (!gdb_active)
+		return;
 	pthread_mutex_lock(&gdb_lock);
 	_gdb_cpu_suspend(vcpu, true);
 	gdb_cpu_resume(vcpu);
@@ -828,6 +834,8 @@ gdb_cpu_mtrap(int vcpu)
 {
 	struct vcpu_state *vs;
 
+	if (!gdb_active)
+		return;
 	debug("$vCPU %d MTRAP\n", vcpu);
 	pthread_mutex_lock(&gdb_lock);
 	vs = &vcpu_state[vcpu];
@@ -868,6 +876,10 @@ gdb_cpu_breakpoint(int vcpu, struct vm_exit *vmexit)
 	uint64_t gpa;
 	int error;
 
+	if (!gdb_active) {
+		fprintf(stderr, "vm_loop: unexpected VMEXIT_DEBUG\n");
+		exit(4);
+	}
 	pthread_mutex_lock(&gdb_lock);
 	error = guest_vaddr2paddr(vcpu, vmexit->rip, &gpa);
 	assert(error == 1);
@@ -1809,7 +1821,7 @@ void
 init_gdb(struct vmctx *_ctx, int sport, bool wait)
 {
 	struct sockaddr_in sin;
-	int error, flags, s;
+	int error, flags, optval, s;
 
 	debug("==> starting on %d, %swaiting\n", sport, wait ? "" : "not ");
 
@@ -1824,6 +1836,9 @@ init_gdb(struct vmctx *_ctx, int sport, bool wait)
 	s = socket(PF_INET, SOCK_STREAM, 0);
 	if (s < 0)
 		err(1, "gdb socket create");
+
+	optval = 1;
+	(void)setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
 	sin.sin_len = sizeof(sin);
 	sin.sin_family = AF_INET;
@@ -1858,4 +1873,5 @@ init_gdb(struct vmctx *_ctx, int sport, bool wait)
 	limit_gdb_socket(s);
 #endif
 	mevent_add(s, EVF_READ, new_connection, NULL);
+	gdb_active = true;
 }

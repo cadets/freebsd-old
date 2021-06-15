@@ -58,7 +58,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/systm.h>
 #include <sys/proc.h>
-#include <sys/pioctl.h>
 #include <sys/ptrace.h>
 #include <sys/kdb.h>
 #include <sys/kernel.h>
@@ -408,7 +407,6 @@ user_trctrap_out:
 			signo = SIGFPE;
 			break;
 
-#ifdef DEV_ISA
 		case T_NMI:
 #ifdef POWERFAIL_NMI
 #ifndef TIMER_FREQ
@@ -424,7 +422,6 @@ user_trctrap_out:
 			nmi_handle_intr(type, frame);
 			return;
 #endif /* POWERFAIL_NMI */
-#endif /* DEV_ISA */
 
 		case T_OFLOW:		/* integer overflow fault */
 			ucode = FPE_INTOVF;
@@ -670,7 +667,6 @@ kernel_trctrap:
 #endif
 			break;
 
-#ifdef DEV_ISA
 		case T_NMI:
 #ifdef POWERFAIL_NMI
 			if (time_second - lastalert > 10) {
@@ -683,7 +679,6 @@ kernel_trctrap:
 			nmi_handle_intr(type, frame);
 			return;
 #endif /* POWERFAIL_NMI */
-#endif /* DEV_ISA */
 		}
 
 		trap_fatal(frame, eva);
@@ -976,7 +971,7 @@ trap_user_dtrace(struct trapframe *frame, int (**hookp)(struct trapframe *))
 {
 	int (*hook)(struct trapframe *);
 
-	hook = (int (*)(struct trapframe *))atomic_load_ptr(hookp);
+	hook = atomic_load_ptr(hookp);
 	enable_intr();
 	if (hook != NULL)
 		return ((hook)(frame) == 0);
@@ -1089,11 +1084,10 @@ cpu_fetch_syscall_args(struct thread *td)
  		sa->callp = &p->p_sysent->sv_table[0];
   	else
  		sa->callp = &p->p_sysent->sv_table[sa->code];
-	sa->narg = sa->callp->sy_narg;
 
-	if (params != NULL && sa->narg != 0)
+	if (params != NULL && sa->callp->sy_narg != 0)
 		error = copyin(params, (caddr_t)sa->args,
-		    (u_int)(sa->narg * sizeof(uint32_t)));
+		    (u_int)(sa->callp->sy_narg * sizeof(uint32_t)));
 	else
 		error = 0;
 

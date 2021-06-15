@@ -64,7 +64,6 @@ struct linux_cdev;
 #define	S_IRUGO	(S_IRUSR | S_IRGRP | S_IROTH)
 #define	S_IWUGO	(S_IWUSR | S_IWGRP | S_IWOTH)
 
-
 typedef struct files_struct *fl_owner_t;
 
 struct file_operations;
@@ -181,7 +180,7 @@ struct file_operations {
 #define	FMODE_READ	FREAD
 #define	FMODE_WRITE	FWRITE
 #define	FMODE_EXEC	FEXEC
-
+#define	FMODE_UNSIGNED_OFFSET	0x2000
 int __register_chrdev(unsigned int major, unsigned int baseminor,
     unsigned int count, const char *name,
     const struct file_operations *fops);
@@ -260,7 +259,7 @@ igrab(struct inode *inode)
 {
 	int error;
 
-	error = vget(inode, 0, curthread);
+	error = vget(inode, 0);
 	if (error)
 		return (NULL);
 
@@ -301,26 +300,5 @@ call_mmap(struct linux_file *file, struct vm_area_struct *vma)
 
 	return (file->f_op->mmap(file, vma));
 }
-
-/* Shared memory support */
-unsigned long linux_invalidate_mapping_pages(vm_object_t, pgoff_t, pgoff_t);
-struct page *linux_shmem_read_mapping_page_gfp(vm_object_t, int, gfp_t);
-struct linux_file *linux_shmem_file_setup(const char *, loff_t, unsigned long);
-void linux_shmem_truncate_range(vm_object_t, loff_t, loff_t);
-
-#define	invalidate_mapping_pages(...) \
-  linux_invalidate_mapping_pages(__VA_ARGS__)
-
-#define	shmem_read_mapping_page(...) \
-  linux_shmem_read_mapping_page_gfp(__VA_ARGS__, 0)
-
-#define	shmem_read_mapping_page_gfp(...) \
-  linux_shmem_read_mapping_page_gfp(__VA_ARGS__)
-
-#define	shmem_file_setup(...) \
-  linux_shmem_file_setup(__VA_ARGS__)
-
-#define	shmem_truncate_range(...) \
-  linux_shmem_truncate_range(__VA_ARGS__)
 
 #endif /* _LINUX_FS_H_ */

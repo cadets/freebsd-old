@@ -130,11 +130,11 @@ static const struct mmc_quirk mmc_quirks[] = {
 	 */
 	{ 0x70, MMC_QUIRK_OID_ANY,	"V10008", MMC_QUIRK_BROKEN_TRIM },
 	{ 0x70, MMC_QUIRK_OID_ANY,	"V10016", MMC_QUIRK_BROKEN_TRIM },
-
 	{ 0x0, 0x0, NULL, 0x0 }
 };
 
-static SYSCTL_NODE(_hw, OID_AUTO, mmc, CTLFLAG_RD, NULL, "mmc driver");
+static SYSCTL_NODE(_hw, OID_AUTO, mmc, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
+    "mmc driver");
 
 static int mmc_debug;
 SYSCTL_INT(_hw_mmc, OID_AUTO, debug, CTLFLAG_RWTUN, &mmc_debug, 0,

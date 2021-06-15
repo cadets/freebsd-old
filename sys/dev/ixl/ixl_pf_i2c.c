@@ -2,30 +2,30 @@
 
   Copyright (c) 2013-2018, Intel Corporation
   All rights reserved.
-  
-  Redistribution and use in source and binary forms, with or without 
+
+  Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
-  
-   1. Redistributions of source code must retain the above copyright notice, 
+
+   1. Redistributions of source code must retain the above copyright notice,
       this list of conditions and the following disclaimer.
-  
-   2. Redistributions in binary form must reproduce the above copyright 
-      notice, this list of conditions and the following disclaimer in the 
+
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-  
-   3. Neither the name of the Intel Corporation nor the names of its 
-      contributors may be used to endorse or promote products derived from 
+
+   3. Neither the name of the Intel Corporation nor the names of its
+      contributors may be used to endorse or promote products derived from
       this software without specific prior written permission.
-  
+
   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
-  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
-  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   POSSIBILITY OF SUCH DAMAGE.
 
@@ -606,7 +606,7 @@ write_byte_out:
 }
 
 /**
- *  ixl_read_i2c_byte - Reads 8 bit word over I2C using a hardware register
+ *  ixl_read_i2c_byte_reg - Reads 8 bit word over I2C using a hardware register
  **/
 s32
 ixl_read_i2c_byte_reg(struct ixl_pf *pf, u8 byte_offset,
@@ -627,7 +627,7 @@ ixl_read_i2c_byte_reg(struct ixl_pf *pf, u8 byte_offset,
 	/* Get data from I2C register */
 	reg = rd32(hw, I40E_GLGEN_I2CCMD(hw->func_caps.mdio_port_num));
 
-	/* Retrieve data readed from EEPROM */
+	/* Retrieve data read from EEPROM */
 	*data = (u8)(reg & 0xff);
 
 	if (status)
@@ -636,7 +636,7 @@ ixl_read_i2c_byte_reg(struct ixl_pf *pf, u8 byte_offset,
 }
 
 /**
- *  ixl_write_i2c_byte - Writes 8 bit word over I2C using a hardware register
+ *  ixl_write_i2c_byte_reg - Writes 8 bit word over I2C using a hardware register
  **/
 s32
 ixl_write_i2c_byte_reg(struct ixl_pf *pf, u8 byte_offset,
@@ -661,7 +661,7 @@ ixl_write_i2c_byte_reg(struct ixl_pf *pf, u8 byte_offset,
 	reg |= (datai2c << I40E_GLGEN_I2CCMD_DATA_SHIFT);
 	reg &= ~I40E_GLGEN_I2CCMD_OP_MASK;
 
-	/* Write command to registers controling I2C - data and address. */
+	/* Write command to registers controlling I2C - data and address. */
 	wr32(hw, I40E_GLGEN_I2CCMD(hw->func_caps.mdio_port_num), reg);
 
 	status = ixl_wait_for_i2c_completion(hw, hw->func_caps.mdio_port_num);
@@ -694,7 +694,7 @@ ixl_wait_for_i2c_completion(struct i40e_hw *hw, u8 portnum)
 }
 
 /**
- *  ixl_read_i2c_byte - Reads 8 bit word over I2C using a hardware register
+ *  ixl_read_i2c_byte_aq - Reads 8 bit word over I2C using an AQ command
  **/
 s32
 ixl_read_i2c_byte_aq(struct ixl_pf *pf, u8 byte_offset,
@@ -706,7 +706,7 @@ ixl_read_i2c_byte_aq(struct ixl_pf *pf, u8 byte_offset,
 
 	status = i40e_aq_get_phy_register(hw,
 					I40E_AQ_PHY_REG_ACCESS_EXTERNAL_MODULE,
-					dev_addr,
+					dev_addr, false,
 					byte_offset,
 					&reg, NULL);
 
@@ -720,7 +720,7 @@ ixl_read_i2c_byte_aq(struct ixl_pf *pf, u8 byte_offset,
 }
 
 /**
- *  ixl_write_i2c_byte - Writes 8 bit word over I2C using a hardware register
+ *  ixl_write_i2c_byte_aq - Writes 8 bit word over I2C using an AQ command
  **/
 s32
 ixl_write_i2c_byte_aq(struct ixl_pf *pf, u8 byte_offset,
@@ -731,7 +731,7 @@ ixl_write_i2c_byte_aq(struct ixl_pf *pf, u8 byte_offset,
 
 	status = i40e_aq_set_phy_register(hw,
 					I40E_AQ_PHY_REG_ACCESS_EXTERNAL_MODULE,
-					dev_addr,
+					dev_addr, false,
 					byte_offset,
 					data, NULL);
 

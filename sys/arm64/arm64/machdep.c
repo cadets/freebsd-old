@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/linker.h>
 #include <sys/msgbuf.h>
 #include <sys/pcpu.h>
+#include <sys/physmem.h>
 #include <sys/proc.h>
 #include <sys/ptrace.h>
 #include <sys/reboot.h>
@@ -61,11 +62,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysproto.h>
 #include <sys/ucontext.h>
 #include <sys/vdso.h>
+#include <sys/vmmeter.h>
 
 #include <vm/vm.h>
+#include <vm/vm_param.h>
 #include <vm/vm_kern.h>
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
+#include <vm/vm_phys.h>
 #include <vm/pmap.h>
 #include <vm/vm_map.h>
 #include <vm/vm_pager.h>
@@ -81,8 +85,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/reg.h>
 #include <machine/undefined.h>
 #include <machine/vmparam.h>
-
-#include <arm/include/physmem.h>
 
 #ifdef VFP
 #include <machine/vfp.h>
@@ -109,12 +111,10 @@ static struct trapframe proc0_tf;
 
 int early_boot = 1;
 int cold = 1;
+static int boot_el;
 
 struct kva_md_info kmi;
 
-int64_t dcache_line_size;	/* The minimum D cache line size */
-int64_t icache_line_size;	/* The minimum I cache line size */
-int64_t idcache_line_size;	/* The minimum cache line size */
 int64_t dczva_line_size;	/* The size of cache line the dc zva zeroes */
 int has_pan;
 
@@ -123,6 +123,7 @@ int has_pan;
  * passed into the kernel and used by the EFI code to call runtime services.
  */
 vm_paddr_t efi_systbl_phys;
+static struct efi_map_header *efihdr;
 
 /* pagezero_* implementations are provided in support.S */
 void pagezero_simple(void *);
@@ -130,6 +131,8 @@ void pagezero_cache(void *);
 
 /* pagezero_simple is default pagezero */
 void (*pagezero)(void *p) = pagezero_simple;
+
+int (*apei_nmi)(void);
 
 static void
 pan_setup(void)
@@ -162,12 +165,38 @@ pan_enable(void)
 	}
 }
 
+bool
+has_hyp(void)
+{
+
+	return (boot_el == 2);
+}
+
 static void
 cpu_startup(void *dummy)
 {
+	vm_paddr_t size;
+	int i;
+
+	printf("real memory  = %ju (%ju MB)\n", ptoa((uintmax_t)realmem),
+	    ptoa((uintmax_t)realmem) / 1024 / 1024);
+
+	if (bootverbose) {
+		printf("Physical memory chunk(s):\n");
+		for (i = 0; phys_avail[i + 1] != 0; i += 2) {
+			size = phys_avail[i + 1] - phys_avail[i];
+			printf("%#016jx - %#016jx, %ju bytes (%ju pages)\n",
+			    (uintmax_t)phys_avail[i],
+			    (uintmax_t)phys_avail[i + 1] - 1,
+			    (uintmax_t)size, (uintmax_t)size / PAGE_SIZE);
+		}
+	}
+
+	printf("avail memory = %ju (%ju MB)\n",
+	    ptoa((uintmax_t)vm_free_count()),
+	    ptoa((uintmax_t)vm_free_count()) / 1024 / 1024);
 
 	undef_init();
-	identify_cpu();
 	install_cpu_errata();
 
 	vm_ksubmap_init(&kmi);
@@ -176,6 +205,13 @@ cpu_startup(void *dummy)
 }
 
 SYSINIT(cpu, SI_SUB_CPU, SI_ORDER_FIRST, cpu_startup, NULL);
+
+static void
+late_ifunc_resolve(void *dummy __unused)
+{
+	link_elf_late_ireloc();
+}
+SYSINIT(late_ifunc_resolve, SI_SUB_CPU, SI_ORDER_ANY, late_ifunc_resolve, NULL);
 
 int
 cpu_idle_wakeup(int cpu)
@@ -285,8 +321,8 @@ int
 fill_dbregs(struct thread *td, struct dbreg *regs)
 {
 	struct debug_monitor_state *monitor;
-	int count, i;
-	uint8_t debug_ver, nbkpts;
+	int i;
+	uint8_t debug_ver, nbkpts, nwtpts;
 
 	memset(regs, 0, sizeof(*regs));
 
@@ -294,23 +330,30 @@ fill_dbregs(struct thread *td, struct dbreg *regs)
 	    &debug_ver);
 	extract_user_id_field(ID_AA64DFR0_EL1, ID_AA64DFR0_BRPs_SHIFT,
 	    &nbkpts);
+	extract_user_id_field(ID_AA64DFR0_EL1, ID_AA64DFR0_WRPs_SHIFT,
+	    &nwtpts);
 
 	/*
 	 * The BRPs field contains the number of breakpoints - 1. Armv8-A
 	 * allows the hardware to provide 2-16 breakpoints so this won't
-	 * overflow an 8 bit value.
+	 * overflow an 8 bit value. The same applies to the WRPs field.
 	 */
-	count = nbkpts + 1;
+	nbkpts++;
+	nwtpts++;
 
-	regs->db_info = debug_ver;
-	regs->db_info <<= 8;
-	regs->db_info |= count;
+	regs->db_debug_ver = debug_ver;
+	regs->db_nbkpts = nbkpts;
+	regs->db_nwtpts = nwtpts;
 
 	monitor = &td->td_pcb->pcb_dbg_regs;
 	if ((monitor->dbg_flags & DBGMON_ENABLED) != 0) {
-		for (i = 0; i < count; i++) {
-			regs->db_regs[i].dbr_addr = monitor->dbg_bvr[i];
-			regs->db_regs[i].dbr_ctrl = monitor->dbg_bcr[i];
+		for (i = 0; i < nbkpts; i++) {
+			regs->db_breakregs[i].dbr_addr = monitor->dbg_bvr[i];
+			regs->db_breakregs[i].dbr_ctrl = monitor->dbg_bcr[i];
+		}
+		for (i = 0; i < nwtpts; i++) {
+			regs->db_watchregs[i].dbw_addr = monitor->dbg_wvr[i];
+			regs->db_watchregs[i].dbw_ctrl = monitor->dbg_wcr[i];
 		}
 	}
 
@@ -321,19 +364,88 @@ int
 set_dbregs(struct thread *td, struct dbreg *regs)
 {
 	struct debug_monitor_state *monitor;
+	uint64_t addr;
+	uint32_t ctrl;
 	int count;
 	int i;
 
 	monitor = &td->td_pcb->pcb_dbg_regs;
 	count = 0;
 	monitor->dbg_enable_count = 0;
+
 	for (i = 0; i < DBG_BRP_MAX; i++) {
-		/* TODO: Check these values */
-		monitor->dbg_bvr[i] = regs->db_regs[i].dbr_addr;
-		monitor->dbg_bcr[i] = regs->db_regs[i].dbr_ctrl;
-		if ((monitor->dbg_bcr[i] & 1) != 0)
+		addr = regs->db_breakregs[i].dbr_addr;
+		ctrl = regs->db_breakregs[i].dbr_ctrl;
+
+		/* Don't let the user set a breakpoint on a kernel address. */
+		if (addr >= VM_MAXUSER_ADDRESS)
+			return (EINVAL);
+
+		/*
+		 * The lowest 2 bits are ignored, so record the effective
+		 * address.
+		 */
+		addr = rounddown2(addr, 4);
+
+		/*
+		 * Some control fields are ignored, and other bits reserved.
+		 * Only unlinked, address-matching breakpoints are supported.
+		 *
+		 * XXX: fields that appear unvalidated, such as BAS, have
+		 * constrained undefined behaviour. If the user mis-programs
+		 * these, there is no risk to the system.
+		 */
+		ctrl &= DBG_BCR_EN | DBG_BCR_PMC | DBG_BCR_BAS;
+		if ((ctrl & DBG_BCR_EN) != 0) {
+			/* Only target EL0. */
+			if ((ctrl & DBG_BCR_PMC) != DBG_BCR_PMC_EL0)
+				return (EINVAL);
+
 			monitor->dbg_enable_count++;
+		}
+
+		monitor->dbg_bvr[i] = addr;
+		monitor->dbg_bcr[i] = ctrl;
 	}
+
+	for (i = 0; i < DBG_WRP_MAX; i++) {
+		addr = regs->db_watchregs[i].dbw_addr;
+		ctrl = regs->db_watchregs[i].dbw_ctrl;
+
+		/* Don't let the user set a watchpoint on a kernel address. */
+		if (addr >= VM_MAXUSER_ADDRESS)
+			return (EINVAL);
+
+		/*
+		 * Some control fields are ignored, and other bits reserved.
+		 * Only unlinked watchpoints are supported.
+		 */
+		ctrl &= DBG_WCR_EN | DBG_WCR_PAC | DBG_WCR_LSC | DBG_WCR_BAS |
+		    DBG_WCR_MASK;
+
+		if ((ctrl & DBG_WCR_EN) != 0) {
+			/* Only target EL0. */
+			if ((ctrl & DBG_WCR_PAC) != DBG_WCR_PAC_EL0)
+				return (EINVAL);
+
+			/* Must set at least one of the load/store bits. */
+			if ((ctrl & DBG_WCR_LSC) == 0)
+				return (EINVAL);
+
+			/*
+			 * When specifying the address range with BAS, the MASK
+			 * field must be zero.
+			 */
+			if ((ctrl & DBG_WCR_BAS) != DBG_WCR_BAS_MASK &&
+			    (ctrl & DBG_WCR_MASK) != 0)
+				return (EINVAL);
+
+			monitor->dbg_enable_count++;
+		}
+		monitor->dbg_wvr[i] = addr;
+		monitor->dbg_wcr[i] = ctrl;
+	}
+
 	if (monitor->dbg_enable_count > 0)
 		monitor->dbg_flags |= DBGMON_ENABLED;
 
@@ -374,40 +486,38 @@ set_regs32(struct thread *td, struct reg32 *regs)
 	tf->tf_elr = regs->r_pc;
 	tf->tf_spsr = regs->r_cpsr;
 
-
 	return (0);
 }
 
+/* XXX fill/set dbregs/fpregs are stubbed on 32-bit arm. */
 int
 fill_fpregs32(struct thread *td, struct fpreg32 *regs)
 {
 
-	printf("ARM64TODO: fill_fpregs32");
-	return (EDOOFUS);
+	memset(regs, 0, sizeof(*regs));
+	return (0);
 }
 
 int
 set_fpregs32(struct thread *td, struct fpreg32 *regs)
 {
 
-	printf("ARM64TODO: set_fpregs32");
-	return (EDOOFUS);
+	return (0);
 }
 
 int
 fill_dbregs32(struct thread *td, struct dbreg32 *regs)
 {
 
-	printf("ARM64TODO: fill_dbregs32");
-	return (EDOOFUS);
+	memset(regs, 0, sizeof(*regs));
+	return (0);
 }
 
 int
 set_dbregs32(struct thread *td, struct dbreg32 *regs)
 {
 
-	printf("ARM64TODO: set_dbregs32");
-	return (EDOOFUS);
+	return (0);
 }
 #endif
 
@@ -441,6 +551,7 @@ void
 exec_setregs(struct thread *td, struct image_params *imgp, uintptr_t stack)
 {
 	struct trapframe *tf = td->td_frame;
+	struct pcb *pcb = td->td_pcb;
 
 	memset(tf, 0, sizeof(struct trapframe));
 
@@ -448,6 +559,20 @@ exec_setregs(struct thread *td, struct image_params *imgp, uintptr_t stack)
 	tf->tf_sp = STACKALIGN(stack);
 	tf->tf_lr = imgp->entry_addr;
 	tf->tf_elr = imgp->entry_addr;
+
+	td->td_pcb->pcb_tpidr_el0 = 0;
+	td->td_pcb->pcb_tpidrro_el0 = 0;
+	WRITE_SPECIALREG(tpidrro_el0, 0);
+	WRITE_SPECIALREG(tpidr_el0, 0);
+
+#ifdef VFP
+	vfp_reset_state(td, pcb);
+#endif
+
+	/*
+	 * Clear debug register state. It is not applicable to the new process.
+	 */
+	bzero(&pcb->pcb_dbg_regs, sizeof(pcb->pcb_dbg_regs));
 }
 
 /* Sanity check these are the same size, they will be memcpy'd to and fro */
@@ -525,7 +650,7 @@ get_fpcontext(struct thread *td, mcontext_t *mcp)
 		KASSERT((curpcb->pcb_fpflags & ~PCB_FP_USERMASK) == 0,
 		    ("Non-userspace FPU flags set in get_fpcontext"));
 		memcpy(mcp->mc_fpregs.fp_q, curpcb->pcb_fpustate.vfp_regs,
-		    sizeof(mcp->mc_fpregs));
+		    sizeof(mcp->mc_fpregs.fp_q));
 		mcp->mc_fpregs.fp_cr = curpcb->pcb_fpustate.vfp_fpcr;
 		mcp->mc_fpregs.fp_sr = curpcb->pcb_fpustate.vfp_fpsr;
 		mcp->mc_fpregs.fp_flags = curpcb->pcb_fpflags;
@@ -556,7 +681,7 @@ set_fpcontext(struct thread *td, mcontext_t *mcp)
 		KASSERT(curpcb->pcb_fpusaved == &curpcb->pcb_fpustate,
 		    ("Called set_fpcontext while the kernel is using the VFP"));
 		memcpy(curpcb->pcb_fpustate.vfp_regs, mcp->mc_fpregs.fp_q,
-		    sizeof(mcp->mc_fpregs));
+		    sizeof(mcp->mc_fpregs.fp_q));
 		curpcb->pcb_fpustate.vfp_fpcr = mcp->mc_fpregs.fp_cr;
 		curpcb->pcb_fpustate.vfp_fpsr = mcp->mc_fpregs.fp_sr;
 		curpcb->pcb_fpflags = mcp->mc_fpregs.fp_flags & PCB_FP_USERMASK;
@@ -626,6 +751,7 @@ cpu_pcpu_init(struct pcpu *pcpu, int cpuid, size_t size)
 {
 
 	pcpu->pc_acpi_id = 0xffffffff;
+	pcpu->pc_mpidr = 0xffffffff;
 }
 
 void
@@ -696,11 +822,11 @@ makectx(struct trapframe *tf, struct pcb *pcb)
 {
 	int i;
 
-	for (i = 0; i < PCB_LR; i++)
+	for (i = 0; i < nitems(pcb->pcb_x); i++)
 		pcb->pcb_x[i] = tf->tf_x[i];
 
-	pcb->pcb_x[PCB_LR] = tf->tf_lr;
-	pcb->pcb_pc = tf->tf_elr;
+	/* NB: pcb_lr is the PC, see PC_REGS() in db_machdep.h */
+	pcb->pcb_lr = tf->tf_elr;
 	pcb->pcb_sp = tf->tf_sp;
 }
 
@@ -850,7 +976,7 @@ exclude_efi_map_entry(struct efi_md *p)
 		 */
 		break;
 	default:
-		arm_physmem_exclude_region(p->md_phys, p->md_pages * PAGE_SIZE,
+		physmem_exclude_region(p->md_phys, p->md_pages * PAGE_SIZE,
 		    EXFLAG_NOALLOC);
 	}
 }
@@ -881,7 +1007,7 @@ add_efi_map_entry(struct efi_md *p)
 		/*
 		 * We're allowed to use any entry with these types.
 		 */
-		arm_physmem_hardware_region(p->md_phys,
+		physmem_hardware_region(p->md_phys,
 		    p->md_pages * PAGE_SIZE);
 		break;
 	}
@@ -920,7 +1046,7 @@ print_efi_map_entry(struct efi_md *p)
 		type = types[p->md_type];
 	else
 		type = "<INVALID>";
-	printf("%23s %012lx %12p %08lx ", type, p->md_phys,
+	printf("%23s %012lx %012lx %08lx ", type, p->md_phys,
 	    p->md_virt, p->md_pages);
 	if (p->md_attr & EFI_MD_ATTR_UC)
 		printf("UC ");
@@ -1001,7 +1127,7 @@ bus_probe(void)
 	has_fdt = (OF_peer(0) != 0);
 #endif
 #ifdef DEV_ACPI
-	has_acpi = (acpi_find_table(ACPI_SIG_SPCR) != 0);
+	has_acpi = (AcpiOsGetRootPointer() != 0);
 #endif
 
 	env = kern_getenv("kern.cfg.order");
@@ -1047,22 +1173,10 @@ bus_probe(void)
 static void
 cache_setup(void)
 {
-	int dcache_line_shift, icache_line_shift, dczva_line_shift;
-	uint32_t ctr_el0;
+	int dczva_line_shift;
 	uint32_t dczid_el0;
 
-	ctr_el0 = READ_SPECIALREG(ctr_el0);
-
-	/* Read the log2 words in each D cache line */
-	dcache_line_shift = CTR_DLINE_SIZE(ctr_el0);
-	/* Get the D cache line size */
-	dcache_line_size = sizeof(int) << dcache_line_shift;
-
-	/* And the same for the I cache */
-	icache_line_shift = CTR_ILINE_SIZE(ctr_el0);
-	icache_line_size = sizeof(int) << icache_line_shift;
-
-	idcache_line_size = MIN(dcache_line_size, icache_line_size);
+	identify_cache(READ_SPECIALREG(ctr_el0));
 
 	dczid_el0 = READ_SPECIALREG(dczid_el0);
 
@@ -1079,20 +1193,65 @@ cache_setup(void)
 	}
 }
 
+int
+memory_mapping_mode(vm_paddr_t pa)
+{
+	struct efi_md *map, *p;
+	size_t efisz;
+	int ndesc, i;
+
+	if (efihdr == NULL)
+		return (VM_MEMATTR_WRITE_BACK);
+
+	/*
+	 * Memory map data provided by UEFI via the GetMemoryMap
+	 * Boot Services API.
+	 */
+	efisz = (sizeof(struct efi_map_header) + 0xf) & ~0xf;
+	map = (struct efi_md *)((uint8_t *)efihdr + efisz);
+
+	if (efihdr->descriptor_size == 0)
+		return (VM_MEMATTR_WRITE_BACK);
+	ndesc = efihdr->memory_size / efihdr->descriptor_size;
+
+	for (i = 0, p = map; i < ndesc; i++,
+	    p = efi_next_descriptor(p, efihdr->descriptor_size)) {
+		if (pa < p->md_phys ||
+		    pa >= p->md_phys + p->md_pages * EFI_PAGE_SIZE)
+			continue;
+		if (p->md_type == EFI_MD_TYPE_IOMEM ||
+		    p->md_type == EFI_MD_TYPE_IOPORT)
+			return (VM_MEMATTR_DEVICE);
+		else if ((p->md_attr & EFI_MD_ATTR_WB) != 0 ||
+		    p->md_type == EFI_MD_TYPE_RECLAIM)
+			return (VM_MEMATTR_WRITE_BACK);
+		else if ((p->md_attr & EFI_MD_ATTR_WT) != 0)
+			return (VM_MEMATTR_WRITE_THROUGH);
+		else if ((p->md_attr & EFI_MD_ATTR_WC) != 0)
+			return (VM_MEMATTR_WRITE_COMBINING);
+		break;
+	}
+
+	return (VM_MEMATTR_DEVICE);
+}
+
 void
 initarm(struct arm64_bootparams *abp)
 {
 	struct efi_fb *efifb;
-	struct efi_map_header *efihdr;
 	struct pcpu *pcpup;
 	char *env;
 #ifdef FDT
 	struct mem_region mem_regions[FDT_MEM_REGIONS];
 	int mem_regions_sz;
+	phandle_t root;
+	char dts_version[255];
 #endif
 	vm_offset_t lastaddr;
 	caddr_t kmdp;
 	bool valid;
+
+	boot_el = abp->boot_el;
 
 	/* Parse loader or FDT boot parametes. Determine last used address. */
 	lastaddr = parse_boot_param(abp);
@@ -1101,6 +1260,9 @@ initarm(struct arm64_bootparams *abp)
 	kmdp = preload_search_by_type("elf kernel");
 	if (kmdp == NULL)
 		kmdp = preload_search_by_type("elf64 kernel");
+
+	identify_cpu(0);
+	update_special_regs(0);
 
 	link_elf_ireloc(kmdp);
 	try_load_dtb(kmdp);
@@ -1118,10 +1280,10 @@ initarm(struct arm64_bootparams *abp)
 		if (fdt_get_mem_regions(mem_regions, &mem_regions_sz,
 		    NULL) != 0)
 			panic("Cannot get physical memory regions");
-		arm_physmem_hardware_regions(mem_regions, mem_regions_sz);
+		physmem_hardware_regions(mem_regions, mem_regions_sz);
 	}
 	if (fdt_get_reserved_mem(mem_regions, &mem_regions_sz) == 0)
-		arm_physmem_exclude_regions(mem_regions, mem_regions_sz,
+		physmem_exclude_regions(mem_regions, mem_regions_sz,
 		    EXFLAG_NODUMP | EXFLAG_NOALLOC);
 #endif
 
@@ -1129,7 +1291,7 @@ initarm(struct arm64_bootparams *abp)
 	efifb = (struct efi_fb *)preload_search_info(kmdp,
 	    MODINFO_METADATA | MODINFOMD_EFI_FB);
 	if (efifb != NULL)
-		arm_physmem_exclude_region(efifb->fb_addr, efifb->fb_size,
+		physmem_exclude_region(efifb->fb_addr, efifb->fb_size,
 		    EXFLAG_NOALLOC);
 
 	/* Set the pcpu data, this is needed by pmap_bootstrap */
@@ -1145,6 +1307,7 @@ initarm(struct arm64_bootparams *abp)
 	    "msr tpidr_el1, %0" :: "r"(pcpup));
 
 	PCPU_SET(curthread, &thread0);
+	PCPU_SET(midr, get_midr());
 
 	/* Do basic tuning, hz etc */
 	init_param1();
@@ -1158,17 +1321,27 @@ initarm(struct arm64_bootparams *abp)
 	/* Exclude entries neexed in teh DMAP region, but not phys_avail */
 	if (efihdr != NULL)
 		exclude_efi_map_entries(efihdr);
-	arm_physmem_init_kernel_globals();
+	physmem_init_kernel_globals();
 
 	devmap_bootstrap(0, NULL);
 
 	valid = bus_probe();
 
 	cninit();
+	set_ttbr0(abp->kern_ttbr0);
+	cpu_tlb_flushID();
 
 	if (!valid)
 		panic("Invalid bus configuration: %s",
 		    kern_getenv("kern.cfg.order"));
+
+	/*
+	 * Dump the boot metadata. We have to wait for cninit() since console
+	 * output is required. If it's grossly incorrect the kernel will never
+	 * make it this far.
+	 */
+	if (getenv_is_true("debug.dump_modinfo_at_boot"))
+		preload_dump();
 
 	init_proc0(abp->kern_stack);
 	msgbufinit(msgbufp, msgbufsize);
@@ -1185,9 +1358,26 @@ initarm(struct arm64_bootparams *abp)
 	if (env != NULL)
 		strlcpy(kernelname, env, sizeof(kernelname));
 
+#ifdef FDT
+	if (arm64_bus_method == ARM64_BUS_FDT) {
+		root = OF_finddevice("/");
+		if (OF_getprop(root, "freebsd,dts-version", dts_version, sizeof(dts_version)) > 0) {
+			if (strcmp(LINUX_DTS_VERSION, dts_version) != 0)
+				printf("WARNING: DTB version is %s while kernel expects %s, "
+				    "please update the DTB in the ESP\n",
+				    dts_version,
+				    LINUX_DTS_VERSION);
+		} else {
+			printf("WARNING: Cannot find freebsd,dts-version property, "
+			    "cannot check DTB compliance\n");
+		}
+	}
+#endif
+
 	if (boothowto & RB_VERBOSE) {
-		print_efi_map_entries(efihdr);
-		arm_physmem_print_tables();
+		if (efihdr != NULL)
+			print_efi_map_entries(efihdr);
+		physmem_print_tables();
 	}
 
 	early_boot = 0;

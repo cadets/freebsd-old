@@ -158,7 +158,7 @@ cd9660_access(ap)
 	}
 
 	return (vaccess(vp->v_type, ip->inode.iso_mode, ip->inode.iso_uid,
-	    ip->inode.iso_gid, ap->a_accmode, ap->a_cred, NULL));
+	    ip->inode.iso_gid, ap->a_accmode, ap->a_cred));
 }
 
 static int
@@ -180,7 +180,6 @@ cd9660_open(ap)
 	vnode_create_vobject(vp, ip->i_size, ap->a_td);
 	return (0);
 }
-
 
 static int
 cd9660_getattr(ap)
@@ -844,7 +843,8 @@ cd9660_vptofh(ap)
 	return (0);
 }
 
-SYSCTL_NODE(_vfs, OID_AUTO, cd9660, CTLFLAG_RW, 0, "cd9660 filesystem");
+SYSCTL_NODE(_vfs, OID_AUTO, cd9660, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "cd9660 filesystem");
 static int use_buf_pager = 1;
 SYSCTL_INT(_vfs_cd9660, OID_AUTO, use_buf_pager, CTLFLAG_RWTUN,
     &use_buf_pager, 0,

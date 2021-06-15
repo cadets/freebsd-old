@@ -50,10 +50,6 @@ __FBSDID("$FreeBSD$");
 
 #include "g_part_if.h"
 
-#ifndef _PATH_DEV
-#define _PATH_DEV "/dev/"
-#endif
-
 static kobj_method_t g_part_null_methods[] = {
 	{ 0, 0 }
 };
@@ -80,6 +76,7 @@ struct g_part_alias_list {
 	{ "apple-raid-offline", G_PART_ALIAS_APPLE_RAID_OFFLINE },
 	{ "apple-tv-recovery", G_PART_ALIAS_APPLE_TV_RECOVERY },
 	{ "apple-ufs", G_PART_ALIAS_APPLE_UFS },
+	{ "apple-zfs", G_PART_ALIAS_APPLE_ZFS },
 	{ "bios-boot", G_PART_ALIAS_BIOS_BOOT },
 	{ "chromeos-firmware", G_PART_ALIAS_CHROMEOS_FIRMWARE },
 	{ "chromeos-kernel", G_PART_ALIAS_CHROMEOS_KERNEL },
@@ -126,6 +123,14 @@ struct g_part_alias_list {
 	{ "ntfs", G_PART_ALIAS_MS_NTFS },
 	{ "openbsd-data", G_PART_ALIAS_OPENBSD_DATA },
 	{ "prep-boot", G_PART_ALIAS_PREP_BOOT },
+        { "solaris-boot", G_PART_ALIAS_SOLARIS_BOOT },
+        { "solaris-root", G_PART_ALIAS_SOLARIS_ROOT },
+        { "solaris-swap", G_PART_ALIAS_SOLARIS_SWAP },
+        { "solaris-backup", G_PART_ALIAS_SOLARIS_BACKUP },
+        { "solaris-var", G_PART_ALIAS_SOLARIS_VAR },
+        { "solaris-home", G_PART_ALIAS_SOLARIS_HOME },
+        { "solaris-altsec", G_PART_ALIAS_SOLARIS_ALTSEC },
+	{ "solaris-reserved", G_PART_ALIAS_SOLARIS_RESERVED },
 	{ "vmware-reserved", G_PART_ALIAS_VMRESERVED },
 	{ "vmware-vmfs", G_PART_ALIAS_VMFS },
 	{ "vmware-vmkdiag", G_PART_ALIAS_VMKDIAG },
@@ -133,11 +138,11 @@ struct g_part_alias_list {
 };
 
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW, 0,
+SYSCTL_NODE(_kern_geom, OID_AUTO, part, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_PART stuff");
-static u_int check_integrity = 1;
+u_int geom_part_check_integrity = 1;
 SYSCTL_UINT(_kern_geom_part, OID_AUTO, check_integrity,
-    CTLFLAG_RWTUN, &check_integrity, 1,
+    CTLFLAG_RWTUN, &geom_part_check_integrity, 1,
     "Enable integrity checking");
 static u_int auto_resize = 1;
 SYSCTL_UINT(_kern_geom_part, OID_AUTO, auto_resize,
@@ -312,7 +317,6 @@ g_part_get_physpath_done(struct bio *bp)
 	g_std_done(bp);
 }
 
-
 #define	DPRINTF(...)	if (bootverbose) {	\
 	printf("GEOM_PART: " __VA_ARGS__);	\
 }
@@ -424,7 +428,7 @@ g_part_check_integrity(struct g_part_table *table, struct g_consumer *cp)
 	if (failed != 0) {
 		printf("GEOM_PART: integrity check failed (%s, %s)\n",
 		    pp->name, table->gpt_scheme->name);
-		if (check_integrity != 0)
+		if (geom_part_check_integrity != 0)
 			return (EINVAL);
 		table->gpt_corrupt = 1;
 	}
@@ -469,7 +473,6 @@ g_part_new_provider(struct g_geom *gp, struct g_part_table *table,
 {
 	struct g_consumer *cp;
 	struct g_provider *pp;
-	struct sbuf *sb;
 	struct g_geom_alias *gap;
 	off_t offset;
 
@@ -481,24 +484,16 @@ g_part_new_provider(struct g_geom *gp, struct g_part_table *table,
 		entry->gpe_offset = offset;
 
 	if (entry->gpe_pp == NULL) {
+		entry->gpe_pp = G_PART_NEW_PROVIDER(table, gp, entry, gp->name);
 		/*
-		 * Add aliases to the geom before we create the provider so that
-		 * geom_dev can taste it with all the aliases in place so all
-		 * the aliased dev_t instances get created for each partition
-		 * (eg foo5p7 gets created for bar5p7 when foo is an alias of bar).
+		 * If our parent provider had any aliases, then copy them to our
+		 * provider so when geom DEV tastes things later, they will be
+		 * there for it to create the aliases with those name used in
+		 * place of the geom's name we use to create the provider. The
+		 * kobj interface that generates names makes this awkward.
 		 */
-		LIST_FOREACH(gap, &table->gpt_gp->aliases, ga_next) {
-			sb = sbuf_new_auto();
-			G_PART_FULLNAME(table, entry, sb, gap->ga_alias);
-			sbuf_finish(sb);
-			g_geom_add_alias(gp, sbuf_data(sb));
-			sbuf_delete(sb);
-		}
-		sb = sbuf_new_auto();
-		G_PART_FULLNAME(table, entry, sb, gp->name);
-		sbuf_finish(sb);
-		entry->gpe_pp = g_new_providerf(gp, "%s", sbuf_data(sb));
-		sbuf_delete(sb);
+		LIST_FOREACH(gap, &pp->aliases, ga_next)
+			G_PART_ADD_ALIAS(table, entry->gpe_pp, entry, gap->ga_alias);
 		entry->gpe_pp->flags |= G_PF_DIRECT_SEND | G_PF_DIRECT_RECEIVE;
 		entry->gpe_pp->private = entry;		/* Close the circle. */
 	}
@@ -1857,7 +1852,8 @@ g_part_ctlreq(struct gctl_req *req, struct g_class *mp, const char *verb)
 		table = gpp.gpp_geom->softc;
 		if (table != NULL && table->gpt_corrupt &&
 		    ctlreq != G_PART_CTL_DESTROY &&
-		    ctlreq != G_PART_CTL_RECOVER) {
+		    ctlreq != G_PART_CTL_RECOVER &&
+		    geom_part_check_integrity) {
 			gctl_error(req, "%d table '%s' is corrupt",
 			    EPERM, gpp.gpp_geom->name);
 			return;
@@ -1968,7 +1964,6 @@ g_part_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	struct g_part_entry *entry;
 	struct g_part_table *table;
 	struct root_hold_token *rht;
-	struct g_geom_alias *gap;
 	int attr, depth;
 	int error;
 
@@ -1985,8 +1980,6 @@ g_part_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	 * to the provider.
 	 */
 	gp = g_new_geomf(mp, "%s", pp->name);
-	LIST_FOREACH(gap, &pp->geom->aliases, ga_next)
-		g_geom_add_alias(gp, gap->ga_alias);
 	cp = g_new_consumer(gp);
 	cp->flags |= G_CF_DIRECT_SEND | G_CF_DIRECT_RECEIVE;
 	error = g_attach(cp, pp);

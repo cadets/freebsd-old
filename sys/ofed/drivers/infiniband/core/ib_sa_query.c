@@ -622,6 +622,8 @@ void ib_sa_cancel_query(int id, struct ib_sa_query *query)
 	agent = query->port->agent;
 	mad_buf = query->mad_buf;
 	spin_unlock_irqrestore(&idr_lock, flags);
+
+	ib_cancel_mad(agent, mad_buf);
 }
 EXPORT_SYMBOL(ib_sa_cancel_query);
 
@@ -668,11 +670,7 @@ int ib_init_ah_from_path(struct ib_device *device, u8 port_num,
 		struct rdma_dev_addr dev_addr = {.bound_dev_if = rec->ifindex,
 						 .net = rec->net ? rec->net :
 							 &init_net};
-		union {
-			struct sockaddr     _sockaddr;
-			struct sockaddr_in  _sockaddr_in;
-			struct sockaddr_in6 _sockaddr_in6;
-		} sgid_addr, dgid_addr;
+		union rdma_sockaddr sgid_addr, dgid_addr;
 
 		if (!device->get_netdev)
 			return -EOPNOTSUPP;

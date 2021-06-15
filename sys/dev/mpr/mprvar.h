@@ -367,11 +367,13 @@ struct mpr_softc {
 	u_int				enable_ssu;
 	int				spinup_wait_time;
 	int				use_phynum;
+	int				dump_reqs_alltypes;
 	uint64_t			chain_alloc_fail;
 	uint64_t			prp_page_alloc_fail;
 	struct sysctl_ctx_list		sysctl_ctx;
 	struct sysctl_oid		*sysctl_tree;
 	char                            fw_version[16];
+	char				msg_version[8];
 	struct mpr_command		*commands;
 	struct mpr_chain		*chains;
 	struct mpr_prp_page		*prps;
@@ -616,7 +618,8 @@ mpr_free_command(struct mpr_softc *sc, struct mpr_command *cm)
 	struct mpr_chain *chain, *chain_temp;
 	struct mpr_prp_page *prp_page, *prp_page_temp;
 
-	KASSERT(cm->cm_state == MPR_CM_STATE_BUSY, ("state not busy\n"));
+	KASSERT(cm->cm_state == MPR_CM_STATE_BUSY,
+	    ("state not busy, state = %u\n", cm->cm_state));
 
 	if (cm->cm_reply != NULL)
 		mpr_free_reply(sc, cm->cm_reply_data);
@@ -657,7 +660,7 @@ mpr_alloc_command(struct mpr_softc *sc)
 		return (NULL);
 
 	KASSERT(cm->cm_state == MPR_CM_STATE_FREE,
-	    ("mpr: Allocating busy command\n"));
+	    ("mpr: Allocating busy command, state = %u\n", cm->cm_state));
 
 	TAILQ_REMOVE(&sc->req_list, cm, cm_link);
 	cm->cm_state = MPR_CM_STATE_BUSY;
@@ -670,7 +673,8 @@ mpr_free_high_priority_command(struct mpr_softc *sc, struct mpr_command *cm)
 {
 	struct mpr_chain *chain, *chain_temp;
 
-	KASSERT(cm->cm_state == MPR_CM_STATE_BUSY, ("state not busy\n"));
+	KASSERT(cm->cm_state == MPR_CM_STATE_BUSY,
+	    ("state not busy, state = %u\n", cm->cm_state));
 
 	if (cm->cm_reply != NULL)
 		mpr_free_reply(sc, cm->cm_reply_data);
@@ -699,7 +703,7 @@ mpr_alloc_high_priority_command(struct mpr_softc *sc)
 		return (NULL);
 
 	KASSERT(cm->cm_state == MPR_CM_STATE_FREE,
-	    ("mpr: Allocating busy command\n"));
+	    ("mpr: Allocating busy command, state = %u\n", cm->cm_state));
 
 	TAILQ_REMOVE(&sc->high_priority_req_list, cm, cm_link);
 	cm->cm_state = MPR_CM_STATE_BUSY;
@@ -763,6 +767,10 @@ do {							\
 	mpr_printf((sc), tag "\n")
 #define MPR_PRINTFIELD(sc, facts, attr, fmt)	\
 	mpr_print_field((sc), #attr ": " #fmt "\n", (facts)->attr)
+#define MPR_PRINTFIELD_16(sc, facts, attr, fmt)	\
+	mpr_print_field((sc), #attr ": " #fmt "\n", le16toh((facts)->attr))
+#define MPR_PRINTFIELD_32(sc, facts, attr, fmt)	\
+	mpr_print_field((sc), #attr ": " #fmt "\n", le32toh((facts)->attr))
 
 static __inline void
 mpr_from_u64(uint64_t data, U64 *mpr)
@@ -908,35 +916,10 @@ int mprsas_send_reset(struct mpr_softc *sc, struct mpr_command *tm,
 SYSCTL_DECL(_hw_mpr);
 
 /* Compatibility shims for different OS versions */
-#if __FreeBSD_version >= 800001
-#define mpr_kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg) \
-    kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg)
-#define mpr_kproc_exit(arg)	kproc_exit(arg)
-#else
-#define mpr_kproc_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg) \
-    kthread_create(func, farg, proc_ptr, flags, stackpgs, fmtstr, arg)
-#define mpr_kproc_exit(arg)	kthread_exit(arg)
-#endif
-
 #if defined(CAM_PRIORITY_XPT)
 #define MPR_PRIORITY_XPT	CAM_PRIORITY_XPT
 #else
 #define MPR_PRIORITY_XPT	5
-#endif
-
-#if __FreeBSD_version < 800107
-// Prior to FreeBSD-8.0 scp3_flags was not defined.
-#define spc3_flags reserved
-
-#define SPC3_SID_PROTECT    0x01
-#define SPC3_SID_3PC        0x08
-#define SPC3_SID_TPGS_MASK  0x30
-#define SPC3_SID_TPGS_IMPLICIT  0x10
-#define SPC3_SID_TPGS_EXPLICIT  0x20
-#define SPC3_SID_ACC        0x40
-#define SPC3_SID_SCCS       0x80
-
-#define CAM_PRIORITY_NORMAL CAM_PRIORITY_NONE
 #endif
 
 /* Definitions for SCSI unmap translation to NVMe DSM command */
@@ -987,4 +970,3 @@ struct unmap_parm_list {
 #define SCSI_ASCQ_INVALID_LUN_ID                        0x09
 
 #endif
-

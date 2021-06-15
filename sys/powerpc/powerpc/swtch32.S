@@ -74,6 +74,7 @@ ENTRY(cpu_throw)
 	li	%r14,0	/* Tell cpu_switchin not to release a thread */
 
 	b	cpu_switchin
+END(cpu_throw)
 
 /*
  * void cpu_switch(struct thread *old,
@@ -92,6 +93,11 @@ ENTRY(cpu_switch)
 	mflr	%r16			/* Save the link register */
 	stw	%r16,PCB_LR(%r6)
 	stw	%r1,PCB_SP(%r6)		/* Save the stack pointer */
+	bl	1f
+1:
+	mflr	%r30			/* Prepare for secure-PLT calls */
+	addis	%r30, %r30, (_GLOBAL_OFFSET_TABLE_-1b)@ha
+	addi	%r30, %r30, (_GLOBAL_OFFSET_TABLE_-1b)@l
 
 	mr	%r14,%r3		/* Copy the old thread ptr... */
 	mr	%r2,%r4			/* and the new thread ptr in curthread */
@@ -129,6 +135,7 @@ cpu_switchin:
 	mflr	%r6
 	addis	%r6,%r6,(_GLOBAL_OFFSET_TABLE_-1b)@ha
 	addi	%r6,%r6,(_GLOBAL_OFFSET_TABLE_-1b)@l
+	mr	%r30, %r6		/* Prepare for secure-PLT calls */
 	lwz	%r6,blocked_lock@got(%r6)
 blocked_loop:
 	lwz	%r7,TD_LOCK(%r2)
@@ -187,6 +194,7 @@ blocked_loop:
 	 */
 	stwcx.	%r1, 0, %r3
 	blr
+END(cpu_switch)
 
 /*
  * savectx(pcb)
@@ -200,6 +208,7 @@ ENTRY(savectx)
 	mflr	%r4			/* Save the link register */
 	stw	%r4,PCB_LR(%r3)
 	blr
+END(savectx)
 
 /*
  * fork_trampoline()
@@ -215,7 +224,8 @@ ENTRY(fork_trampoline)
 					   does when allocating space for
 					   a frame pointer/saved LR */
 #ifdef __SPE__
-	li	%r3,SPEFSCR_FINVE|SPEFSCR_FDBZE|SPEFSCR_FUNFE|SPEFSCR_FOVFE
+	li	%r3,SPEFSCR_DFLT
 	mtspr	SPR_SPEFSCR, %r3
 #endif
 	b	trapexit
+END(fork_trampoline)

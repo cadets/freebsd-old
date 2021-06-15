@@ -78,12 +78,6 @@ __ElfType(Auxinfo);
 #define	EF_ARM_EABI_VERSION_UNKNOWN 0
 #define	EF_ARM_EABI_FREEBSD_MIN 4
 
-/*
- * Magic number for the elf trampoline, chosen wisely to be an immediate
- * value.
- */
-#define	MAGIC_TRAMP_NUMBER	0x5c000003
-
 #define	ET_DYN_LOAD_ADDR	0x500000
 
 /* Flags passed in AT_HWCAP. */
@@ -110,7 +104,6 @@ __ElfType(Auxinfo);
 #define	HWCAP_IDIV		(HWCAP_IDIVA | HWCAP_IDIVT)
 #define	HWCAP_LPAE		0x00100000
 #define	HWCAP_EVTSTRM		0x00200000	/* Not implemented yet.       */
-
 
 /* Flags passed in AT_HWCAP2. */
 #define	HWCAP2_AES		0x00000001

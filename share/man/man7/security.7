@@ -28,7 +28,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd February 4, 2020
+.Dd February 28, 2021
 .Dt SECURITY 7
 .Os
 .Sh NAME
@@ -539,7 +539,8 @@ The kernel debugger may not be entered using the
 .Va debug.kdb.enter
 sysctl.
 A panic or trap cannot be forced using the
-.Va debug.kdb.panic
+.Va debug.kdb.panic ,
+.Va debug.kdb.panic_str
 and other sysctl's.
 .It Ic 2
 Highly secure mode \- same as secure mode, plus disks may not be
@@ -992,6 +993,13 @@ See also
 .Xr proccontrol 1
 mode
 .Dv kpti .
+.It Dv machdep.mitigations.flush_rsb_ctxsw
+amd64.
+Controls Return Stack Buffer flush on context switch, to prevent
+cross-process ret2spec attacks.
+Only needed, and only enabled by default, if the machine
+supports SMEP, otherwise IBRS would do necessary flushing on kernel
+entry anyway.
 .It Dv hw.mds_disable
 amd64 and i386.
 Controls Microarchitectural Data Sampling hardware information leak
@@ -1003,7 +1011,7 @@ Controls Speculative Store Bypass hardware information leak mitigation.
 amd64 and i386.
 Controls Indirect Branch Restricted Speculation hardware information leak
 mitigation.
-.It Dv machdep.syscall_ret_l1d_flush
+.It Dv machdep.syscall_ret_flush_l1d
 amd64.
 Controls force-flush of L1D cache on return from syscalls which report
 errors other than
@@ -1033,6 +1041,13 @@ page table format used by hypervisors on Intel CPUs to map the guest
 physical address space to machine physical memory.
 May be disabled to work around a CPU Erratum called
 Machine Check Error Avoidance on Page Size Change.
+.It Dv machdep.mitigations.rngds.enable
+amd64 and i386.
+Controls mitigation of Special Register Buffer Data Sampling versus
+optimization of the MCU access.
+When set to zero, the mitigation is disabled, and the RDSEED and RDRAND
+instructions do not incur serialization overhead for shared buffer accesses,
+and do not serialize off-core memory accessses.
 .It Dv kern.elf32.aslr.enable
 Controls system-global Address Space Layout Randomization (ASLR) for
 normal non-PIE (Position Independent Executable) 32bit binaries.
@@ -1047,7 +1062,7 @@ position-independent (PIE) 32bit binaries.
 .It Dv kern.elf32.aslr.honor_sbrk
 Makes ASLR less aggressive and more compatible with old binaries
 relying on the sbrk area.
-.It Dv kern.elf32.aslr.aslr_stack_gap
+.It Dv kern.elf32.aslr.stack_gap
 If ASLR is enabled for a binary, a non-zero value creates a randomized
 stack gap between strings and the end of the aux vector.
 The value is the maximum percentage of main stack to waste on the gap.
@@ -1058,13 +1073,19 @@ Cannot be greater than 50, i.e., at most half of the stack.
 64bit PIE binaries ASLR control.
 .It Dv kern.elf64.aslr.honor_sbrk
 64bit binaries ASLR sbrk compatibility control.
-.It Dv kern.elf32.aslr.aslr_stack_gap
+.It Dv kern.elf64.aslr.stack_gap
 Controls stack gap for 64bit binaries.
 .It Dv kern.elf32.nxstack
 Enables non-executable stack for 32bit processes.
 Enabled by default if supported by hardware and corresponding binary.
 .It Dv kern.elf64.nxstack
 Enables non-executable stack for 64bit processes.
+.It Dv kern.elf32.allow_wx
+Enables mapping of simultaneously writable and executable pages for
+32bit processes.
+.It Dv kern.elf64.allow_wx
+Enables mapping of simultaneously writable and executable pages for
+64bit processes.
 .El
 .Sh SEE ALSO
 .Xr chflags 1 ,

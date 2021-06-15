@@ -77,7 +77,7 @@ __FBSDID("$FreeBSD$");
 #endif  /* NEXUS_DEBUG */
 
 #ifdef INTRNG
-#define	NUM_MIPS_IRQS	NIRQ	/* Any INTRNG-mapped IRQ */
+#define	NUM_MIPS_IRQS	intr_nirq	/* Any INTRNG-mapped IRQ */
 #else
 #define	NUM_MIPS_IRQS	6	/* HW IRQs only */
 #endif
@@ -163,7 +163,6 @@ static device_method_t nexus_methods[] = {
 	DEVMETHOD(ofw_bus_map_intr,	nexus_ofw_map_intr),
 #endif
 #endif
-
 	{ 0, 0 }
 };
 

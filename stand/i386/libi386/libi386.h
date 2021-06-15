@@ -89,6 +89,8 @@ extern struct devdesc	currdev;	/* our current device */
 #define MAXDEV		31		/* maximum number of distinct devices */
 #define MAXBDDEV	MAXDEV
 
+#include <readin.h>
+
 /* exported devices XXX rename? */
 extern struct devsw bioscd;
 extern struct devsw biosfd;
@@ -104,7 +106,7 @@ int	bd_getdev(struct i386_devdesc *dev);	/* return dev_t for (dev) */
 
 ssize_t	i386_copyin(const void *src, vm_offset_t dest, const size_t len);
 ssize_t	i386_copyout(const vm_offset_t src, void *dest, const size_t len);
-ssize_t	i386_readin(const int fd, vm_offset_t dest, const size_t len);
+ssize_t	i386_readin(readin_handle_t fd, vm_offset_t dest, const size_t len);
 
 struct preloaded_file;
 void	bios_addsmapdata(struct preloaded_file *);
@@ -143,12 +145,13 @@ void	biosacpi_detect(void);
 
 int	i386_autoload(void);
 
+void	bi_load_vbe_data(struct preloaded_file *kfp);
 int	bi_getboothowto(char *kargs);
 void	bi_setboothowto(int howto);
 vm_offset_t	bi_copyenv(vm_offset_t addr);
 int	bi_load32(char *args, int *howtop, int *bootdevp, vm_offset_t *bip,
 	    vm_offset_t *modulep, vm_offset_t *kernend);
-int	bi_load64(char *args, vm_offset_t addr, vm_offset_t *modulep,
+int	bi_load64(char *args, vm_offset_t *modulep,
 	    vm_offset_t *kernend, int add_smap);
 
 void	pxe_enable(void *pxeinfo);

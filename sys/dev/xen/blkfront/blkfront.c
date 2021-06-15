@@ -83,7 +83,8 @@ static void xbd_startio(struct xbd_softc *sc);
 static MALLOC_DEFINE(M_XENBLOCKFRONT, "xbd", "Xen Block Front driver data");
 
 static int xbd_enable_indirect = 1;
-SYSCTL_NODE(_hw, OID_AUTO, xbd, CTLFLAG_RD, 0, "xbd driver parameters");
+SYSCTL_NODE(_hw, OID_AUTO, xbd, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "xbd driver parameters");
 SYSCTL_INT(_hw_xbd, OID_AUTO, xbd_enable_indirect, CTLFLAG_RDTUN,
     &xbd_enable_indirect, 0, "Enable xbd indirect segments");
 
@@ -399,7 +400,9 @@ xbd_bio_command(struct xbd_softc *sc)
 			panic("flush request, but no flush support available");
 		break;
 	default:
-		panic("unknown bio command %d", bp->bio_cmd);
+		biofinish(bp, NULL, EOPNOTSUPP);
+		xbd_enqueue_cm(cm, XBD_Q_FREE);
+		return (NULL);
 	}
 
 	return (cm);
@@ -424,7 +427,6 @@ xbd_startio(struct xbd_softc *sc)
 		return;
 
 	while (!RING_FULL(&sc->xbd_ring)) {
-
 		if (sc->xbd_qfrozen_cnt != 0)
 			break;
 
@@ -765,7 +767,6 @@ xbd_alloc_ring(struct xbd_softc *sc)
 	for (i = 0, sring_page_addr = (uintptr_t)sring;
 	     i < sc->xbd_ring_pages;
 	     i++, sring_page_addr += PAGE_SIZE) {
-
 		error = xenbus_grant_ring(sc->xbd_dev,
 		    (vtophys(sring_page_addr) >> PAGE_SHIFT),
 		    &sc->xbd_ring_ref[i]);
@@ -896,7 +897,7 @@ xbd_setup_sysctl(struct xbd_softc *xbd)
 	struct sysctl_ctx_list *sysctl_ctx = NULL;
 	struct sysctl_oid *sysctl_tree = NULL;
 	struct sysctl_oid_list *children;
-	
+
 	sysctl_ctx = device_get_sysctl_ctx(xbd->xbd_dev);
 	if (sysctl_ctx == NULL)
 		return;
@@ -924,8 +925,8 @@ xbd_setup_sysctl(struct xbd_softc *xbd)
 	    "communication channel pages (negotiated)");
 
 	SYSCTL_ADD_PROC(sysctl_ctx, children, OID_AUTO,
-	    "features", CTLTYPE_STRING|CTLFLAG_RD, xbd, 0,
-	    xbd_sysctl_features, "A", "protocol features (negotiated)");
+	    "features", CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT, xbd,
+	    0, xbd_sysctl_features, "A", "protocol features (negotiated)");
 }
 
 /*
@@ -1047,7 +1048,7 @@ static void
 xbd_free(struct xbd_softc *sc)
 {
 	int i;
-	
+
 	/* Prevent new requests being issued until we fix things up. */
 	mtx_lock(&sc->xbd_io_lock);
 	sc->xbd_state = XBD_STATE_DISCONNECTED; 
@@ -1056,7 +1057,6 @@ xbd_free(struct xbd_softc *sc)
 	/* Free resources associated with old device channel. */
 	xbd_free_ring(sc);
 	if (sc->xbd_shadow) {
-
 		for (i = 0; i < sc->xbd_max_requests; i++) {
 			struct xbd_command *cm;
 
@@ -1222,7 +1222,8 @@ static void
 xbd_connect(struct xbd_softc *sc)
 {
 	device_t dev = sc->xbd_dev;
-	unsigned long sectors, sector_size, phys_sector_size;
+	blkif_sector_t sectors;
+	unsigned long sector_size, phys_sector_size;
 	unsigned int binfo;
 	int err, feature_barrier, feature_flush;
 	int i, j;
@@ -1241,7 +1242,7 @@ xbd_connect(struct xbd_softc *sc)
 			return;
 		}
 		err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
-		    "sectors", "%lu", &sectors, NULL);
+		    "sectors", "%"PRIu64, &sectors, NULL);
 		if (err != 0) {
 			xenbus_dev_error(dev, err,
 			    "reading sectors at %s",
@@ -1263,7 +1264,7 @@ xbd_connect(struct xbd_softc *sc)
 	}
 
 	err = xs_gather(XST_NIL, xenbus_get_otherend_path(dev),
-	    "sectors", "%lu", &sectors,
+	    "sectors", "%"PRIu64, &sectors,
 	    "info", "%u", &binfo,
 	    "sector-size", "%lu", &sector_size,
 	    NULL);
@@ -1276,7 +1277,7 @@ xbd_connect(struct xbd_softc *sc)
 	if ((sectors == 0) || (sector_size == 0)) {
 		xenbus_dev_fatal(dev, 0,
 		    "invalid parameters from %s:"
-		    " sectors = %lu, sector_size = %lu",
+		    " sectors = %"PRIu64", sector_size = %lu",
 		    xenbus_get_otherend_path(dev),
 		    sectors, sector_size);
 		return;
@@ -1305,8 +1306,8 @@ xbd_connect(struct xbd_softc *sc)
 		sc->xbd_max_request_segments = 0;
 	if (sc->xbd_max_request_segments > XBD_MAX_INDIRECT_SEGMENTS)
 		sc->xbd_max_request_segments = XBD_MAX_INDIRECT_SEGMENTS;
-	if (sc->xbd_max_request_segments > XBD_SIZE_TO_SEGS(MAXPHYS))
-		sc->xbd_max_request_segments = XBD_SIZE_TO_SEGS(MAXPHYS);
+	if (sc->xbd_max_request_segments > XBD_SIZE_TO_SEGS(maxphys))
+		sc->xbd_max_request_segments = XBD_SIZE_TO_SEGS(maxphys);
 	sc->xbd_max_request_indirectpages =
 	    XBD_INDIRECT_SEGS_TO_PAGES(sc->xbd_max_request_segments);
 	if (sc->xbd_max_request_segments < BLKIF_MAX_SEGMENTS_PER_REQUEST)
@@ -1634,7 +1635,7 @@ static device_method_t xbd_methods[] = {
 	DEVMETHOD(device_shutdown,      bus_generic_shutdown), 
 	DEVMETHOD(device_suspend,       xbd_suspend), 
 	DEVMETHOD(device_resume,        xbd_resume), 
- 
+
 	/* Xenbus interface */
 	DEVMETHOD(xenbus_otherend_changed, xbd_backend_changed),
 
@@ -1647,5 +1648,5 @@ static driver_t xbd_driver = {
 	sizeof(struct xbd_softc),                      
 }; 
 devclass_t xbd_devclass; 
- 
+
 DRIVER_MODULE(xbd, xenbusb_front, xbd_driver, xbd_devclass, 0, 0); 

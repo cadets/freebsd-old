@@ -149,13 +149,14 @@ static const struct encap_config ipv6_encap_cfg = {
 	.input = pim6_input
 };
 
-
 VNET_DEFINE_STATIC(int, ip6_mrouter_ver) = 0;
 #define	V_ip6_mrouter_ver	VNET(ip6_mrouter_ver)
 
 SYSCTL_DECL(_net_inet6);
 SYSCTL_DECL(_net_inet6_ip6);
-static SYSCTL_NODE(_net_inet6, IPPROTO_PIM, pim, CTLFLAG_RW, 0, "PIM");
+static SYSCTL_NODE(_net_inet6, IPPROTO_PIM, pim,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "PIM");
 
 static struct mrt6stat mrt6stat;
 SYSCTL_STRUCT(_net_inet6_ip6, OID_AUTO, mrt6stat, CTLFLAG_RW,
@@ -222,7 +223,8 @@ sysctl_mif6table(SYSCTL_HANDLER_ARGS)
 	free(out, M_TEMP);
 	return (error);
 }
-SYSCTL_PROC(_net_inet6_ip6, OID_AUTO, mif6table, CTLTYPE_OPAQUE | CTLFLAG_RD,
+SYSCTL_PROC(_net_inet6_ip6, OID_AUTO, mif6table,
+    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
     NULL, 0, sysctl_mif6table, "S,mif6_sctl[MAXMIFS]",
     "IPv6 Multicast Interfaces (struct mif6_sctl[MAXMIFS], "
     "netinet6/ip6_mroute.h)");
@@ -848,7 +850,6 @@ add_m6fc(struct mf6cctl *mfccp)
 		    IN6_ARE_ADDR_EQUAL(&rt->mf6c_mcastgrp.sin6_addr,
 				       &mfccp->mf6cc_mcastgrp.sin6_addr) &&
 		    (rt->mf6c_stall != NULL)) {
-
 			if (nstl++)
 				log(LOG_ERR,
 				    "add_m6fc: %s o %s g %s p %x dbx %p\n",
@@ -903,12 +904,10 @@ add_m6fc(struct mf6cctl *mfccp)
 		    mfccp->mf6cc_parent);
 
 		for (rt = mf6ctable[hash]; rt; rt = rt->mf6c_next) {
-
 			if (IN6_ARE_ADDR_EQUAL(&rt->mf6c_origin.sin6_addr,
 					       &mfccp->mf6cc_origin.sin6_addr)&&
 			    IN6_ARE_ADDR_EQUAL(&rt->mf6c_mcastgrp.sin6_addr,
 					       &mfccp->mf6cc_mcastgrp.sin6_addr)) {
-
 				rt->mf6c_origin     = mfccp->mf6cc_origin;
 				rt->mf6c_mcastgrp   = mfccp->mf6cc_mcastgrp;
 				rt->mf6c_parent     = mfccp->mf6cc_parent;

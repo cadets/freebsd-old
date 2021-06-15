@@ -61,14 +61,12 @@ struct sctp_timer {
 	uint32_t stopped_from;
 };
 
-
 struct sctp_foo_stuff {
 	struct sctp_inpcb *inp;
 	uint32_t lineno;
 	uint32_t ticks;
 	int updown;
 };
-
 
 /*
  * This is the information we track on each interface that we know about from
@@ -109,7 +107,7 @@ typedef void (*asoc_func) (struct sctp_inpcb *, struct sctp_tcb *, void *ptr,
 typedef int (*inp_func) (struct sctp_inpcb *, void *ptr, uint32_t val);
 typedef void (*end_func) (void *ptr, uint32_t val);
 
-#if defined(__FreeBSD__) && defined(SCTP_MCORE_INPUT) && defined(SMP)
+#if defined(SCTP_MCORE_INPUT) && defined(SMP)
 /* whats on the mcore control struct */
 struct sctp_mcore_queue {
 	TAILQ_ENTRY(sctp_mcore_queue) next;
@@ -129,10 +127,7 @@ struct sctp_mcore_ctrl {
 	int running;
 	int cpuid;
 };
-
-
 #endif
-
 
 struct sctp_iterator {
 	TAILQ_ENTRY(sctp_iterator) sctp_nxt_itr;
@@ -158,7 +153,6 @@ struct sctp_iterator {
 /* iterator_flags values */
 #define SCTP_ITERATOR_DO_ALL_INP	0x00000001
 #define SCTP_ITERATOR_DO_SINGLE_INP	0x00000002
-
 
 TAILQ_HEAD(sctpiterators, sctp_iterator);
 
@@ -189,7 +183,7 @@ struct iterator_control {
 #define SCTP_ITERATOR_STOP_CUR_INP	0x00000008
 
 struct sctp_net_route {
-	sctp_rtentry_t *ro_rt;
+	struct nhop_object *ro_nh;
 	struct llentry *ro_lle;
 	char *ro_prepend;
 	uint16_t ro_plen;
@@ -247,7 +241,6 @@ struct rtcc_cc {
 	uint8_t last_inst_ind;	/* Last saved inst indication */
 };
 
-
 struct sctp_nets {
 	TAILQ_ENTRY(sctp_nets) sctp_next;	/* next link */
 
@@ -275,7 +268,7 @@ struct sctp_nets {
 	int lastsa;
 	int lastsv;
 	uint64_t rtt;		/* last measured rtt value in us */
-	unsigned int RTO;
+	uint32_t RTO;
 
 	/* This is used for SHUTDOWN/SHUTDOWN-ACK/SEND or INIT timers */
 	struct sctp_timer rxt_timer;
@@ -389,7 +382,6 @@ struct sctp_nets {
 	uint8_t flowtype;
 };
 
-
 struct sctp_data_chunkrec {
 	uint32_t tsn;		/* the TSN of this transmit */
 	uint32_t mid;		/* the message identifier of this transmit */
@@ -426,7 +418,6 @@ struct chk_id {
 	uint8_t id;
 	uint8_t can_take_data;
 };
-
 
 struct sctp_tmit_chunk {
 	union {
@@ -537,6 +528,7 @@ struct sctp_stream_queue_pending {
 	uint8_t sender_all_done;
 	uint8_t put_last_out;
 	uint8_t discard_rest;
+	uint8_t processing;
 };
 
 /*
@@ -556,6 +548,19 @@ struct sctp_stream_in {
 TAILQ_HEAD(sctpwheel_listhead, sctp_stream_out);
 TAILQ_HEAD(sctplist_listhead, sctp_stream_queue_pending);
 
+/*
+ * This union holds all data necessary for
+ * different stream schedulers.
+ */
+struct scheduling_data {
+	struct sctp_stream_out *locked_on_sending;
+	/* circular looking for output selection */
+	struct sctp_stream_out *last_out_stream;
+	union {
+		struct sctpwheel_listhead wheel;
+		struct sctplist_listhead list;
+	}     out;
+};
 
 /* Round-robin schedulers */
 struct ss_rr {
@@ -580,20 +585,6 @@ struct ss_fb {
 };
 
 /*
- * This union holds all data necessary for
- * different stream schedulers.
- */
-struct scheduling_data {
-	struct sctp_stream_out *locked_on_sending;
-	/* circular looking for output selection */
-	struct sctp_stream_out *last_out_stream;
-	union {
-		struct sctpwheel_listhead wheel;
-		struct sctplist_listhead list;
-	}     out;
-};
-
-/*
  * This union holds all parameters per stream
  * necessary for different stream schedulers.
  */
@@ -609,8 +600,6 @@ union scheduling_parameters {
 #define SCTP_STREAM_OPEN             0x02
 #define SCTP_STREAM_RESET_PENDING    0x03
 #define SCTP_STREAM_RESET_IN_FLIGHT  0x04
-
-#define SCTP_MAX_STREAMS_AT_ONCE_RESET 200
 
 /* This struct is used to track the traffic on outbound streams */
 struct sctp_stream_out {
@@ -635,6 +624,8 @@ struct sctp_stream_out {
 	uint8_t last_msg_incomplete;
 	uint8_t state;
 };
+
+#define SCTP_MAX_STREAMS_AT_ONCE_RESET 200
 
 /* used to keep track of the addresses yet to try to add/delete */
 TAILQ_HEAD(sctp_asconf_addrhead, sctp_asconf_addr);
@@ -871,7 +862,6 @@ struct sctp_association {
 	/* last place I got a control from */
 	struct sctp_nets *last_control_chunk_from;
 
-
 	/*
 	 * wait to the point the cum-ack passes req->send_reset_at_tsn for
 	 * any req on the list.
@@ -937,7 +927,6 @@ struct sctp_association {
 
 	/* Original seq number I used ??questionable to keep?? */
 	uint32_t init_seq_number;
-
 
 	/* The Advanced Peer Ack Point, as required by the PR-SCTP */
 	/* (A1 in Section 4.2) */
@@ -1062,7 +1051,7 @@ struct sctp_association {
 	uint32_t heart_beat_delay;
 
 	/* autoclose */
-	unsigned int sctp_autoclose_ticks;
+	uint32_t sctp_autoclose_ticks;
 
 	/* how many preopen streams we have */
 	unsigned int pre_open_streams;
@@ -1071,7 +1060,7 @@ struct sctp_association {
 	unsigned int max_inbound_streams;
 
 	/* the cookie life I award for any cookie, in seconds */
-	unsigned int cookie_life;
+	uint32_t cookie_life;
 	/* time to delay acks for */
 	unsigned int delayed_ack;
 	unsigned int old_delayed_ack;
@@ -1080,10 +1069,10 @@ struct sctp_association {
 
 	unsigned int numduptsns;
 	int dup_tsns[SCTP_MAX_DUP_TSNS];
-	unsigned int initial_init_rto_max;	/* initial RTO for INIT's */
-	unsigned int initial_rto;	/* initial send RTO */
-	unsigned int minrto;	/* per assoc RTO-MIN */
-	unsigned int maxrto;	/* per assoc RTO-MAX */
+	uint32_t initial_init_rto_max;	/* initial RTO for INIT's */
+	uint32_t initial_rto;	/* initial send RTO */
+	uint32_t minrto;	/* per assoc RTO-MIN */
+	uint32_t maxrto;	/* per assoc RTO-MAX */
 
 	/* authentication fields */
 	sctp_auth_chklist_t *local_auth_chunks;

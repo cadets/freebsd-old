@@ -140,7 +140,7 @@ vt_fb_mmap(struct vt_device *vd, vm_ooffset_t offset, vm_paddr_t *paddr,
 	if (info->fb_flags & FB_FLAG_NOMMAP)
 		return (ENODEV);
 
-	if (offset >= 0 && offset < info->fb_size) {
+	if (offset < info->fb_size) {
 		if (info->fb_pbase == 0) {
 			*paddr = vtophys((uint8_t *)info->fb_vbase + offset);
 		} else {
@@ -235,12 +235,12 @@ vt_fb_blank(struct vt_device *vd, term_color_t color)
 		break;
 	case 2:
 		for (h = 0; h < info->fb_height; h++)
-			for (o = 0; o < info->fb_stride; o += 2)
+			for (o = 0; o < info->fb_stride - 1; o += 2)
 				vt_fb_mem_wr2(info, h*info->fb_stride + o, c);
 		break;
 	case 3:
 		for (h = 0; h < info->fb_height; h++)
-			for (o = 0; o < info->fb_stride; o += 3) {
+			for (o = 0; o < info->fb_stride - 2; o += 3) {
 				vt_fb_mem_wr1(info, h*info->fb_stride + o,
 				    (c >> 16) & 0xff);
 				vt_fb_mem_wr1(info, h*info->fb_stride + o + 1,
@@ -251,7 +251,7 @@ vt_fb_blank(struct vt_device *vd, term_color_t color)
 		break;
 	case 4:
 		for (h = 0; h < info->fb_height; h++)
-			for (o = 0; o < info->fb_stride; o += 4)
+			for (o = 0; o < info->fb_stride - 3; o += 4)
 				vt_fb_mem_wr4(info, h*info->fb_stride + o, c);
 		break;
 	default:

@@ -67,7 +67,8 @@ __FBSDID("$FreeBSD$");
 
 #include "opt_mmccam.h"
 
-SYSCTL_NODE(_hw, OID_AUTO, sdhci, CTLFLAG_RD, 0, "sdhci driver");
+SYSCTL_NODE(_hw, OID_AUTO, sdhci, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "sdhci driver");
 
 static int sdhci_debug = 0;
 SYSCTL_INT(_hw_sdhci, OID_AUTO, debug, CTLFLAG_RWTUN, &sdhci_debug, 0,
@@ -131,7 +132,7 @@ static int sdhci_cam_update_ios(struct sdhci_slot *slot);
 #endif
 
 /* helper routines */
-static int sdhci_dma_alloc(struct sdhci_slot *slot);
+static int sdhci_dma_alloc(struct sdhci_slot *slot, uint32_t caps);
 static void sdhci_dma_free(struct sdhci_slot *slot);
 static void sdhci_dumpregs(struct sdhci_slot *slot);
 static void sdhci_getaddr(void *arg, bus_dma_segment_t *segs, int nsegs,
@@ -625,29 +626,8 @@ sdhci_card_task(void *arg, int pending __unused)
 				slot_printf(slot, "Card inserted\n");
 #ifdef MMCCAM
 			slot->card_present = 1;
-			union ccb *ccb;
-			uint32_t pathid;
-			pathid = cam_sim_path(slot->sim);
-			ccb = xpt_alloc_ccb_nowait();
-			if (ccb == NULL) {
-				slot_printf(slot, "Unable to alloc CCB for rescan\n");
-				SDHCI_UNLOCK(slot);
-				return;
-			}
-
-			/*
-			 * We create a rescan request for BUS:0:0, since the card
-			 * will be at lun 0.
-			 */
-			if (xpt_create_path(&ccb->ccb_h.path, NULL, pathid,
-					    /* target */ 0, /* lun */ 0) != CAM_REQ_CMP) {
-				slot_printf(slot, "Unable to create path for rescan\n");
-				SDHCI_UNLOCK(slot);
-				xpt_free_ccb(ccb);
-				return;
-			}
+			mmccam_start_discovery(slot->sim);
 			SDHCI_UNLOCK(slot);
-			xpt_rescan(ccb);
 #else
 			d = slot->dev = device_add_child(slot->bus, "mmc", -1);
 			SDHCI_UNLOCK(slot);
@@ -671,29 +651,8 @@ sdhci_card_task(void *arg, int pending __unused)
 			slot->dev = NULL;
 #ifdef MMCCAM
 			slot->card_present = 0;
-			union ccb *ccb;
-			uint32_t pathid;
-			pathid = cam_sim_path(slot->sim);
-			ccb = xpt_alloc_ccb_nowait();
-			if (ccb == NULL) {
-				slot_printf(slot, "Unable to alloc CCB for rescan\n");
-				SDHCI_UNLOCK(slot);
-				return;
-			}
-
-			/*
-			 * We create a rescan request for BUS:0:0, since the card
-			 * will be at lun 0.
-			 */
-			if (xpt_create_path(&ccb->ccb_h.path, NULL, pathid,
-					    /* target */ 0, /* lun */ 0) != CAM_REQ_CMP) {
-				slot_printf(slot, "Unable to create path for rescan\n");
-				SDHCI_UNLOCK(slot);
-				xpt_free_ccb(ccb);
-				return;
-			}
+			mmccam_start_discovery(slot->sim);
 			SDHCI_UNLOCK(slot);
-			xpt_rescan(ccb);
 #else
 			slot->intmask &= ~sdhci_tuning_intmask(slot);
 			WR4(slot, SDHCI_INT_ENABLE, slot->intmask);
@@ -758,24 +717,24 @@ sdhci_card_poll(void *arg)
 }
 
 static int
-sdhci_dma_alloc(struct sdhci_slot *slot)
+sdhci_dma_alloc(struct sdhci_slot *slot, uint32_t caps)
 {
 	int err;
 
 	if (!(slot->quirks & SDHCI_QUIRK_BROKEN_SDMA_BOUNDARY)) {
-		if (MAXPHYS <= 1024 * 4)
+		if (maxphys <= 1024 * 4)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_4K;
-		else if (MAXPHYS <= 1024 * 8)
+		else if (maxphys <= 1024 * 8)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_8K;
-		else if (MAXPHYS <= 1024 * 16)
+		else if (maxphys <= 1024 * 16)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_16K;
-		else if (MAXPHYS <= 1024 * 32)
+		else if (maxphys <= 1024 * 32)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_32K;
-		else if (MAXPHYS <= 1024 * 64)
+		else if (maxphys <= 1024 * 64)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_64K;
-		else if (MAXPHYS <= 1024 * 128)
+		else if (maxphys <= 1024 * 128)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_128K;
-		else if (MAXPHYS <= 1024 * 256)
+		else if (maxphys <= 1024 * 256)
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_256K;
 		else
 			slot->sdma_boundary = SDHCI_BLKSZ_SDMA_BNDRY_512K;
@@ -791,7 +750,8 @@ sdhci_dma_alloc(struct sdhci_slot *slot)
 	 * be aligned to the SDMA boundary.
 	 */
 	err = bus_dma_tag_create(bus_get_dma_tag(slot->bus), slot->sdma_bbufsz,
-	    0, BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL,
+	    0, (caps & SDHCI_CAN_DO_64BIT) ? BUS_SPACE_MAXADDR :
+	    BUS_SPACE_MAXADDR_32BIT, BUS_SPACE_MAXADDR, NULL, NULL,
 	    slot->sdma_bbufsz, 1, slot->sdma_bbufsz, BUS_DMA_ALLOCNOW,
 	    NULL, NULL, &slot->dmatag);
 	if (err != 0) {
@@ -931,7 +891,8 @@ sdhci_init_slot(device_t dev, struct sdhci_slot *slot, int num)
 		    "support voltages.\n");
 	}
 
-	host_caps = MMC_CAP_4_BIT_DATA;
+	host_caps = slot->host.caps;
+	host_caps |= MMC_CAP_4_BIT_DATA;
 	if (caps & SDHCI_CAN_DO_8BITBUS)
 		host_caps |= MMC_CAP_8_BIT_DATA;
 	if (caps & SDHCI_CAN_DO_HISPD)
@@ -1073,7 +1034,7 @@ no_tuning:
 		slot->opt &= ~SDHCI_HAVE_DMA;
 
 	if (slot->opt & SDHCI_HAVE_DMA) {
-		err = sdhci_dma_alloc(slot);
+		err = sdhci_dma_alloc(slot, caps);
 		if (err != 0) {
 			if (slot->opt & SDHCI_TUNING_SUPPORTED) {
 				free(slot->tune_req, M_DEVBUF);
@@ -2575,9 +2536,10 @@ sdhci_cam_action(struct cam_sim *sim, union ccb *ccb)
 
 	switch (ccb->ccb_h.func_code) {
 	case XPT_PATH_INQ:
-		mmc_path_inq(&ccb->cpi, "Deglitch Networks", sim, MAXPHYS);
+		mmc_path_inq(&ccb->cpi, "Deglitch Networks", sim, maxphys);
 		break;
 
+	case XPT_MMC_GET_TRAN_SETTINGS:
 	case XPT_GET_TRAN_SETTINGS:
 	{
 		struct ccb_trans_settings *cts = &ccb->cts;
@@ -2612,6 +2574,7 @@ sdhci_cam_action(struct cam_sim *sim, union ccb *ccb)
 		ccb->ccb_h.status = CAM_REQ_CMP;
 		break;
 	}
+	case XPT_MMC_SET_TRAN_SETTINGS:
 	case XPT_SET_TRAN_SETTINGS:
 		if (sdhci_debug > 1)
 			slot_printf(slot, "Got XPT_SET_TRAN_SETTINGS\n");
@@ -2691,31 +2654,43 @@ sdhci_cam_settran_settings(struct sdhci_slot *slot, union ccb *ccb)
 	/* Update only requested fields */
 	if (cts->ios_valid & MMC_CLK) {
 		ios->clock = sdhci_cam_get_possible_host_clock(slot, new_ios->clock);
-		slot_printf(slot, "Clock => %d\n", ios->clock);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "Clock => %d\n", ios->clock);
 	}
 	if (cts->ios_valid & MMC_VDD) {
 		ios->vdd = new_ios->vdd;
-		slot_printf(slot, "VDD => %d\n", ios->vdd);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "VDD => %d\n", ios->vdd);
 	}
 	if (cts->ios_valid & MMC_CS) {
 		ios->chip_select = new_ios->chip_select;
-		slot_printf(slot, "CS => %d\n", ios->chip_select);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "CS => %d\n", ios->chip_select);
 	}
 	if (cts->ios_valid & MMC_BW) {
 		ios->bus_width = new_ios->bus_width;
-		slot_printf(slot, "Bus width => %d\n", ios->bus_width);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "Bus width => %d\n", ios->bus_width);
 	}
 	if (cts->ios_valid & MMC_PM) {
 		ios->power_mode = new_ios->power_mode;
-		slot_printf(slot, "Power mode => %d\n", ios->power_mode);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "Power mode => %d\n", ios->power_mode);
 	}
 	if (cts->ios_valid & MMC_BT) {
 		ios->timing = new_ios->timing;
-		slot_printf(slot, "Timing => %d\n", ios->timing);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "Timing => %d\n", ios->timing);
 	}
 	if (cts->ios_valid & MMC_BM) {
 		ios->bus_mode = new_ios->bus_mode;
-		slot_printf(slot, "Bus mode => %d\n", ios->bus_mode);
+		if (sdhci_debug > 1)
+			slot_printf(slot, "Bus mode => %d\n", ios->bus_mode);
+	}
+	if (cts->ios_valid & MMC_VCCQ) {
+		ios->vccq = new_ios->vccq;
+		if (sdhci_debug > 1)
+			slot_printf(slot, "VCCQ => %d\n", ios->vccq);
 	}
 
 	/* XXX Provide a way to call a chip-specific IOS update, required for TI */
@@ -2727,7 +2702,8 @@ sdhci_cam_update_ios(struct sdhci_slot *slot)
 {
 	struct mmc_ios *ios = &slot->host.ios;
 
-	slot_printf(slot, "%s: power_mode=%d, clk=%d, bus_width=%d, timing=%d\n",
+	if (sdhci_debug > 1)
+		slot_printf(slot, "%s: power_mode=%d, clk=%d, bus_width=%d, timing=%d\n",
 		    __func__, ios->power_mode, ios->clock, ios->bus_width, ios->timing);
 	SDHCI_LOCK(slot);
 	/* Do full reset on bus power down to clear from any state. */

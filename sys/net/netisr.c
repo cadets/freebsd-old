@@ -127,7 +127,8 @@ static struct rmlock	netisr_rmlock;
 #define	NETISR_WUNLOCK()	rm_wunlock(&netisr_rmlock)
 /* #define	NETISR_LOCKING */
 
-static SYSCTL_NODE(_net, OID_AUTO, isr, CTLFLAG_RW, 0, "netisr");
+static SYSCTL_NODE(_net, OID_AUTO, isr, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "netisr");
 
 /*-
  * Three global direct dispatch policies are supported:
@@ -152,7 +153,8 @@ static SYSCTL_NODE(_net, OID_AUTO, isr, CTLFLAG_RW, 0, "netisr");
 #define	NETISR_DISPATCH_POLICY_MAXSTR	20 /* Used for temporary buffers. */
 static u_int	netisr_dispatch_policy = NETISR_DISPATCH_POLICY_DEFAULT;
 static int	sysctl_netisr_dispatch_policy(SYSCTL_HANDLER_ARGS);
-SYSCTL_PROC(_net_isr, OID_AUTO, dispatch, CTLTYPE_STRING | CTLFLAG_RWTUN,
+SYSCTL_PROC(_net_isr, OID_AUTO, dispatch,
+    CTLTYPE_STRING | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT,
     0, 0, sysctl_netisr_dispatch_policy, "A",
     "netisr dispatch policy");
 
@@ -343,19 +345,34 @@ static int
 sysctl_netisr_dispatch_policy(SYSCTL_HANDLER_ARGS)
 {
 	char tmp[NETISR_DISPATCH_POLICY_MAXSTR];
+	size_t len;
 	u_int dispatch_policy;
 	int error;
 
 	netisr_dispatch_policy_to_str(netisr_dispatch_policy, tmp,
 	    sizeof(tmp));
-	error = sysctl_handle_string(oidp, tmp, sizeof(tmp), req);
-	if (error == 0 && req->newptr != NULL) {
-		error = netisr_dispatch_policy_from_str(tmp,
-		    &dispatch_policy);
-		if (error == 0 && dispatch_policy == NETISR_DISPATCH_DEFAULT)
-			error = EINVAL;
-		if (error == 0)
-			netisr_dispatch_policy = dispatch_policy;
+	/*
+	 * netisr is initialised very early during the boot when malloc isn't
+	 * available yet so we can't use sysctl_handle_string() to process
+	 * any non-default value that was potentially set via loader.
+	 */
+	if (req->newptr != NULL) {
+		len = req->newlen - req->newidx;
+		if (len >= NETISR_DISPATCH_POLICY_MAXSTR)
+			return (EINVAL);
+		error = SYSCTL_IN(req, tmp, len);
+		if (error == 0) {
+			tmp[len] = '\0';
+			error = netisr_dispatch_policy_from_str(tmp,
+			    &dispatch_policy);
+			if (error == 0 &&
+			    dispatch_policy == NETISR_DISPATCH_DEFAULT)
+				error = EINVAL;
+			if (error == 0)
+				netisr_dispatch_policy = dispatch_policy;
+		}
+	} else {
+		error = sysctl_handle_string(oidp, tmp, sizeof(tmp), req);
 	}
 	return (error);
 }
@@ -675,7 +692,7 @@ netisr_register_vnet(const struct netisr_handler *nhp)
 	KASSERT(netisr_proto[proto].np_handler != NULL,
 	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    nhp->nh_name));
-	
+
 	V_netisr_enable[proto] = 1;
 	NETISR_WUNLOCK();
 }
@@ -743,7 +760,7 @@ netisr_unregister_vnet(const struct netisr_handler *nhp)
 	KASSERT(netisr_proto[proto].np_handler != NULL,
 	    ("%s(%u): protocol not registered for %s", __func__, proto,
 	    nhp->nh_name));
-	
+
 	V_netisr_enable[proto] = 0;
 
 	netisr_drain_proto_vnet(curvnet, proto);
@@ -1056,6 +1073,8 @@ netisr_queue_src(u_int proto, uintptr_t source, struct mbuf *m)
 	if (m != NULL) {
 		KASSERT(!CPU_ABSENT(cpuid), ("%s: CPU %u absent", __func__,
 		    cpuid));
+		VNET_ASSERT(m->m_pkthdr.rcvif != NULL,
+		    ("%s:%d rcvif == NULL: m=%p", __func__, __LINE__, m));
 		error = netisr_queue_internal(proto, m, cpuid);
 	} else
 		error = ENOBUFS;

@@ -63,8 +63,8 @@ __FBSDID("$FreeBSD$");
 #include <vm/vm_object.h>
 #include <vm/vm_page.h>
 #include <vm/vm_pageout.h>
-#include <vm/vm_phys.h>
 #include <vm/vm_pagequeue.h>
+#include <vm/vm_phys.h>
 #include <vm/vm_radix.h>
 #include <vm/vm_reserv.h>
 
@@ -261,13 +261,14 @@ static struct vm_reserv_domain vm_rvd[MAXMEMDOM];
 #define	vm_reserv_domain_scan_lock(d)	mtx_lock(&vm_rvd[(d)].marker.lock)
 #define	vm_reserv_domain_scan_unlock(d)	mtx_unlock(&vm_rvd[(d)].marker.lock)
 
-static SYSCTL_NODE(_vm, OID_AUTO, reserv, CTLFLAG_RD, 0, "Reservation Info");
+static SYSCTL_NODE(_vm, OID_AUTO, reserv, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "Reservation Info");
 
-static counter_u64_t vm_reserv_broken = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(vm_reserv_broken);
 SYSCTL_COUNTER_U64(_vm_reserv, OID_AUTO, broken, CTLFLAG_RD,
     &vm_reserv_broken, "Cumulative number of broken reservations");
 
-static counter_u64_t vm_reserv_freed = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(vm_reserv_freed);
 SYSCTL_COUNTER_U64(_vm_reserv, OID_AUTO, freed, CTLFLAG_RD,
     &vm_reserv_freed, "Cumulative number of freed reservations");
 
@@ -278,10 +279,12 @@ SYSCTL_PROC(_vm_reserv, OID_AUTO, fullpop, CTLTYPE_INT | CTLFLAG_MPSAFE | CTLFLA
 
 static int sysctl_vm_reserv_partpopq(SYSCTL_HANDLER_ARGS);
 
-SYSCTL_OID(_vm_reserv, OID_AUTO, partpopq, CTLTYPE_STRING | CTLFLAG_RD, NULL, 0,
-    sysctl_vm_reserv_partpopq, "A", "Partially populated reservation queues");
+SYSCTL_OID(_vm_reserv, OID_AUTO, partpopq,
+    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    sysctl_vm_reserv_partpopq, "A",
+    "Partially populated reservation queues");
 
-static counter_u64_t vm_reserv_reclaimed = EARLY_COUNTER;
+static COUNTER_U64_DEFINE_EARLY(vm_reserv_reclaimed);
 SYSCTL_COUNTER_U64(_vm_reserv, OID_AUTO, reclaimed, CTLFLAG_RD,
     &vm_reserv_reclaimed, "Cumulative number of reclaimed reservations");
 
@@ -330,11 +333,17 @@ sysctl_vm_reserv_fullpop(SYSCTL_HANDLER_ARGS)
 	for (segind = 0; segind < vm_phys_nsegs; segind++) {
 		seg = &vm_phys_segs[segind];
 		paddr = roundup2(seg->start, VM_LEVEL_0_SIZE);
+#ifdef VM_PHYSSEG_SPARSE
+		rv = seg->first_reserv + (paddr >> VM_LEVEL_0_SHIFT) -
+		    (seg->start >> VM_LEVEL_0_SHIFT);
+#else
+		rv = &vm_reserv_array[paddr >> VM_LEVEL_0_SHIFT];
+#endif
 		while (paddr + VM_LEVEL_0_SIZE > paddr && paddr +
 		    VM_LEVEL_0_SIZE <= seg->end) {
-			rv = &vm_reserv_array[paddr >> VM_LEVEL_0_SHIFT];
 			fullpop += rv->popcnt == VM_LEVEL_0_NPAGES;
 			paddr += VM_LEVEL_0_SIZE;
+			rv++;
 		}
 	}
 	return (sysctl_handle_int(oidp, &fullpop, 0, req));
@@ -493,8 +502,15 @@ vm_reserv_depopulate(vm_reserv_t rv, int index)
 static __inline vm_reserv_t
 vm_reserv_from_page(vm_page_t m)
 {
+#ifdef VM_PHYSSEG_SPARSE
+	struct vm_phys_seg *seg;
 
+	seg = &vm_phys_segs[m->segind];
+	return (seg->first_reserv + (VM_PAGE_TO_PHYS(m) >> VM_LEVEL_0_SHIFT) -
+	    (seg->start >> VM_LEVEL_0_SHIFT));
+#else
 	return (&vm_reserv_array[VM_PAGE_TO_PHYS(m) >> VM_LEVEL_0_SHIFT]);
+#endif
 }
 
 /*
@@ -764,7 +780,7 @@ out:
 		}
 	} else
 		return (NULL);
-	KASSERT(vm_phys_domain(m) == domain,
+	KASSERT(vm_page_domain(m) == domain,
 	    ("vm_reserv_alloc_contig: Page domain does not match requested."));
 
 	/*
@@ -1051,22 +1067,38 @@ vm_reserv_init(void)
 	struct vm_phys_seg *seg;
 	struct vm_reserv *rv;
 	struct vm_reserv_domain *rvd;
+#ifdef VM_PHYSSEG_SPARSE
+	vm_pindex_t used;
+#endif
 	int i, j, segind;
 
 	/*
 	 * Initialize the reservation array.  Specifically, initialize the
 	 * "pages" field for every element that has an underlying superpage.
 	 */
+#ifdef VM_PHYSSEG_SPARSE
+	used = 0;
+#endif
 	for (segind = 0; segind < vm_phys_nsegs; segind++) {
 		seg = &vm_phys_segs[segind];
+#ifdef VM_PHYSSEG_SPARSE
+		seg->first_reserv = &vm_reserv_array[used];
+		used += howmany(seg->end, VM_LEVEL_0_SIZE) -
+		    seg->start / VM_LEVEL_0_SIZE;
+#else
+		seg->first_reserv =
+		    &vm_reserv_array[seg->start >> VM_LEVEL_0_SHIFT];
+#endif
 		paddr = roundup2(seg->start, VM_LEVEL_0_SIZE);
+		rv = seg->first_reserv + (paddr >> VM_LEVEL_0_SHIFT) -
+		    (seg->start >> VM_LEVEL_0_SHIFT);
 		while (paddr + VM_LEVEL_0_SIZE > paddr && paddr +
 		    VM_LEVEL_0_SIZE <= seg->end) {
-			rv = &vm_reserv_array[paddr >> VM_LEVEL_0_SHIFT];
 			rv->pages = PHYS_TO_VM_PAGE(paddr);
 			rv->domain = seg->domain;
 			mtx_init(&rv->lock, "vm reserv", NULL, MTX_DEF);
 			paddr += VM_LEVEL_0_SIZE;
+			rv++;
 		}
 	}
 	for (i = 0; i < MAXMEMDOM; i++) {
@@ -1312,8 +1344,8 @@ vm_reserv_reclaim_contig(int domain, u_long npages, vm_paddr_t low,
 			TAILQ_INSERT_AFTER(queue, rv, marker, partpopq);
 			vm_reserv_domain_unlock(domain);
 			vm_reserv_lock(rv);
-			if (!rv->inpartpopq ||
-			    TAILQ_NEXT(rv, partpopq) != marker) {
+			if (TAILQ_PREV(marker, vm_reserv_queue, partpopq) !=
+			    rv) {
 				vm_reserv_unlock(rv);
 				vm_reserv_domain_lock(domain);
 				rvn = TAILQ_NEXT(marker, partpopq);
@@ -1331,8 +1363,9 @@ vm_reserv_reclaim_contig(int domain, u_long npages, vm_paddr_t low,
 			vm_reserv_unlock(rv);
 			return (true);
 		}
-		vm_reserv_unlock(rv);
 		vm_reserv_domain_lock(domain);
+		rvn = TAILQ_NEXT(rv, partpopq);
+		vm_reserv_unlock(rv);
 	}
 	vm_reserv_domain_unlock(domain);
 	vm_reserv_domain_scan_unlock(domain);
@@ -1397,30 +1430,40 @@ vm_reserv_size(int level)
 vm_paddr_t
 vm_reserv_startup(vm_offset_t *vaddr, vm_paddr_t end)
 {
-	vm_paddr_t new_end, high_water;
+	vm_paddr_t new_end;
+	vm_pindex_t count;
 	size_t size;
 	int i;
 
-	high_water = phys_avail[1];
+	count = 0;
 	for (i = 0; i < vm_phys_nsegs; i++) {
-		if (vm_phys_segs[i].end > high_water)
-			high_water = vm_phys_segs[i].end;
+#ifdef VM_PHYSSEG_SPARSE
+		count += howmany(vm_phys_segs[i].end, VM_LEVEL_0_SIZE) -
+		    vm_phys_segs[i].start / VM_LEVEL_0_SIZE;
+#else
+		count = MAX(count,
+		    howmany(vm_phys_segs[i].end, VM_LEVEL_0_SIZE));
+#endif
 	}
 
-	/* Skip the first chunk.  It is already accounted for. */
-	for (i = 2; phys_avail[i + 1] != 0; i += 2) {
-		if (phys_avail[i + 1] > high_water)
-			high_water = phys_avail[i + 1];
+	for (i = 0; phys_avail[i + 1] != 0; i += 2) {
+#ifdef VM_PHYSSEG_SPARSE
+		count += howmany(phys_avail[i + 1], VM_LEVEL_0_SIZE) -
+		    phys_avail[i] / VM_LEVEL_0_SIZE;
+#else
+		count = MAX(count,
+		    howmany(phys_avail[i + 1], VM_LEVEL_0_SIZE));
+#endif
 	}
 
 	/*
-	 * Calculate the size (in bytes) of the reservation array.  Round up
-	 * from "high_water" because every small page is mapped to an element
-	 * in the reservation array based on its physical address.  Thus, the
-	 * number of elements in the reservation array can be greater than the
-	 * number of superpages. 
+	 * Calculate the size (in bytes) of the reservation array.  Rounding up
+	 * for partial superpages at boundaries, as every small page is mapped
+	 * to an element in the reservation array based on its physical address.
+	 * Thus, the number of elements in the reservation array can be greater
+	 * than the number of superpages.
 	 */
-	size = howmany(high_water, VM_LEVEL_0_SIZE) * sizeof(struct vm_reserv);
+	size = count * sizeof(struct vm_reserv);
 
 	/*
 	 * Allocate and map the physical memory for the reservation array.  The
@@ -1436,21 +1479,6 @@ vm_reserv_startup(vm_offset_t *vaddr, vm_paddr_t end)
 	 */
 	return (new_end);
 }
-
-/*
- * Initializes the reservation management system.  Specifically, initializes
- * the reservation counters.
- */
-static void
-vm_reserv_counter_init(void *unused)
-{
-
-	vm_reserv_freed = counter_u64_alloc(M_WAITOK); 
-	vm_reserv_broken = counter_u64_alloc(M_WAITOK); 
-	vm_reserv_reclaimed = counter_u64_alloc(M_WAITOK); 
-}
-SYSINIT(vm_reserv_counter_init, SI_SUB_CPU, SI_ORDER_ANY,
-    vm_reserv_counter_init, NULL);
 
 /*
  * Returns the superpage containing the given page.

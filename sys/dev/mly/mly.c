@@ -123,7 +123,6 @@ static void	mly_timeout(void *arg);
 #endif
 void		mly_print_controller(int controller);
 
-
 static d_open_t		mly_user_open;
 static d_close_t	mly_user_close;
 static d_ioctl_t	mly_user_ioctl;
@@ -336,6 +335,8 @@ mly_attach(device_t dev)
  out:
     if (error != 0)
 	mly_free(sc);
+    else
+	gone_in_dev(dev, 13, "mly(4) removed");
     return(error);
 }
 
@@ -1409,7 +1410,6 @@ mly_periodic(void *data)
     for (bus = 0; bus < sc->mly_cam_channels; bus++) {
 	if (MLY_BUS_IS_VALID(sc, bus)) {
 	    for (target = 0; target < MLY_MAX_TARGETS; target++) {
-
 		/* ignore the controller in this scan */
 		if (target == sc->mly_controllerparam->initiator_id)
 		    continue;
@@ -1502,7 +1502,7 @@ mly_start(struct mly_command *mc)
 	    return(EBUSY);
 	}
 	mc->mc_flags |= MLY_CMD_BUSY;
-	
+
 	/*
 	 * It's ready, send the command.
 	 */
@@ -1518,7 +1518,7 @@ mly_start(struct mly_command *mc)
 	    return(EBUSY);
 	}
 	mc->mc_flags |= MLY_CMD_BUSY;
-	
+
 	/* copy in new command */
 	bcopy(mc->mc_packet->mmbox.data, pkt->mmbox.data, sizeof(pkt->mmbox.data));
 	/* barrier to ensure completion of previous write before we write the flag */
@@ -1639,7 +1639,6 @@ mly_complete(struct mly_softc *sc)
      * Spin pulling commands off the completed queue and processing them.
      */
     while ((mc = mly_dequeue_complete(sc)) != NULL) {
-
 	/*
 	 * Free controller resources, mark command complete.
 	 *
@@ -1744,7 +1743,7 @@ mly_alloc_commands(struct mly_softc *sc)
 {
     struct mly_command		*mc;
     int				i, ncmd;
- 
+
     if (sc->mly_controllerinfo == NULL) {
 	ncmd = 4;
     } else {
@@ -1798,7 +1797,6 @@ mly_release_commands(struct mly_softc *sc)
 	sc->mly_packet = NULL;
     }
 }
-
 
 /********************************************************************************
  * Command-mapping helper function - populate this command's s/g table
@@ -1914,7 +1912,6 @@ mly_unmap_command(struct mly_command *mc)
     mc->mc_flags &= ~MLY_CMD_MAPPED;
 }
 
-
 /********************************************************************************
  ********************************************************************************
                                                                     CAM interface
@@ -1956,7 +1953,6 @@ mly_cam_attach(struct mly_softc *sc)
     if (testenv("hw.mly.register_physical_channels")) {
 	chn = 0;
 	for (i = 0; i < sc->mly_controllerinfo->physical_channels_present; i++, chn++) {
-
 	    if ((sc->mly_cam_sim[chn] = cam_sim_alloc(mly_cam_action, mly_cam_poll, "mly", sc,
 						      device_get_unit(sc->mly_dev),
 						      &sc->mly_lock,
@@ -2065,7 +2061,6 @@ mly_cam_action(struct cam_sim *sim, union ccb *ccb)
     MLY_ASSERT_LOCKED(sc);
 
     switch (ccb->ccb_h.func_code) {
-
 	/* perform SCSI I/O */
     case XPT_SCSI_IO:
 	if (!mly_cam_action_io(sim, (struct ccb_scsiio *)&ccb->csio))
@@ -2814,7 +2809,6 @@ mly_print_controller(int controller)
     }
 }
 #endif
-
 
 /********************************************************************************
  ********************************************************************************

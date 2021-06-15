@@ -98,16 +98,10 @@
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <machine/in_cksum.h>
-#include <crypto/des/des.h>
 #include <sys/md5.h>
 #include <rpc/rpc.h>
 #include <rpc/rpcsec_gss.h>
 
-/*
- * For Darwin, these functions should be "static" when built in a kext.
- * (This is always defined as nil otherwise.)
- */
-#define	APPLESTATIC
 #include <ufs/ufs/dir.h>
 #include <ufs/ufs/quota.h>
 #include <ufs/ufs/inode.h>
@@ -115,8 +109,12 @@
 #include <ufs/ufs/ufsmount.h>
 #include <vm/uma.h>
 #include <vm/vm.h>
-#include <vm/vm_object.h>
+#include <vm/pmap.h>
 #include <vm/vm_extern.h>
+#include <vm/vm_object.h>
+#include <vm/vm_page.h>
+#include <vm/vm_pageout.h>
+#include <vm/vm_param.h>
 #include <nfs/nfssvc.h>
 #include "opt_nfs.h"
 #include "opt_ufs.h"
@@ -172,7 +170,6 @@
 			MGETHDR((m), M_WAITOK, MT_DATA); 	\
 		} 						\
 	} while (0)
-#define	NFSMTOD	mtod
 
 /*
  * Client side constant for size of a lockowner name.
@@ -415,10 +412,13 @@
 #define	NFSPROC_RMEXTATTR	63
 #define	NFSPROC_LISTEXTATTR	64
 
+/* BindConnectionToSession, done by the krpc for a new connection. */
+#define	NFSPROC_BINDCONNTOSESS	65
+
 /*
  * Must be defined as one higher than the last NFSv4.2 Proc# above.
  */
-#define	NFSV42_NPROCS		65
+#define	NFSV42_NPROCS		66
 
 #endif	/* NFS_V3NPROCS */
 
@@ -447,17 +447,17 @@ struct nfsstatsv1 {
 	uint64_t	readlink_bios;
 	uint64_t	biocache_readdirs;
 	uint64_t	readdir_bios;
-	uint64_t	rpccnt[NFSV42_NPROCS + 15];
+	uint64_t	rpccnt[NFSV42_NPROCS + 14];
 	uint64_t	rpcretries;
 	uint64_t	srvrpccnt[NFSV42_NOPS + NFSV4OP_FAKENOPS + 15];
-	uint64_t	srvrpc_errs;
-	uint64_t	srv_errs;
+	uint64_t	reserved_0;
+	uint64_t	reserved_1;
 	uint64_t	rpcrequests;
 	uint64_t	rpctimeouts;
 	uint64_t	rpcunexpected;
 	uint64_t	rpcinvalid;
 	uint64_t	srvcache_inproghits;
-	uint64_t	srvcache_idemdonehits;
+	uint64_t	reserved_2;
 	uint64_t	srvcache_nonidemdonehits;
 	uint64_t	srvcache_misses;
 	uint64_t	srvcache_tcppeak;
@@ -512,17 +512,17 @@ struct nfsstatsov1 {
 	uint64_t	readlink_bios;
 	uint64_t	biocache_readdirs;
 	uint64_t	readdir_bios;
-	uint64_t	rpccnt[NFSV42_NPROCS + 4];
+	uint64_t	rpccnt[NFSV42_NPROCS + 3];
 	uint64_t	rpcretries;
 	uint64_t	srvrpccnt[NFSV42_PURENOPS + NFSV4OP_FAKENOPS];
-	uint64_t	srvrpc_errs;
-	uint64_t	srv_errs;
+	uint64_t	reserved_0;
+	uint64_t	reserved_1;
 	uint64_t	rpcrequests;
 	uint64_t	rpctimeouts;
 	uint64_t	rpcunexpected;
 	uint64_t	rpcinvalid;
 	uint64_t	srvcache_inproghits;
-	uint64_t	srvcache_idemdonehits;
+	uint64_t	reserved_2;
 	uint64_t	srvcache_nonidemdonehits;
 	uint64_t	srvcache_misses;
 	uint64_t	srvcache_tcppeak;
@@ -577,14 +577,14 @@ struct ext_nfsstats {
 	int	rpccnt[NFSV4_NPROCS];
 	int	rpcretries;
 	int	srvrpccnt[NFSV4OP_NOPS + NFSV4OP_FAKENOPS];
-	int	srvrpc_errs;
-	int	srv_errs;
+	int	reserved_0;
+	int	reserved_1;
 	int	rpcrequests;
 	int	rpctimeouts;
 	int	rpcunexpected;
 	int	rpcinvalid;
 	int	srvcache_inproghits;
-	int	srvcache_idemdonehits;
+	int	reserved_2;
 	int	srvcache_nonidemdonehits;
 	int	srvcache_misses;
 	int	srvcache_tcppeak;
@@ -656,6 +656,7 @@ struct nfsvattr {
 #define	na_atime	na_vattr.va_atime
 #define	na_mtime	na_vattr.va_mtime
 #define	na_ctime	na_vattr.va_ctime
+#define	na_btime	na_vattr.va_birthtime
 #define	na_gen		na_vattr.va_gen
 #define	na_flags	na_vattr.va_flags
 #define	na_rdev		na_vattr.va_rdev
@@ -882,9 +883,11 @@ int nfsmsleep(void *, void *, int, const char *, struct timespec *);
 /*
  * Some queue.h files don't have these dfined in them.
  */
+#ifndef LIST_END
 #define	LIST_END(head)		NULL
 #define	SLIST_END(head)		NULL
 #define	TAILQ_END(head)		NULL
+#endif
 
 /*
  * This must be defined to be a global variable that increments once
@@ -998,6 +1001,7 @@ int nfscl_loadattrcache(struct vnode **, struct nfsvattr *, void *, void *,
     int, int);
 int newnfs_realign(struct mbuf **, int);
 bool ncl_pager_setsize(struct vnode *vp, u_quad_t *nsizep);
+void ncl_copy_vattr(struct vattr *dst, struct vattr *src);
 
 /*
  * If the port runs on an SMP box that can enforce Atomic ops with low
@@ -1006,6 +1010,7 @@ bool ncl_pager_setsize(struct vnode *vp, u_quad_t *nsizep);
  * "out by one" without disastrous consequences.
  */
 #define	NFSINCRGLOBAL(a)	((a)++)
+#define	NFSDECRGLOBAL(a)	((a)--)
 
 /*
  * Assorted funky stuff to make things work under Darwin8.
@@ -1057,11 +1062,7 @@ bool ncl_pager_setsize(struct vnode *vp, u_quad_t *nsizep);
 #define	NFSHASOPENMODE(n)	((n)->nm_state & NFSSTA_OPENMODE)
 #define	NFSHASONEOPENOWN(n)	(((n)->nm_flag & NFSMNT_ONEOPENOWN) != 0 &&	\
 				    (n)->nm_minorvers > 0)
-
-/*
- * Gets the stats field out of the mount structure.
- */
-#define	vfs_statfs(m)	(&((m)->mnt_stat))
+#define	NFSHASTLS(n)		(((n)->nm_newflag & NFSMNT_TLS) != 0)
 
 /*
  * Set boottime.
@@ -1086,6 +1087,11 @@ bool ncl_pager_setsize(struct vnode *vp, u_quad_t *nsizep);
 struct nfsex_args {
 	char	*fspec;
 	struct export_args	export;
+};
+
+struct nfsex_oldargs {
+	char	*fspec;
+	struct o2export_args	export;
 };
 
 /*

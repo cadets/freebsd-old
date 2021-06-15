@@ -38,7 +38,7 @@ MKMODULESENV+=	WITH_CTF="${WITH_CTF}"
 MKMODULESENV+=	WITH_EXTRA_TCP_STACKS="${WITH_EXTRA_TCP_STACKS}"
 .endif
 
-.if defined(KCSAN_ENABLED)
+.if !empty(KCSAN_ENABLED)
 MKMODULESENV+=	KCSAN_ENABLED="yes"
 .endif
 
@@ -228,27 +228,27 @@ kernel-clean:
 # in the a.out ld.  For now, this works.
 hack.pico: Makefile
 	:> hack.c
-	${CC} -shared ${CFLAGS} -nostdlib hack.c -o hack.pico
+	${CC} ${CCLDFLAGS} -shared ${CFLAGS} -nostdlib hack.c -o hack.pico
 	rm -f hack.c
 
 offset.inc: $S/kern/genoffset.sh genoffset.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genoffset.sh genoffset.o > ${.TARGET}
 
 genoffset.o: $S/kern/genoffset.c
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/kern/genoffset.c
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon $S/kern/genoffset.c
 
 # genoffset_test.o is not actually used for anything - the point of compiling it
 # is to exercise the CTASSERT that checks that the offsets in the offset.inc
 # _lite struct(s) match those in the original(s). 
 genoffset_test.o: $S/kern/genoffset.c offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} -DOFFSET_TEST \
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon -DOFFSET_TEST \
 	    $S/kern/genoffset.c -o ${.TARGET}
 
 assym.inc: $S/kern/genassym.sh genassym.o genoffset_test.o
 	NM='${NM}' NMFLAGS='${NMFLAGS}' sh $S/kern/genassym.sh genassym.o > ${.TARGET}
 
 genassym.o: $S/$M/$M/genassym.c  offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} $S/$M/$M/genassym.c
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon $S/$M/$M/genassym.c
 
 OBJS_DEPEND_GUESS+= opt_global.h
 genoffset.o genassym.o vers.o: opt_global.h
@@ -345,10 +345,7 @@ ${__obj}: ${OBJS_DEPEND_GUESS.${__obj}}
 
 .depend: .PRECIOUS ${SRCS}
 
-.if ${COMPILER_TYPE} == "clang" || \
-    (${COMPILER_TYPE} == "gcc" && ${COMPILER_VERSION} >= 60000)
 _MAP_DEBUG_PREFIX= yes
-.endif
 
 _ILINKS= machine
 .if ${MACHINE} != ${MACHINE_CPUARCH} && ${MACHINE} != "arm64"
@@ -398,7 +395,7 @@ kernel-install: .PHONY
 		exit 1 ; \
 	fi
 .if exists(${DESTDIR}${KODIR})
-	-thiskernel=`sysctl -n kern.bootfile` ; \
+	-thiskernel=`sysctl -n kern.bootfile || echo /boot/kernel/kernel` ; \
 	if [ ! "`dirname "$$thiskernel"`" -ef ${DESTDIR}${KODIR} ] ; then \
 		chflags -R noschg ${DESTDIR}${KODIR} ; \
 		rm -rf ${DESTDIR}${KODIR} ; \
@@ -460,28 +457,10 @@ vnode_if_typedef.h:
 
 .if ${MFS_IMAGE:Uno} != "no"
 .if empty(MD_ROOT_SIZE_CONFIGURED)
-# Generate an object file from the file system image to embed in the kernel
-# via linking. Make sure the contents are in the mfs section and rename the
-# start/end/size variables to __start_mfs, __stop_mfs, and mfs_size,
-# respectively.
-embedfs_${MFS_IMAGE:T:R}.o: ${MFS_IMAGE}
-	${OBJCOPY} --input-target binary \
-	    --output-target ${EMBEDFS_FORMAT.${MACHINE_ARCH}} \
-	    --binary-architecture ${EMBEDFS_ARCH.${MACHINE_ARCH}} \
-	    ${MFS_IMAGE} ${.TARGET}
-	${OBJCOPY} \
-	    --rename-section .data=mfs,contents,alloc,load,readonly,data \
-	    --redefine-sym \
-		_binary_${MFS_IMAGE:C,[^[:alnum:]],_,g}_size=__mfs_root_size \
-	    --redefine-sym \
-		_binary_${MFS_IMAGE:C,[^[:alnum:]],_,g}_start=mfs_root \
-	    --redefine-sym \
-		_binary_${MFS_IMAGE:C,[^[:alnum:]],_,g}_end=mfs_root_end \
-	    ${.TARGET}
+embedfs_${MFS_IMAGE:T:R}.o: ${MFS_IMAGE} $S/dev/md/embedfs.S
+	${CC} ${CFLAGS} ${ACFLAGS} -DMFS_IMAGE="${MFS_IMAGE}" -c \
+	    $S/dev/md/embedfs.S -o ${.TARGET}
 .endif
 .endif
-
-# XXX strictly, everything depends on Makefile because changes to ${PROF}
-# only appear there, but we don't handle that.
 
 .include "kern.mk"

@@ -247,7 +247,6 @@ uiomove_faultflag(void *cp, int n, struct uio *uio, int nofault)
 			cnt = n;
 
 		switch (uio->uio_segflg) {
-
 		case UIO_USERSPACE:
 			maybe_yield();
 			if (uio->uio_rw == UIO_READ)
@@ -324,7 +323,6 @@ again:
 		goto again;
 	}
 	switch (uio->uio_segflg) {
-
 	case UIO_USERSPACE:
 		if (subyte(iov->iov_base, c) < 0)
 			return (EFAULT);
@@ -343,44 +341,6 @@ again:
 	uio->uio_resid--;
 	uio->uio_offset++;
 	return (0);
-}
-
-int
-copyinfrom(const void * __restrict src, void * __restrict dst, size_t len,
-    int seg)
-{
-	int error = 0;
-
-	switch (seg) {
-	case UIO_USERSPACE:
-		error = copyin(src, dst, len);
-		break;
-	case UIO_SYSSPACE:
-		bcopy(src, dst, len);
-		break;
-	default:
-		panic("copyinfrom: bad seg %d\n", seg);
-	}
-	return (error);
-}
-
-int
-copyinstrfrom(const void * __restrict src, void * __restrict dst, size_t len,
-    size_t * __restrict copied, int seg)
-{
-	int error = 0;
-
-	switch (seg) {
-	case UIO_USERSPACE:
-		error = copyinstr(src, dst, len, copied);
-		break;
-	case UIO_SYSSPACE:
-		error = copystr(src, dst, len, copied);
-		break;
-	default:
-		panic("copyinstrfrom: bad seg %d\n", seg);
-	}
-	return (error);
 }
 
 int

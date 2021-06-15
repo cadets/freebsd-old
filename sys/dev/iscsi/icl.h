@@ -2,7 +2,6 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2012 The FreeBSD Foundation
- * All rights reserved.
  *
  * This software was developed by Edward Tomasz Napierala under sponsorship
  * from the FreeBSD Foundation.
@@ -79,9 +78,8 @@ struct icl_pdu {
 	/*
 	 * User (initiator or provider) private fields.
 	 */
-	uint32_t		ip_prv0;
-	uint32_t		ip_prv1;
-	uint32_t		ip_prv2;
+	void			*ip_prv0;
+	void			*ip_prv1;
 };
 
 #define ICL_CONN_STATE_INVALID		0
@@ -91,7 +89,7 @@ struct icl_pdu {
 #define ICL_CONN_STATE_DATA		4
 #define ICL_CONN_STATE_DATA_DIGEST	5
 
-#define	ICL_MAX_DATA_SEGMENT_LENGTH	(128 * 1024)
+#define	ICL_NOCOPY			(1 << 30)
 
 struct icl_conn {
 	KOBJ_FIELDS;
@@ -111,7 +109,8 @@ struct icl_conn {
 	bool			ic_data_crc32c;
 	bool			ic_send_running;
 	bool			ic_receive_running;
-	size_t			ic_max_data_segment_length;
+	uint32_t		ic_max_recv_data_segment_length;
+	uint32_t		ic_max_send_data_segment_length;
 	size_t			ic_maxtags;
 	bool			ic_disconnecting;
 	bool			ic_iser;
@@ -135,6 +134,8 @@ struct icl_drv_limits {
 	int idl_first_burst_length;
 	int spare[4];
 };
+
+typedef void (*icl_pdu_cb)(struct icl_pdu *, int error);
 
 struct icl_conn	*icl_new_conn(const char *offload, bool iser, const char *name,
 		    struct mtx *lock);

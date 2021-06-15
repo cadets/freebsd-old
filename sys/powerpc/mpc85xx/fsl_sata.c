@@ -58,7 +58,6 @@ struct fsl_sata_slot;
 enum fsl_sata_err_type;
 struct fsl_sata_cmd_tab;
 
-
 /* local prototypes */
 static int fsl_sata_init(device_t dev);
 static int fsl_sata_deinit(device_t dev);
@@ -1871,7 +1870,7 @@ fsl_sataaction(struct cam_sim *sim, union ccb *ccb)
 		cpi->transport_version = XPORT_VERSION_UNSPECIFIED;
 		cpi->protocol = PROTO_ATA;
 		cpi->protocol_version = PROTO_VERSION_UNSPECIFIED;
-		cpi->maxio = MAXPHYS;
+		cpi->maxio = maxphys;
 		cpi->ccb_h.status = CAM_REQ_CMP;
 		break;
 	}

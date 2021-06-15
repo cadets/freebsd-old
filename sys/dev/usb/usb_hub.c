@@ -75,14 +75,13 @@
 #include <dev/usb/usb_bus.h>
 #endif			/* USB_GLOBAL_INCLUDE_FILE */
 
-
 #include <dev/usb/usb_hub_private.h>
-
 
 #ifdef USB_DEBUG
 static int uhub_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uhub, CTLFLAG_RW, 0, "USB HUB");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uhub, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB HUB");
 SYSCTL_INT(_hw_usb_uhub, OID_AUTO, debug, CTLFLAG_RWTUN, &uhub_debug, 0,
     "Debug level");
 #endif
@@ -105,7 +104,6 @@ static int usb_disable_port_power = 0;
 SYSCTL_INT(_hw_usb, OID_AUTO, disable_port_power, CTLFLAG_RWTUN,
     &usb_disable_port_power, 0, "Set to disable all USB port power.");
 #endif
-
 
 #define	UHUB_PROTO(sc) ((sc)->sc_udev->ddesc.bDeviceProtocol)
 #define	UHUB_IS_HIGH_SPEED(sc) (UHUB_PROTO(sc) != UDPROTO_FSHUB)
@@ -131,7 +129,6 @@ static void usb_dev_suspend_peer(struct usb_device *udev);
 static uint8_t usb_peer_should_wakeup(struct usb_device *udev);
 
 static const struct usb_config uhub_config[UHUB_N_TRANSFER] = {
-
 	[UHUB_INTR_TRANSFER] = {
 		.type = UE_INTERRUPT,
 		.endpoint = UE_ADDR_ANY,
@@ -440,8 +437,14 @@ uhub_explore_handle_re_enumerate(struct usb_device *child)
 		} else {
 			err = usbd_req_re_enumerate(child, NULL);
 		}
-		if (err == 0)
+		if (err == 0) {
+			/* refresh device strings */
+			usb_get_langid(child);
+			usb_set_device_strings(child);
+
+			/* set default configuration */
 			err = usbd_set_config_index(child, 0);
+		}
 		if (err == 0) {
 			err = usb_probe_and_attach(child,
 			    USB_IFACE_INDEX_ANY);
@@ -510,7 +513,7 @@ uhub_explore_sub(struct uhub_softc *sc, struct usb_port *up)
 	usb_error_t err;
 
 	bus = sc->sc_udev->bus;
-	err = 0;
+	err = USB_ERR_NORMAL_COMPLETION;
 
 	/* get driver added refcount from USB bus */
 	refcount = bus->driver_added_refcount;
@@ -659,7 +662,7 @@ repeat:
 		break;
 	case USB_SPEED_SUPER:
 		if (udev->parent_hub == NULL)
-			power_mask = UPS_PORT_POWER;
+			power_mask = 0;	/* XXX undefined */
 		else
 			power_mask = UPS_PORT_POWER_SS;
 		break;
@@ -667,7 +670,7 @@ repeat:
 		power_mask = 0;
 		break;
 	}
-	if (!(sc->sc_st.port_status & power_mask)) {
+	if ((sc->sc_st.port_status & power_mask) != power_mask) {
 		DPRINTF("WARNING: strange, connected port %d "
 		    "has no power\n", portno);
 	}
@@ -675,7 +678,6 @@ repeat:
 	/* check if the device is in Host Mode */
 
 	if (!(sc->sc_st.port_status & UPS_PORT_MODE_DEVICE)) {
-
 		DPRINTF("Port %d is in Host Mode\n", portno);
 
 		if (sc->sc_st.port_status & UPS_SUSPEND) {
@@ -718,8 +720,10 @@ repeat:
 		if ((sc->sc_st.port_change & UPS_C_CONNECT_STATUS) ||
 		    (!(sc->sc_st.port_status & UPS_CURRENT_CONNECT_STATUS))) {
 			if (timeout) {
-				DPRINTFN(0, "giving up port reset "
-				    "- device vanished\n");
+				DPRINTFN(1, "giving up port %d reset - "
+				   "device vanished: change %#x status %#x\n",
+				   portno, sc->sc_st.port_change,
+				   sc->sc_st.port_status);
 				goto error;
 			}
 			timeout = 1;
@@ -1009,7 +1013,7 @@ uhub_explore(struct usb_device *udev)
 	if (udev->flags.self_suspended) {
 		/* need to wait until the child signals resume */
 		DPRINTF("Device is suspended!\n");
-		return (0);
+		return (USB_ERR_NORMAL_COMPLETION);
 	}
 
 	/*
@@ -1017,6 +1021,12 @@ uhub_explore(struct usb_device *udev)
 	 * like LibUSB:
 	 */
 	do_unlock = usbd_enum_lock(udev);
+
+	/*
+	 * Set default error code to avoid compiler warnings.
+	 * Note that hub->nports cannot be zero.
+	 */
+	err = USB_ERR_NORMAL_COMPLETION;
 
 	for (x = 0; x != hub->nports; x++) {
 		up = hub->ports + x;
@@ -1060,7 +1070,6 @@ uhub_explore(struct usb_device *udev)
 				DPRINTFN(0, "illegal enable change, "
 				    "port %d\n", portno);
 			} else {
-
 				if (up->restartcnt == USB_RESTART_MAX) {
 					/* XXX could try another speed ? */
 					DPRINTFN(0, "port error, giving up "
@@ -1087,13 +1096,11 @@ uhub_explore(struct usb_device *udev)
 				break;
 			}
 		}
-		err = uhub_explore_sub(sc, up);
-		if (err) {
-			/* no device(s) present */
-			continue;
+
+		if (uhub_explore_sub(sc, up) == USB_ERR_NORMAL_COMPLETION) {
+			/* explore succeeded - reset restart counter */
+			up->restartcnt = 0;
 		}
-		/* explore succeeded - reset restart counter */
-		up->restartcnt = 0;
 	}
 
 	if (do_unlock)
@@ -1102,8 +1109,7 @@ uhub_explore(struct usb_device *udev)
 	/* initial status checked */
 	sc->sc_flags |= UHUB_FLAG_DID_EXPLORE;
 
-	/* return success */
-	return (USB_ERR_NORMAL_COMPLETION);
+	return (err);
 }
 
 int
@@ -1549,7 +1555,6 @@ uhub_detach(device_t dev)
 
 	/* Detach all ports */
 	for (x = 0; x != hub->nports; x++) {
-
 		child = usb_bus_port_get_device(bus, hub->ports + x);
 
 		if (child == NULL) {
@@ -1688,6 +1693,7 @@ uhub_child_pnpinfo_string(device_t parent, device_t child,
 	struct usb_hub *hub;
 	struct usb_interface *iface;
 	struct hub_result res;
+	uint8_t do_unlock;
 
 	if (!device_is_attached(parent)) {
 		if (buflen)
@@ -1709,6 +1715,9 @@ uhub_child_pnpinfo_string(device_t parent, device_t child,
 	}
 	iface = usbd_get_iface(res.udev, res.iface_index);
 	if (iface && iface->idesc) {
+		/* Make sure device information is not changed during the print. */
+		do_unlock = usbd_ctrl_lock(res.udev);
+
 		snprintf(buf, buflen, "vendor=0x%04x product=0x%04x "
 		    "devclass=0x%02x devsubclass=0x%02x "
 		    "devproto=0x%02x "
@@ -1730,6 +1739,9 @@ uhub_child_pnpinfo_string(device_t parent, device_t child,
 		    iface->idesc->bInterfaceProtocol,
 		    iface->pnpinfo ? " " : "",
 		    iface->pnpinfo ? iface->pnpinfo : "");
+
+		if (do_unlock)
+			usbd_ctrl_unlock(res.udev);
 	} else {
 		if (buflen) {
 			buf[0] = '\0';
@@ -1793,7 +1805,6 @@ usb_intr_find_best_slot(usb_size_t *ptr, uint8_t start,
 	/* find the last slot with lesser used bandwidth */
 
 	for (x = start; x < end; x++) {
-
 		sum = 0;
 
 		/* compute sum of bandwidth */
@@ -2066,7 +2077,6 @@ usbd_fs_isoc_schedule_alloc_slot(struct usb_xfer *isoc_xfer, uint16_t isoc_time)
 	bus = isoc_xfer->xroot->bus;
 
 	TAILQ_FOREACH(xfer, &bus->intr_q.head, wait_entry) {
-
 		/* skip self, if any */
 
 		if (xfer == isoc_xfer)
@@ -2107,7 +2117,6 @@ usbd_fs_isoc_schedule_alloc_slot(struct usb_xfer *isoc_xfer, uint16_t isoc_time)
 		 */
 		TAILQ_FOREACH(pipe_xfer, &xfer->endpoint->endpoint_q[0].head,
 		    wait_entry) {
-
 			/* skip self, if any */
 
 			if (pipe_xfer == isoc_xfer)
@@ -2481,7 +2490,6 @@ usb_bus_powerd(struct usb_bus *bus)
 	 */
 	for (x = USB_ROOT_HUB_ADDR + 1;
 	    x != bus->devices_max; x++) {
-
 		udev = bus->devices[x];
 		if (udev == NULL)
 			continue;
@@ -2519,7 +2527,6 @@ usb_bus_powerd(struct usb_bus *bus)
 
 	for (x = USB_ROOT_HUB_ADDR + 1;
 	    x != bus->devices_max; x++) {
-
 		udev = bus->devices[x];
 		if (udev == NULL)
 			continue;
@@ -2569,6 +2576,50 @@ usb_bus_powerd(struct usb_bus *bus)
 	return;
 }
 #endif
+
+static usb_error_t
+usbd_device_30_remote_wakeup(struct usb_device *udev, uint8_t bRequest)
+{
+	struct usb_device_request req = {};
+
+	req.bmRequestType = UT_WRITE_INTERFACE;
+	req.bRequest = bRequest;
+	USETW(req.wValue, USB_INTERFACE_FUNC_SUSPEND);
+	USETW(req.wIndex, USB_INTERFACE_FUNC_SUSPEND_LP |
+	    USB_INTERFACE_FUNC_SUSPEND_RW);
+
+	return (usbd_do_request(udev, NULL, &req, 0));
+}
+
+static usb_error_t
+usbd_clear_dev_wakeup(struct usb_device *udev)
+{
+	usb_error_t err;
+
+	if (usb_device_20_compatible(udev)) {
+		err = usbd_req_clear_device_feature(udev,
+		    NULL, UF_DEVICE_REMOTE_WAKEUP);
+	} else {
+		err = usbd_device_30_remote_wakeup(udev,
+		    UR_CLEAR_FEATURE);
+	}
+	return (err);
+}
+
+static usb_error_t
+usbd_set_dev_wakeup(struct usb_device *udev)
+{
+	usb_error_t err;
+
+	if (usb_device_20_compatible(udev)) {
+		err = usbd_req_set_device_feature(udev,
+		    NULL, UF_DEVICE_REMOTE_WAKEUP);
+	} else {
+		err = usbd_device_30_remote_wakeup(udev,
+		    UR_SET_FEATURE);
+	}
+	return (err);
+}
 
 /*------------------------------------------------------------------------*
  *	usb_dev_resume_peer
@@ -2673,8 +2724,7 @@ usb_dev_resume_peer(struct usb_device *udev)
 	/* check if peer has wakeup capability */
 	if (usb_peer_can_wakeup(udev)) {
 		/* clear remote wakeup */
-		err = usbd_req_clear_device_feature(udev,
-		    NULL, UF_DEVICE_REMOTE_WAKEUP);
+		err = usbd_clear_dev_wakeup(udev);
 		if (err) {
 			DPRINTFN(0, "Clearing device "
 			    "remote wakeup failed: %s\n",
@@ -2739,8 +2789,7 @@ repeat:
 		 */
 
 		/* allow device to do remote wakeup */
-		err = usbd_req_set_device_feature(udev,
-		    NULL, UF_DEVICE_REMOTE_WAKEUP);
+		err = usbd_set_dev_wakeup(udev);
 		if (err) {
 			DPRINTFN(0, "Setting device "
 			    "remote wakeup failed\n");
@@ -2766,8 +2815,7 @@ repeat:
 	if (err != 0) {
 		if (usb_peer_can_wakeup(udev)) {
 			/* allow device to do remote wakeup */
-			err = usbd_req_clear_device_feature(udev,
-			    NULL, UF_DEVICE_REMOTE_WAKEUP);
+			err = usbd_clear_dev_wakeup(udev);
 			if (err) {
 				DPRINTFN(0, "Setting device "
 				    "remote wakeup failed\n");
@@ -2809,7 +2857,6 @@ repeat:
 		temp = usbd_get_dma_delay(udev);
 		if (temp != 0)
 			usb_pause_mtx(NULL, USB_MS_TO_TICKS(temp));
-
 	}
 
 	if (usb_device_20_compatible(udev)) {

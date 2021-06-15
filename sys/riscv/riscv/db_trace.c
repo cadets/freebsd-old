@@ -2,6 +2,7 @@
  * Copyright (c) 2015 The FreeBSD Foundation
  * Copyright (c) 2016 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
+ * Copyright (c) 2020 John Baldwin <jhb@FreeBSD.org>
  *
  * Portions of this software were developed by Semihalf under
  * the sponsorship of the FreeBSD Foundation.
@@ -38,15 +39,18 @@
 
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
+
 #include <sys/param.h>
-#include <sys/proc.h>
 #include <sys/kdb.h>
-#include <machine/pcb.h>
+#include <sys/proc.h>
+
 #include <ddb/ddb.h>
 #include <ddb/db_sym.h>
 
+#include <machine/pcb.h>
 #include <machine/riscvreg.h>
 #include <machine/stack.h>
+#include <machine/vmparam.h>
 
 void
 db_md_list_watchpoints()
@@ -54,22 +58,8 @@ db_md_list_watchpoints()
 
 }
 
-int
-db_md_clr_watchpoint(db_expr_t addr, db_expr_t size)
-{
-
-	return (0);
-}
-
-int
-db_md_set_watchpoint(db_expr_t addr, db_expr_t size)
-{
-
-	return (0);
-}
-
 static void
-db_stack_trace_cmd(struct unwind_state *frame)
+db_stack_trace_cmd(struct thread *td, struct unwind_state *frame)
 {
 	const char *name;
 	db_expr_t offset;
@@ -79,9 +69,6 @@ db_stack_trace_cmd(struct unwind_state *frame)
 
 	while (1) {
 		pc = frame->pc;
-
-		if (unwind_frame(frame) < 0)
-			break;
 
 		sym = db_search_symbol(pc, DB_STGY_ANY, &offset);
 		if (sym == C_DB_SYM_NULL) {
@@ -94,11 +81,37 @@ db_stack_trace_cmd(struct unwind_state *frame)
 		db_printsym(frame->pc, DB_STGY_PROC);
 		db_printf("\n");
 
-		db_printf("\t pc = 0x%016lx ra = 0x%016lx\n",
-		    pc, frame->pc);
-		db_printf("\t sp = 0x%016lx fp = 0x%016lx\n",
-		    frame->sp, frame->fp);
-		db_printf("\n");
+		if (strcmp(name, "cpu_exception_handler_supervisor") == 0 ||
+		    strcmp(name, "cpu_exception_handler_user") == 0) {
+			struct trapframe *tf;
+
+			tf = (struct trapframe *)(uintptr_t)frame->sp;
+			if (!kstack_contains(td, (vm_offset_t)tf,
+			    sizeof(*tf))) {
+				db_printf("--- invalid trapframe %p\n", tf);
+				break;
+			}
+
+			if ((tf->tf_scause & SCAUSE_INTR) != 0)
+				db_printf("--- interrupt %ld\n",
+				    tf->tf_scause & SCAUSE_CODE);
+			else
+				db_printf("--- exception %ld, tval = %#lx\n",
+				    tf->tf_scause & SCAUSE_CODE,
+				    tf->tf_stval);
+			frame->sp = tf->tf_sp;
+			frame->fp = tf->tf_s[0];
+			frame->pc = tf->tf_sepc;
+			if (!INKERNEL(frame->fp))
+				break;
+			continue;
+		}
+
+		if (strcmp(name, "fork_trampoline") == 0)
+			break;
+
+		if (!unwind_frame(td, frame))
+			break;
 	}
 }
 
@@ -108,15 +121,12 @@ db_trace_thread(struct thread *thr, int count)
 	struct unwind_state frame;
 	struct pcb *ctx;
 
-	if (thr != curthread) {
-		ctx = kdb_thr_ctx(thr);
+	ctx = kdb_thr_ctx(thr);
 
-		frame.sp = (uint64_t)ctx->pcb_sp;
-		frame.fp = (uint64_t)ctx->pcb_s[0];
-		frame.pc = (uint64_t)ctx->pcb_ra;
-		db_stack_trace_cmd(&frame);
-	} else
-		db_trace_self();
+	frame.sp = ctx->pcb_sp;
+	frame.fp = ctx->pcb_s[0];
+	frame.pc = ctx->pcb_ra;
+	db_stack_trace_cmd(thr, &frame);
 	return (0);
 }
 
@@ -124,12 +134,12 @@ void
 db_trace_self(void)
 {
 	struct unwind_state frame;
-	uint64_t sp;
+	uintptr_t sp;
 
 	__asm __volatile("mv %0, sp" : "=&r" (sp));
 
 	frame.sp = sp;
-	frame.fp = (uint64_t)__builtin_frame_address(0);
-	frame.pc = (uint64_t)db_trace_self;
-	db_stack_trace_cmd(&frame);
+	frame.fp = (uintptr_t)__builtin_frame_address(0);
+	frame.pc = (uintptr_t)db_trace_self;
+	db_stack_trace_cmd(curthread, &frame);
 }

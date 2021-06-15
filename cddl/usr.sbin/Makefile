@@ -14,10 +14,8 @@ SUBDIR=	${_dtdaemon} \
 SUBDIR.${MK_TESTS}+= tests
 
 .if ${MK_ZFS} != "no"
-.if ${MK_LIBTHR} != "no"
 _zdb=	zdb
 _zhack=	zhack
-.endif
 . if ${MK_CXX} != "no"
 _zfsd=	zfsd
 . endif

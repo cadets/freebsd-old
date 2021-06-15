@@ -439,7 +439,6 @@ ses_iter_next(struct ses_iterator *iter)
 	 *	 configuration has 0 objects.
 	 */
 	if (iter->global_element_index >= (int)iter->cache->nelms - 1) {
-
 		/* Elements exhausted. */
 		iter->type_index	       = ITERATOR_INDEX_END;
 		iter->type_element_index       = ITERATOR_INDEX_END;
@@ -463,7 +462,6 @@ ses_iter_next(struct ses_iterator *iter)
 	 * count is non-zero.
 	 */
 	if (iter->type_element_index > element_type->hdr->etype_maxelt) {
-
 		/*
 		 * We've exhausted the elements of this type.
 		 * This next element belongs to the next type.
@@ -625,7 +623,7 @@ ses_cache_free_status(enc_softc_t *enc, enc_cache_t *cache)
 	ses_cache   = cache->private;
 	if (ses_cache->status_page == NULL)
 		return;
-	
+
 	other_ses_cache = enc_other_cache(enc, cache)->private;
 	if (other_ses_cache->status_page != ses_cache->status_page)
 		ENC_FREE(ses_cache->status_page);
@@ -647,7 +645,6 @@ ses_cache_free_elm_map(enc_softc_t *enc, enc_cache_t *cache)
 	for (cur_elm = cache->elm_map,
 	     last_elm = &cache->elm_map[cache->nelms];
 	     cur_elm != last_elm; cur_elm++) {
-
 		ENC_FREE_AND_NULL(cur_elm->elm_private);
 	}
 	ENC_FREE_AND_NULL(cache->elm_map);
@@ -721,7 +718,6 @@ ses_cache_clone(enc_softc_t *enc, enc_cache_t *src, enc_cache_t *dst)
 	for (dst_elm = dst->elm_map, src_elm = src->elm_map,
 	     last_elm = &src->elm_map[src->nelms];
 	     src_elm != last_elm; src_elm++, dst_elm++) {
-
 		dst_elm->elm_private = malloc(sizeof(ses_element_t),
 		    M_SCSIENC, M_WAITOK);
 		memcpy(dst_elm->elm_private, src_elm->elm_private,
@@ -923,7 +919,6 @@ ses_path_iter_devid_callback(enc_softc_t *enc, enc_element_t *elem,
 				    device_match->path_id,
 				    device_match->target_id,
 				    device_match->target_lun) == CAM_REQ_CMP) {
-
 			args->callback(enc, elem, path, args->callback_arg);
 
 			xpt_free_path(path);
@@ -956,30 +951,39 @@ ses_paths_iter(enc_softc_t *enc, enc_element_t *elm,
 	if (addl->hdr == NULL)
 		return;
 
-	if (addl->proto_hdr.sas != NULL &&
-	    addl->proto_data.sasdev_phys != NULL) {
-		ses_path_iter_args_t args;
+	switch(ses_elm_addlstatus_proto(addl->hdr)) {
+	case SPSP_PROTO_SAS:
+		if (addl->proto_hdr.sas != NULL &&
+		    addl->proto_data.sasdev_phys != NULL) {
+			ses_path_iter_args_t args;
 
-		args.callback     = callback;
-		args.callback_arg = callback_arg;
-		ses_devids_iter(enc, elm, ses_path_iter_devid_callback, &args);
-	} else if (addl->proto_hdr.ata != NULL) {
-		struct cam_path *path;
-		struct ccb_getdev cgd;
+			args.callback     = callback;
+			args.callback_arg = callback_arg;
+			ses_devids_iter(enc, elm, ses_path_iter_devid_callback,
+			    &args);
+		}
+		break;
+	case SPSP_PROTO_ATA:
+		if (addl->proto_hdr.ata != NULL) {
+			struct cam_path *path;
+			struct ccb_getdev cgd;
 
-		if (xpt_create_path(&path, /*periph*/NULL,
-		    scsi_4btoul(addl->proto_hdr.ata->bus),
-		    scsi_4btoul(addl->proto_hdr.ata->target), 0)
-		     != CAM_REQ_CMP)
-			return;
+			if (xpt_create_path(&path, /*periph*/NULL,
+			    scsi_4btoul(addl->proto_hdr.ata->bus),
+			    scsi_4btoul(addl->proto_hdr.ata->target), 0)
+			     != CAM_REQ_CMP)
+				return;
 
-		xpt_setup_ccb(&cgd.ccb_h, path, CAM_PRIORITY_NORMAL);
-		cgd.ccb_h.func_code = XPT_GDEV_TYPE;
-		xpt_action((union ccb *)&cgd);
-		if (cgd.ccb_h.status == CAM_REQ_CMP)
-			callback(enc, elm, path, callback_arg);
+			memset(&cgd, 0, sizeof(cgd));
+			xpt_setup_ccb(&cgd.ccb_h, path, CAM_PRIORITY_NORMAL);
+			cgd.ccb_h.func_code = XPT_GDEV_TYPE;
+			xpt_action((union ccb *)&cgd);
+			if (cgd.ccb_h.status == CAM_REQ_CMP)
+				callback(enc, elm, path, callback_arg);
 
-		xpt_free_path(path);
+			xpt_free_path(path);
+		}
+		break;
 	}
 }
 
@@ -1032,6 +1036,7 @@ ses_setphyspath_callback(enc_softc_t *enc, enc_element_t *elm,
 	args = (ses_setphyspath_callback_args_t *)arg;
 	old_physpath = malloc(MAXPATHLEN, M_SCSIENC, M_WAITOK|M_ZERO);
 	xpt_path_lock(path);
+	memset(&cdai, 0, sizeof(cdai));
 	xpt_setup_ccb(&cdai.ccb_h, path, CAM_PRIORITY_NORMAL);
 	cdai.ccb_h.func_code = XPT_DEV_ADVINFO;
 	cdai.buftype = CDAI_TYPE_PHYS_PATH;
@@ -1043,7 +1048,6 @@ ses_setphyspath_callback(enc_softc_t *enc, enc_element_t *elm,
 		cam_release_devq(cdai.ccb_h.path, 0, 0, 0, FALSE);
 
 	if (strcmp(old_physpath, sbuf_data(args->physpath)) != 0) {
-
 		xpt_setup_ccb(&cdai.ccb_h, path, CAM_PRIORITY_NORMAL);
 		cdai.ccb_h.func_code = XPT_DEV_ADVINFO;
 		cdai.buftype = CDAI_TYPE_PHYS_PATH;
@@ -1093,6 +1097,7 @@ ses_set_physpath(enc_softc_t *enc, enc_element_t *elm,
 	 * Assemble the components of the physical path starting with
 	 * the device ID of the enclosure itself.
 	 */
+	memset(&cdai, 0, sizeof(cdai));
 	xpt_setup_ccb(&cdai.ccb_h, enc->periph->path, CAM_PRIORITY_NORMAL);
 	cdai.ccb_h.func_code = XPT_DEV_ADVINFO;
 	cdai.flags = CDAI_FLAG_NONE;
@@ -1378,7 +1383,6 @@ ses_process_config(enc_softc_t *enc, struct enc_fsm_state *state,
 
 	err = 0;
 	if (ses_config_cache_valid(ses_cache, cfg_page->hdr.gen_code)) {
-
 		/* Our cache is still valid.  Proceed to fetching status. */
 		goto out;
 	}
@@ -1414,7 +1418,6 @@ ses_process_config(enc_softc_t *enc, struct enc_fsm_state *state,
 	last_subenc = &subencs[ses_cache->ses_nsubencs - 1];
 	ntype = 0;
 	while (cur_subenc <= last_subenc) {
-
 		if (!ses_enc_desc_is_complete(buf_subenc, last_valid_byte)) {
 			ENC_VLOG(enc, "Enclosure %d Beyond End of "
 			    "Descriptors\n", cur_subenc - subencs);
@@ -1604,7 +1607,6 @@ ses_process_status(enc_softc_t *enc, struct enc_fsm_state *state,
 		__func__, length, xfer_len);
 	while (cur_stat <= last_stat
 	    && (element = ses_iter_next(&iter)) != NULL) {
-
 		ENC_DLOG(enc, "%s: obj %d(%d,%d) off=0x%tx status=%jx\n",
 		    __func__, iter.global_element_index, iter.type_index,
 		    iter.type_element_index, (uint8_t *)cur_stat - buf,
@@ -1789,7 +1791,7 @@ ses_process_elm_addlstatus(enc_softc_t *enc, struct enc_fsm_state *state,
 			ses_elem_index_type_t index_type;
 
 			eip_hdr = (struct ses_elm_addlstatus_eip_hdr *)elm_hdr;
-			if (eip_hdr->byte2 & SES_ADDL_EIP_EIIOE) {
+			if (SES_ADDL_EIP_EIIOE_EI_GLOB(eip_hdr->byte2)) {
 				index_type = SES_ELEM_INDEX_GLOBAL;
 				expected_index = iter.global_element_index;
 			} else {
@@ -1799,8 +1801,8 @@ ses_process_elm_addlstatus(enc_softc_t *enc, struct enc_fsm_state *state,
 			if (eip_hdr->element_index < expected_index) {
 				ENC_VLOG(enc, "%s: provided %selement index "
 				    "%d is lower then expected %d\n",
-				    __func__, (eip_hdr->byte2 &
-				    SES_ADDL_EIP_EIIOE) ? "global " : "",
+				    __func__, SES_ADDL_EIP_EIIOE_EI_GLOB(
+				    eip_hdr->byte2) ? "global " : "",
 				    eip_hdr->element_index, expected_index);
 				goto badindex;
 			}
@@ -1810,7 +1812,7 @@ ses_process_elm_addlstatus(enc_softc_t *enc, struct enc_fsm_state *state,
 			if (telement == NULL) {
 				ENC_VLOG(enc, "%s: provided %selement index "
 				    "%d does not exist\n", __func__,
-				    (eip_hdr->byte2 & SES_ADDL_EIP_EIIOE) ?
+				    SES_ADDL_EIP_EIIOE_EI_GLOB(eip_hdr->byte2) ?
 				    "global " : "", eip_hdr->element_index);
 				goto badindex;
 			}
@@ -1819,7 +1821,7 @@ ses_process_elm_addlstatus(enc_softc_t *enc, struct enc_fsm_state *state,
 				ENC_VLOG(enc, "%s: provided %selement index "
 				    "%d can't have additional status\n",
 				    __func__,
-				    (eip_hdr->byte2 & SES_ADDL_EIP_EIIOE) ?
+				    SES_ADDL_EIP_EIIOE_EI_GLOB(eip_hdr->byte2) ?
 				    "global " : "", eip_hdr->element_index);
 badindex:
 				/*
@@ -1835,7 +1837,7 @@ badindex:
 				element = telement;
 			}
 
-			if (eip_hdr->byte2 & SES_ADDL_EIP_EIIOE)
+			if (SES_ADDL_EIP_EIIOE_EI_GLOB(eip_hdr->byte2))
 				index = iter.global_element_index;
 			else
 				index = iter.individual_element_index;
@@ -1844,8 +1846,8 @@ badindex:
 				ENC_VLOG(enc, "%s: provided %s element"
 					"index %d skips mandatory status "
 					" element at index %d\n",
-					__func__, (eip_hdr->byte2 &
-					SES_ADDL_EIP_EIIOE) ? "global " : "",
+					__func__, SES_ADDL_EIP_EIIOE_EI_GLOB(
+					eip_hdr->byte2) ? "global " : "",
 					index, expected_index);
 			}
 		}
@@ -1996,11 +1998,11 @@ ses_sanitize_elm_desc(const char *desc, uint16_t *len)
 	int i;
 
 	for (i = 0; i < *len; i++) {
-		if (desc[i] < 0x20 || desc[i] > 0x7e) {
+		if (desc[i] == 0) {
+			break;
+		} else if (desc[i] < 0x20 || desc[i] > 0x7e) {
 			*len = strlen(invalid);
 			return (invalid);
-		} else if (desc[i] == 0) {
-			break;
 		}
 	}
 	return (desc);
@@ -2069,7 +2071,6 @@ ses_process_elm_descs(enc_softc_t *enc, struct enc_fsm_state *state,
 	ses_iter_init(enc, enc_cache, &iter);
 	while (offset < plength
 	    && (element = ses_iter_next(&iter)) != NULL) {
-
 		if ((offset + sizeof(struct ses_elm_desc_hdr)) > plength) {
 			ENC_VLOG(enc, "Element %d Descriptor Header Past "
 			    "End of Buffer\n", iter.global_element_index);
@@ -2202,7 +2203,7 @@ ses_fill_control_request(enc_softc_t *enc, struct enc_fsm_state *state,
 	enc_cache = &enc->enc_daemon_cache;
 	ses_cache = enc_cache->private;
 	hdr = (struct ses_control_page_hdr *)buf;
-	
+
 	if (ses_cache->status_page == NULL) {
 		ses_terminate_control_requests(&ses->ses_requests, EIO);
 		return (EIO);
@@ -2223,7 +2224,6 @@ ses_fill_control_request(enc_softc_t *enc, struct enc_fsm_state *state,
 
 	/* Apply incoming requests. */
 	while ((req = TAILQ_FIRST(&ses->ses_requests)) != NULL) {
-
 		TAILQ_REMOVE(&ses->ses_requests, req, links);
 		req->result = ses_encode(enc, buf, plength, req);
 		if (req->result != 0) {
@@ -2761,7 +2761,7 @@ ses_set_enc_status(enc_softc_t *enc, uint8_t encstat, int slpflag)
 	ses = enc->enc_private;
 	req.elm_idx = SES_SETSTATUS_ENC_IDX;
 	req.elm_stat.comstatus = encstat & 0xf;
-	
+
 	TAILQ_INSERT_TAIL(&ses->ses_requests, &req, links);
 	enc_update_request(enc, SES_PROCESS_CONTROL_REQS);
 	cam_periph_sleep(enc->periph, &req, PUSER, "encstat", 0);
@@ -2896,13 +2896,19 @@ ses_handle_string(enc_softc_t *enc, encioc_string_t *sstr, int ioc)
 		buf[1] = 0;
 		buf[2] = sstr->bufsiz >> 8;
 		buf[3] = sstr->bufsiz & 0xff;
-		memcpy(&buf[4], sstr->buf, sstr->bufsiz);
+		ret = copyin(sstr->buf, &buf[4], sstr->bufsiz);
+		if (ret != 0) {
+			ENC_FREE(buf);
+			return (ret);
+		}
 		break;
 	case ENCIOC_GETSTRING:
 		payload = sstr->bufsiz;
 		amt = payload;
+		buf = ENC_MALLOC(payload);
+		if (buf == NULL)
+			return (ENOMEM);
 		ses_page_cdb(cdb, payload, SesStringIn, CAM_DIR_IN);
-		buf = sstr->buf;
 		break;
 	case ENCIOC_GETENCNAME:
 		if (ses_cache->ses_nsubencs < 1)
@@ -2918,11 +2924,11 @@ ses_handle_string(enc_softc_t *enc, encioc_string_t *sstr, int ioc)
 		    vendor, product, rev) + 1;
 		if (rsize > sizeof(str))
 			rsize = sizeof(str);
-		copyout(&rsize, &sstr->bufsiz, sizeof(rsize));
 		size = rsize;
 		if (size > sstr->bufsiz)
 			size = sstr->bufsiz;
 		copyout(str, sstr->buf, size);
+		sstr->bufsiz = rsize;
 		return (size == rsize ? 0 : ENOMEM);
 	case ENCIOC_GETENCID:
 		if (ses_cache->ses_nsubencs < 1)
@@ -2932,17 +2938,19 @@ ses_handle_string(enc_softc_t *enc, encioc_string_t *sstr, int ioc)
 		    scsi_8btou64(enc_desc->logical_id)) + 1;
 		if (rsize > sizeof(str))
 			rsize = sizeof(str);
-		copyout(&rsize, &sstr->bufsiz, sizeof(rsize));
 		size = rsize;
 		if (size > sstr->bufsiz)
 			size = sstr->bufsiz;
 		copyout(str, sstr->buf, size);
+		sstr->bufsiz = rsize;
 		return (size == rsize ? 0 : ENOMEM);
 	default:
 		return (EINVAL);
 	}
 	ret = enc_runcmd(enc, cdb, 6, buf, &amt);
-	if (ioc == ENCIOC_SETSTRING)
+	if (ret == 0 && ioc == ENCIOC_GETSTRING)
+		ret = copyout(buf, sstr->buf, sstr->bufsiz);
+	if (ioc == ENCIOC_SETSTRING || ioc == ENCIOC_GETSTRING)
 		ENC_FREE(buf);
 	return (ret);
 }
@@ -3039,4 +3047,3 @@ ses_softc_init(enc_softc_t *enc)
 
 	return (0);
 }
-

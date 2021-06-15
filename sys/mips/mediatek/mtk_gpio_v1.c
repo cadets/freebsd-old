@@ -52,7 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <dev/ofw/ofw_bus.h>
 #include <dev/ofw/ofw_bus_subr.h>
 
-#include <gnu/dts/include/dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/interrupt-controller/irq.h>
 
 #include "gpio_if.h"
 #include "pic_if.h"
@@ -687,7 +687,7 @@ mtk_gpio_pic_setup_intr(device_t dev, struct intr_irqsrc *isrc,
 
 	if (error != 0)
 		return (error);
-	
+
 	MTK_GPIO_LOCK(sc);
 	if (mode == GPIO_INTR_EDGE_BOTH || mode == GPIO_INTR_EDGE_RISING) {
 		val = MTK_READ_4(sc, GPIO_PIORENA) | (1u << irq);

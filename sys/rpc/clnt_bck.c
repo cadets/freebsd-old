@@ -61,8 +61,11 @@ __FBSDID("$FreeBSD$");
  * connection provided by the client to the server.
  */
 
+#include "opt_kern_tls.h"
+
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/ktls.h>
 #include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
@@ -84,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #include <rpc/rpc.h>
 #include <rpc/rpc_com.h>
 #include <rpc/krpc.h>
+#include <rpc/rpcsec_tls.h>
 
 struct cmessage {
         struct cmsghdr cmsg;
@@ -203,7 +207,10 @@ clnt_bck_call(
 	uint32_t xid;
 	struct mbuf *mreq = NULL, *results;
 	struct ct_request *cr;
-	int error;
+	int error, maxextsiz;
+#ifdef KERN_TLS
+	u_int maxlen;
+#endif
 
 	cr = malloc(sizeof(struct ct_request), M_RPC, M_WAITOK);
 
@@ -296,6 +303,19 @@ call_again:
 	TAILQ_INSERT_TAIL(&ct->ct_pending, cr, cr_link);
 	mtx_unlock(&ct->ct_lock);
 
+	/* For RPC-over-TLS, copy mrep to a chain of ext_pgs. */
+	if ((xprt->xp_tls & RPCTLS_FLAGS_HANDSHAKE) != 0) {
+		/*
+		 * Copy the mbuf chain to a chain of
+		 * ext_pgs mbuf(s) as required by KERN_TLS.
+		 */
+		maxextsiz = TLS_MAX_MSG_SIZE_V10_2;
+#ifdef KERN_TLS
+		if (rpctls_getinfo(&maxlen, false, false))
+			maxextsiz = min(maxextsiz, maxlen);
+#endif
+		mreq = _rpc_copym_into_ext_pgs(mreq, maxextsiz);
+	}
 	/*
 	 * sosend consumes mreq.
 	 */
@@ -546,15 +566,26 @@ clnt_bck_destroy(CLIENT *cl)
 /*
  * This call is done by the svc code when a backchannel RPC reply is
  * received.
+ * For the server end, where callback RPCs to the client are performed,
+ * xp_p2 points to the "CLIENT" and not the associated "struct ct_data"
+ * so that svc_vc_destroy() can CLNT_RELEASE() the reference count on it.
  */
 void
 clnt_bck_svccall(void *arg, struct mbuf *mrep, uint32_t xid)
 {
-	struct ct_data *ct = (struct ct_data *)arg;
+	CLIENT *cl = (CLIENT *)arg;
+	struct ct_data *ct;
 	struct ct_request *cr;
 	int foundreq;
 
+	ct = (struct ct_data *)cl->cl_private;
 	mtx_lock(&ct->ct_lock);
+	if (ct->ct_closing || ct->ct_closed) {
+		mtx_unlock(&ct->ct_lock);
+		m_freem(mrep);
+		return;
+	}
+
 	ct->ct_upcallrefs++;
 	/*
 	 * See if we can match this reply to a request.

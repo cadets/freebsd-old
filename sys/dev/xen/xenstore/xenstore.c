@@ -28,7 +28,6 @@
  * IN THE SOFTWARE.
  */
 
-
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
@@ -656,12 +655,17 @@ xs_process_msg(enum xsd_sockmsg_type *type)
 		mtx_lock(&xs.registered_watches_lock);
 		msg->u.watch.handle = find_watch(
 		    msg->u.watch.vec[XS_WATCH_TOKEN]);
-		if (msg->u.watch.handle != NULL) {
-			mtx_lock(&xs.watch_events_lock);
+		mtx_lock(&xs.watch_events_lock);
+		if (msg->u.watch.handle != NULL &&
+		    (!msg->u.watch.handle->max_pending ||
+		    msg->u.watch.handle->pending <
+		    msg->u.watch.handle->max_pending)) {
+			msg->u.watch.handle->pending++;
 			TAILQ_INSERT_TAIL(&xs.watch_events, msg, list);
 			wakeup(&xs.watch_events);
 			mtx_unlock(&xs.watch_events_lock);
 		} else {
+			mtx_unlock(&xs.watch_events_lock);
 			free(msg->u.watch.vec, M_XENSTORE);
 			free(msg, M_XENSTORE);
 		}
@@ -971,7 +975,6 @@ xenwatch_thread(void *unused)
 	struct xs_stored_msg *msg;
 
 	for (;;) {
-
 		mtx_lock(&xs.watch_events_lock);
 		while (TAILQ_EMPTY(&xs.watch_events))
 			mtx_sleep(&xs.watch_events,
@@ -983,8 +986,10 @@ xenwatch_thread(void *unused)
 
 		mtx_lock(&xs.watch_events_lock);
 		msg = TAILQ_FIRST(&xs.watch_events);
-		if (msg)
+		if (msg) {
 			TAILQ_REMOVE(&xs.watch_events, msg, list);
+			msg->u.watch.handle->pending--;
+		}
 		mtx_unlock(&xs.watch_events_lock);
 
 		if (msg != NULL) {
@@ -1223,7 +1228,7 @@ static device_method_t xenstore_methods[] = {
 	DEVMETHOD(device_shutdown,      bus_generic_shutdown), 
 	DEVMETHOD(device_suspend,       xs_suspend), 
 	DEVMETHOD(device_resume,        xs_resume), 
- 
+
 	/* Bus interface */ 
 	DEVMETHOD(bus_add_child,        bus_generic_add_child),
 	DEVMETHOD(bus_alloc_resource,   bus_generic_alloc_resource),
@@ -1236,12 +1241,13 @@ static device_method_t xenstore_methods[] = {
 
 DEFINE_CLASS_0(xenstore, xenstore_driver, xenstore_methods, 0);
 static devclass_t xenstore_devclass; 
- 
+
 DRIVER_MODULE(xenstore, xenpv, xenstore_driver, xenstore_devclass, 0, 0);
 
 /*------------------------------- Sysctl Data --------------------------------*/
 /* XXX Shouldn't the node be somewhere else? */
-SYSCTL_NODE(_dev, OID_AUTO, xen, CTLFLAG_RD, NULL, "Xen");
+SYSCTL_NODE(_dev, OID_AUTO, xen, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL,
+    "Xen");
 SYSCTL_INT(_dev_xen, OID_AUTO, xsd_port, CTLFLAG_RD, &xs.evtchn, 0, "");
 SYSCTL_ULONG(_dev_xen, OID_AUTO, xsd_kva, CTLFLAG_RD, (u_long *) &xen_store, 0, "");
 
@@ -1578,6 +1584,7 @@ xs_register_watch(struct xs_watch *watch)
 	char token[sizeof(watch) * 2 + 1];
 	int error;
 
+	watch->pending = 0;
 	sprintf(token, "%lX", (long)watch);
 
 	mtx_lock(&xs.registered_watches_lock);
@@ -1655,4 +1662,3 @@ xs_unlock(void)
 	sx_xunlock(&xs.request_mutex);
 	return;
 }
-

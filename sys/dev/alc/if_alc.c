@@ -1387,7 +1387,7 @@ alc_attach(device_t dev)
 	mtx_init(&sc->alc_mtx, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF);
 	callout_init_mtx(&sc->alc_tick_ch, &sc->alc_mtx, 0);
-	TASK_INIT(&sc->alc_int_task, 0, alc_int_task, sc);
+	NET_TASK_INIT(&sc->alc_int_task, 0, alc_int_task, sc);
 	sc->alc_ident = alc_find_ident(dev);
 
 	/* Map the device. */
@@ -1438,6 +1438,8 @@ alc_attach(device_t dev)
 	case DEVICEID_ATHEROS_AR8151:
 	case DEVICEID_ATHEROS_AR8151_V2:
 		sc->alc_flags |= ALC_FLAG_APS;
+		if (CSR_READ_4(sc, ALC_MT_MAGIC) == MT_MAGIC)
+			sc->alc_flags |= ALC_FLAG_MT;
 		/* FALLTHROUGH */
 	default:
 		break;
@@ -1747,11 +1749,11 @@ alc_sysctl_node(struct alc_softc *sc)
 	child = SYSCTL_CHILDREN(device_get_sysctl_tree(sc->alc_dev));
 
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "int_rx_mod",
-	    CTLTYPE_INT | CTLFLAG_RW, &sc->alc_int_rx_mod, 0,
-	    sysctl_hw_alc_int_mod, "I", "alc Rx interrupt moderation");
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, &sc->alc_int_rx_mod,
+	    0, sysctl_hw_alc_int_mod, "I", "alc Rx interrupt moderation");
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "int_tx_mod",
-	    CTLTYPE_INT | CTLFLAG_RW, &sc->alc_int_tx_mod, 0,
-	    sysctl_hw_alc_int_mod, "I", "alc Tx interrupt moderation");
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, &sc->alc_int_tx_mod,
+	    0, sysctl_hw_alc_int_mod, "I", "alc Tx interrupt moderation");
 	/* Pull in device tunables. */
 	sc->alc_int_rx_mod = ALC_IM_RX_TIMER_DEFAULT;
 	error = resource_int_value(device_get_name(sc->alc_dev),
@@ -1778,8 +1780,8 @@ alc_sysctl_node(struct alc_softc *sc)
 		}
 	}
 	SYSCTL_ADD_PROC(ctx, child, OID_AUTO, "process_limit",
-	    CTLTYPE_INT | CTLFLAG_RW, &sc->alc_process_limit, 0,
-	    sysctl_hw_alc_proc_limit, "I",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &sc->alc_process_limit, 0, sysctl_hw_alc_proc_limit, "I",
 	    "max number of Rx events to process");
 	/* Pull in device tunables. */
 	sc->alc_process_limit = ALC_PROC_DEFAULT;
@@ -1796,13 +1798,13 @@ alc_sysctl_node(struct alc_softc *sc)
 		}
 	}
 
-	tree = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "stats", CTLFLAG_RD,
-	    NULL, "ALC statistics");
+	tree = SYSCTL_ADD_NODE(ctx, child, OID_AUTO, "stats",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "ALC statistics");
 	parent = SYSCTL_CHILDREN(tree);
 
 	/* Rx statistics. */
-	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "rx", CTLFLAG_RD,
-	    NULL, "Rx MAC statistics");
+	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "rx",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "Rx MAC statistics");
 	child = SYSCTL_CHILDREN(tree);
 	ALC_SYSCTL_STAT_ADD32(ctx, child, "good_frames",
 	    &stats->rx_frames, "Good frames");
@@ -1855,8 +1857,8 @@ alc_sysctl_node(struct alc_softc *sc)
 	    "Frames dropped due to address filtering");
 
 	/* Tx statistics. */
-	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "tx", CTLFLAG_RD,
-	    NULL, "Tx MAC statistics");
+	tree = SYSCTL_ADD_NODE(ctx, parent, OID_AUTO, "tx",
+	    CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "Tx MAC statistics");
 	child = SYSCTL_CHILDREN(tree);
 	ALC_SYSCTL_STAT_ADD32(ctx, child, "good_frames",
 	    &stats->tx_frames, "Good frames");
@@ -1977,6 +1979,8 @@ alc_dma_alloc(struct alc_softc *sc)
 	int error, i;
 
 	lowaddr = BUS_SPACE_MAXADDR;
+	if (sc->alc_flags & ALC_FLAG_MT)
+		lowaddr = BUS_SPACE_MAXSIZE_32BIT;
 again:
 	/* Create parent DMA tag. */
 	error = bus_dma_tag_create(
@@ -2219,7 +2223,7 @@ again:
 	error = bus_dma_tag_create(
 	    bus_get_dma_tag(sc->alc_dev), /* parent */
 	    1, 0,			/* alignment, boundary */
-	    BUS_SPACE_MAXADDR,		/* lowaddr */
+	    lowaddr,			/* lowaddr */
 	    BUS_SPACE_MAXADDR,		/* highaddr */
 	    NULL, NULL,			/* filter, filterarg */
 	    BUS_SPACE_MAXSIZE_32BIT,	/* maxsize */
@@ -3339,6 +3343,11 @@ alc_intr(void *arg)
 
 	sc = (struct alc_softc *)arg;
 
+	if (sc->alc_flags & ALC_FLAG_MT) {
+		taskqueue_enqueue(sc->alc_tq, &sc->alc_int_task);
+		return (FILTER_HANDLED);
+	}
+
 	status = CSR_READ_4(sc, ALC_INTR_STATUS);
 	if ((status & ALC_INTRS) == 0)
 		return (FILTER_STRAY);
@@ -3416,7 +3425,10 @@ alc_int_task(void *arg, int pending)
 done:
 	if ((ifp->if_drv_flags & IFF_DRV_RUNNING) != 0) {
 		/* Re-enable interrupts if we're running. */
-		CSR_WRITE_4(sc, ALC_INTR_STATUS, 0x7FFFFFFF);
+		if (sc->alc_flags & ALC_FLAG_MT)
+			CSR_WRITE_4(sc, ALC_INTR_STATUS, 0);
+		else
+			CSR_WRITE_4(sc, ALC_INTR_STATUS, 0x7FFFFFFF);
 	}
 	ALC_UNLOCK(sc);
 }

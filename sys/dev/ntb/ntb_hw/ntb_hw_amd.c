@@ -81,7 +81,6 @@ __FBSDID("$FreeBSD$");
 MALLOC_DEFINE(M_AMD_NTB, "amd_ntb_hw", "amd_ntb_hw driver memory allocations");
 
 static const struct amd_ntb_hw_info amd_ntb_hw_info_list[] = {
-
 	{ .vendor_id = NTB_HW_AMD_VENDOR_ID,
 	  .device_id = NTB_HW_AMD_DEVICE_ID1,
 	  .mw_count = 3,
@@ -101,6 +100,16 @@ static const struct amd_ntb_hw_info amd_ntb_hw_info_list[] = {
 	  .msix_vector_count = 24,
 	  .quirks = 0,
 	  .desc = "AMD Non-Transparent Bridge"},
+
+	{ .vendor_id = NTB_HW_HYGON_VENDOR_ID,
+	  .device_id = NTB_HW_HYGON_DEVICE_ID1,
+	  .mw_count = 3,
+	  .bar_start_idx = 1,
+	  .spad_count = 16,
+	  .db_count = 16,
+	  .msix_vector_count = 24,
+	  .quirks = QUIRK_MW0_32BIT,
+	  .desc = "Hygon Non-Transparent Bridge"},
 };
 
 static const struct pci_device_table amd_ntb_devs[] = {
@@ -109,7 +118,10 @@ static const struct pci_device_table amd_ntb_devs[] = {
 	  PCI_DESCR("AMD Non-Transparent Bridge") },
 	{ PCI_DEV(NTB_HW_AMD_VENDOR_ID, NTB_HW_AMD_DEVICE_ID2),
 	  .driver_data = (uintptr_t)&amd_ntb_hw_info_list[1],
-	  PCI_DESCR("AMD Non-Transparent Bridge") }
+	  PCI_DESCR("AMD Non-Transparent Bridge") },
+	{ PCI_DEV(NTB_HW_HYGON_VENDOR_ID, NTB_HW_HYGON_DEVICE_ID1),
+	  .driver_data = (uintptr_t)&amd_ntb_hw_info_list[0],
+	  PCI_DESCR("Hygon Non-Transparent Bridge") }
 };
 
 static unsigned g_amd_ntb_hw_debug_level;
@@ -673,7 +685,6 @@ amd_ntb_peer_spad_write(device_t dev, unsigned int idx, uint32_t val)
 	return (0);
 }
 
-
 /*
  * AMD NTB INIT
  */
@@ -858,7 +869,6 @@ amd_ntb_setup_isr(struct amd_ntb_softc *ntb, uint16_t num_vectors, bool msi,
 		flags |= RF_SHAREABLE;
 
 	for (i = 0; i < num_vectors; i++) {
-
 		/* RID should be 0 for intx */
 		if (intx)
 			ntb->int_info[i].rid = i;
@@ -898,7 +908,7 @@ static int
 amd_ntb_create_msix_vec(struct amd_ntb_softc *ntb, uint32_t max_vectors)
 {
 	uint8_t i;
-	
+
 	ntb->msix_vec = malloc(max_vectors * sizeof(*ntb->msix_vec), M_AMD_NTB,
 	    M_ZERO | M_WAITOK);
 

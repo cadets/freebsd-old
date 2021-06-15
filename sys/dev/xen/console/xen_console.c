@@ -44,6 +44,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/cons.h>
 #include <sys/kdb.h>
 #include <sys/proc.h>
+#include <sys/reboot.h>
 
 #include <machine/stdarg.h>
 
@@ -272,7 +273,7 @@ static void
 xencons_early_init_ring(struct xencons_priv *cons)
 {
 	cons->intf = pmap_mapdev_attr(ptoa(xen_get_console_mfn()), PAGE_SIZE,
-	    PAT_WRITE_BACK);
+	    VM_MEMATTR_WRITE_BACK);
 	cons->evtchn = xen_get_console_evtchn();
 }
 
@@ -514,7 +515,7 @@ xencons_tx(struct tty *tp)
 
 	cons = tty_softc(tp);
 
-	tty_lock_assert(tp, MA_OWNED);
+	tty_assert_locked(tp);
 
 	/*
 	 * Don't transmit any character if the buffer is full. Otherwise,
@@ -590,7 +591,7 @@ xencons_cnprobe(struct consdev *cp)
 	if (!xen_domain())
 		return;
 
-	cp->cn_pri = CN_REMOTE;
+	cp->cn_pri = (boothowto & RB_SERIAL) ? CN_REMOTE : CN_NORMAL;
 	sprintf(cp->cn_name, "%s0", driver_name);
 }
 

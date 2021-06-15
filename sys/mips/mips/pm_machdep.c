@@ -295,7 +295,6 @@ out:
 	return (error);
 }
 
-
 void
 makectx(struct trapframe *tf, struct pcb *pcb)
 {
@@ -400,7 +399,6 @@ set_fpregs(struct thread *td, struct fpreg *fpregs)
 	return 0;
 }
 
-
 /*
  * Clear registers on exec
  * $sp is set to the stack pointer passed in.  $pc is set to the entry
@@ -441,10 +439,13 @@ exec_setregs(struct thread *td, struct image_params *imgp, uintptr_t stack)
 	td->td_frame->t9 = imgp->entry_addr & ~3; /* abicall req */
 	td->td_frame->sr = MIPS_SR_KSU_USER | MIPS_SR_EXL | MIPS_SR_INT_IE |
 	    (mips_rd_status() & MIPS_SR_INT_MASK);
-#if defined(__mips_n32) 
+#if defined(__mips_n32) || defined(__mips_n64)
 	td->td_frame->sr |= MIPS_SR_PX;
-#elif  defined(__mips_n64)
-	td->td_frame->sr |= MIPS_SR_PX | MIPS_SR_UX | MIPS_SR_KX;
+#endif
+#if defined(__mips_n64)
+	if (SV_PROC_FLAG(td->td_proc, SV_LP64))
+		td->td_frame->sr |= MIPS_SR_UX;
+	td->td_frame->sr |= MIPS_SR_KX;
 #endif
 	/*
 	 * FREEBSD_DEVELOPERS_FIXME:
@@ -470,7 +471,15 @@ exec_setregs(struct thread *td, struct image_params *imgp, uintptr_t stack)
 	    PCPU_SET(fpcurthread, (struct thread *)0);
 	td->td_md.md_ss_addr = 0;
 
-	td->td_md.md_tls_tcb_offset = TLS_TP_OFFSET + TLS_TCB_SIZE;
+	td->td_md.md_tls = NULL;
+#ifdef COMPAT_FREEBSD32
+	if (!SV_PROC_FLAG(td->td_proc, SV_LP64))
+		td->td_proc->p_md.md_tls_tcb_offset = TLS_TP_OFFSET +
+		    TLS_TCB_SIZE32;
+	else
+#endif
+		td->td_proc->p_md.md_tls_tcb_offset = TLS_TP_OFFSET +
+		    TLS_TCB_SIZE;
 }
 
 int

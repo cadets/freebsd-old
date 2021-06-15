@@ -162,7 +162,6 @@ LUN Backend       Size (Blocks)   BS Serial Number    Device ID
  11 ramdisk     204800000000000  512 MYSERIAL   1     MYDEVID   1     
       lun_type=0
 
-
 Revision 1.4 Changes
 ====================
  - Added in the second HA mode (where CTL does the data transfers instead
@@ -172,7 +171,7 @@ Revision 1.4 Changes
  - Fixed the phantom device problem in the CTL CAM SIM and improved the
    CAM SIM to automatically trigger a rescan when the port is enabled and
    disabled.
- 
+
  - Made the number of threads in the block backend configurable via sysctl,
    loader tunable and the ctladm command line.  (You can now specify
    -o num_threads=4 when creating a LUN with ctladm create.)
@@ -259,7 +258,7 @@ point.
 Here is a roadmap of some of the primary functions in ctl.c.  Starting here
 and following the various leaf functions will show the command flow.
 
-ctl_queue() 		This is where commands from the frontend ports come
+ctl_queue() / ctl_run()	This is where commands from the frontend ports come
 			in.
 
 ctl_queue_sense()	This is only used for non-packetized SCSI.  i.e.

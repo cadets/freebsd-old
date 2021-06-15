@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2010,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include "menu.priv.h"
 
-MODULE_ID("$Id: m_pad.c,v 1.13 2012/03/10 23:43:41 tom Exp $")
+MODULE_ID("$Id: m_pad.c,v 1.16 2020/12/12 00:38:14 tom Exp $")
 
 /* Macro to redraw menu if it is posted and changed */
 #define Refresh_Menu(menu) \
@@ -58,10 +59,10 @@ MODULE_ID("$Id: m_pad.c,v 1.13 2012/03/10 23:43:41 tom Exp $")
 |   Return Values :  E_OK              - success
 |                    E_BAD_ARGUMENT    - an invalid value has been passed
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-set_menu_pad(MENU * menu, int pad)
+MENU_EXPORT(int)
+set_menu_pad(MENU *menu, int pad)
 {
-  bool do_refresh = (menu != (MENU *) 0);
+  bool do_refresh = (menu != (MENU *)0);
 
   T((T_CALLED("set_menu_pad(%p,%d)"), (void *)menu, pad));
 
@@ -85,8 +86,8 @@ set_menu_pad(MENU * menu, int pad)
 |
 |   Return Values :  The pad character
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-menu_pad(const MENU * menu)
+MENU_EXPORT(int)
+menu_pad(const MENU *menu)
 {
   T((T_CALLED("menu_pad(%p)"), (const void *)menu));
   returnCode(Normalize_Menu(menu)->pad);

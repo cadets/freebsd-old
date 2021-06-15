@@ -75,7 +75,23 @@ FILES=		${DSRCS}
 FILESDIR=	/usr/lib/dtrace
 FILESMODE=	${NOBINMODE}
 
+INCSGROUPS=	INCS SYSINCS
+SYSINCSDIR=	${INCLUDEDIR}/sys
+INCS+=		${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common/dtrace.h
+SYSINCS+=	${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys/dtrace.h
+SYSINCS+=	${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys/ctf_api.h
+SYSINCS+=	${SRCTOP}/sys/cddl/contrib/opensolaris/uts/common/sys/ctf.h
+
 WARNS?=		1
+
+CFLAGS+= -DIN_BASE
+CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/include
+CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libspl/include/
+CFLAGS+= -I${SRCTOP}/sys/contrib/openzfs/lib/libspl/include/os/freebsd
+CFLAGS+= -I${SRCTOP}/sys
+CFLAGS+= -include ${SRCTOP}/sys/contrib/openzfs/include/os/freebsd/spl/sys/ccompile.h
+CFLAGS+= -DHAVE_ISSETUGID
+
 
 CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${SRCTOP}/sys/cddl/dev/dtrace/${MACHINE_ARCH} \
@@ -115,9 +131,6 @@ CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/powerpc
 CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/riscv
 .PATH:		${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/riscv
 .PATH:		${SRCTOP}/sys/cddl/dev/dtrace/riscv
-.elif ${MACHINE_CPUARCH} == "sparc64"
-CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/sparc
-.PATH:		${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/sparc
 .else
 # temporary hack
 CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/intel
@@ -130,8 +143,6 @@ DSRCS+=		regs_x86.d
 
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
-
-LFLAGS+=-l
 
 YFLAGS+=-d
 

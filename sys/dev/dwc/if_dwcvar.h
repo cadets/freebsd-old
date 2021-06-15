@@ -44,21 +44,22 @@
 /*
  * Driver data and defines.
  */
-#define	RX_MAX_PACKET	0x7ff
 #define	RX_DESC_COUNT	1024
 #define	RX_DESC_SIZE	(sizeof(struct dwc_hwdesc) * RX_DESC_COUNT)
 #define	TX_DESC_COUNT	1024
+#define	TX_MAP_COUNT	TX_DESC_COUNT
 #define	TX_DESC_SIZE	(sizeof(struct dwc_hwdesc) * TX_DESC_COUNT)
+#define	TX_MAP_MAX_SEGS	32
 
 struct dwc_bufmap {
 	bus_dmamap_t		map;
 	struct mbuf		*mbuf;
+	/* Only used for TX descirptors */
+	int			last_desc_idx;
 };
 
 struct dwc_softc {
 	struct resource		*res[2];
-	bus_space_tag_t		bst;
-	bus_space_handle_t	bsh;
 	device_t		dev;
 	int			mactype;
 	int			mii_clk;
@@ -74,6 +75,7 @@ struct dwc_softc {
 	boolean_t		is_detaching;
 	int			tx_watchdog_count;
 	int			stats_harvest_count;
+	int			phy_mode;
 
 	/* RX */
 	bus_dma_tag_t		rxdesc_tag;
@@ -91,9 +93,12 @@ struct dwc_softc {
 	bus_addr_t		txdesc_ring_paddr;
 	bus_dma_tag_t		txbuf_tag;
 	struct dwc_bufmap	txbuf_map[TX_DESC_COUNT];
-	uint32_t		tx_idx_head;
-	uint32_t		tx_idx_tail;
-	int			txcount;
+	uint32_t		tx_desc_head;
+	uint32_t		tx_desc_tail;
+	uint32_t		tx_map_head;
+	uint32_t		tx_map_tail;
+	int			tx_desccount;
+	int			tx_mapcount;
 };
 
 #endif	/* __IF_DWCVAR_H__ */

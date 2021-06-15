@@ -118,6 +118,7 @@ ncl_uninit(struct vfsconf *vfsp)
 #endif
 }
 
+/* Returns with NFSLOCKNODE() held. */
 void 
 ncl_dircookie_lock(struct nfsnode *np)
 {
@@ -125,7 +126,6 @@ ncl_dircookie_lock(struct nfsnode *np)
 	while (np->n_flag & NDIRCOOKIELK)
 		(void) msleep(&np->n_flag, &np->n_mtx, PZERO, "nfsdirlk", 0);
 	np->n_flag |= NDIRCOOKIELK;
-	NFSUNLOCKNODE(np);
 }
 
 void 
@@ -187,7 +187,7 @@ ncl_getattrcache(struct vnode *vp, struct vattr *vaper)
 	int timeo, mustflush;
 	u_quad_t nsize;
 	bool setnsize;
-	
+
 	np = VTONFS(vp);
 	vap = &np->n_vattr.na_vattr;
 	nmp = VFSTONFS(vp->v_mount);
@@ -273,7 +273,7 @@ ncl_getcookie(struct nfsnode *np, off_t off, int add)
 	struct nfsdmap *dp, *dp2;
 	int pos;
 	nfsuint64 *retval = NULL;
-	
+
 	pos = (uoff_t)off / NFS_DIRBLKSIZ;
 	if (pos == 0 || off < 0) {
 		KASSERT(!add, ("nfs getcookie add at <= 0"));
@@ -330,6 +330,7 @@ ncl_invaldir(struct vnode *vp)
 	KASSERT(vp->v_type == VDIR, ("nfs: invaldir not dir"));
 	ncl_dircookie_lock(np);
 	np->n_direofoffset = 0;
+	NFSUNLOCKNODE(np);
 	np->n_cookieverf.nfsuquad[0] = 0;
 	np->n_cookieverf.nfsuquad[1] = 0;
 	if (LIST_FIRST(&np->n_cookies))
@@ -388,4 +389,3 @@ ncl_init(struct vfsconf *vfsp)
 
 	return (0);
 }
-

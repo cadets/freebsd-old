@@ -13,6 +13,7 @@
 #ifndef LLVM_EXECUTIONENGINE_RUNTIMEDYLD_H
 #define LLVM_EXECUTIONENGINE_RUNTIMEDYLD_H
 
+#include "llvm/ADT/FunctionExtras.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DIContext.h"
@@ -266,15 +267,16 @@ public:
   void finalizeWithMemoryManagerLocking();
 
 private:
-  friend void
-  jitLinkForORC(object::ObjectFile &Obj,
-                std::unique_ptr<MemoryBuffer> UnderlyingBuffer,
-                RuntimeDyld::MemoryManager &MemMgr, JITSymbolResolver &Resolver,
-                bool ProcessAllSections,
-                std::function<Error(std::unique_ptr<LoadedObjectInfo>,
-                                    std::map<StringRef, JITEvaluatedSymbol>)>
-                    OnLoaded,
-                std::function<void(Error)> OnEmitted);
+  friend void jitLinkForORC(
+      object::OwningBinary<object::ObjectFile> O,
+      RuntimeDyld::MemoryManager &MemMgr, JITSymbolResolver &Resolver,
+      bool ProcessAllSections,
+      unique_function<Error(const object::ObjectFile &Obj, LoadedObjectInfo &,
+                            std::map<StringRef, JITEvaluatedSymbol>)>
+          OnLoaded,
+      unique_function<void(object::OwningBinary<object::ObjectFile> O,
+                           std::unique_ptr<LoadedObjectInfo>, Error)>
+          OnEmitted);
 
   // RuntimeDyldImpl is the actual class. RuntimeDyld is just the public
   // interface.
@@ -291,14 +293,17 @@ private:
 // but ORC's RTDyldObjectLinkingLayer2. Internally it constructs a RuntimeDyld
 // instance and uses continuation passing to perform the fix-up and finalize
 // steps asynchronously.
-void jitLinkForORC(object::ObjectFile &Obj,
-                   std::unique_ptr<MemoryBuffer> UnderlyingBuffer,
-                   RuntimeDyld::MemoryManager &MemMgr,
-                   JITSymbolResolver &Resolver, bool ProcessAllSections,
-                   std::function<Error(std::unique_ptr<LoadedObjectInfo>,
-                                       std::map<StringRef, JITEvaluatedSymbol>)>
-                       OnLoaded,
-                   std::function<void(Error)> OnEmitted);
+void jitLinkForORC(
+    object::OwningBinary<object::ObjectFile> O,
+    RuntimeDyld::MemoryManager &MemMgr, JITSymbolResolver &Resolver,
+    bool ProcessAllSections,
+    unique_function<Error(const object::ObjectFile &Obj,
+                          RuntimeDyld::LoadedObjectInfo &,
+                          std::map<StringRef, JITEvaluatedSymbol>)>
+        OnLoaded,
+    unique_function<void(object::OwningBinary<object::ObjectFile>,
+                         std::unique_ptr<RuntimeDyld::LoadedObjectInfo>, Error)>
+        OnEmitted);
 
 } // end namespace llvm
 

@@ -29,6 +29,7 @@
 __FBSDID("$FreeBSD$");
 
 #include "opt_acpi.h"
+#include "opt_iommu.h"
 #include "opt_isa.h"
 
 #include <sys/param.h>
@@ -94,7 +95,8 @@ struct ioapic_intsrc {
 struct ioapic {
 	struct pic io_pic;
 	u_int io_id:8;			/* logical ID */
-	u_int io_apic_id:4;
+	u_int io_apic_id:8;		/* Id as enumerated by MADT */
+	u_int io_hw_apic_id:8;		/* Content of APIC ID register */
 	u_int io_intbase:8;		/* System Interrupt base */
 	u_int io_numintr:8;
 	u_int io_haseoi:1;
@@ -192,8 +194,11 @@ _ioapic_eoi_source(struct intsrc *isrc, int locked)
 		low1 |= IOART_TRGREDG | IOART_INTMSET;
 		ioapic_write(io->io_addr, IOAPIC_REDTBL_LO(src->io_intpin),
 		    low1);
+		low1 = src->io_lowreg;
+		if (src->io_masked != 0)
+			low1 |= IOART_INTMSET;
 		ioapic_write(io->io_addr, IOAPIC_REDTBL_LO(src->io_intpin),
-		    src->io_lowreg);
+		    low1);
 		if (!locked)
 			mtx_unlock_spin(&icu_lock);
 	}
@@ -310,7 +315,7 @@ ioapic_program_intpin(struct ioapic_intsrc *intpin)
 {
 	struct ioapic *io = (struct ioapic *)intpin->io_intsrc.is_pic;
 	uint32_t low, high;
-#ifdef ACPI_DMAR
+#ifdef IOMMU
 	int error;
 #endif
 
@@ -327,7 +332,7 @@ ioapic_program_intpin(struct ioapic_intsrc *intpin)
 			ioapic_write(io->io_addr,
 			    IOAPIC_REDTBL_LO(intpin->io_intpin),
 			    low | IOART_INTMSET);
-#ifdef ACPI_DMAR
+#ifdef IOMMU
 		mtx_unlock_spin(&icu_lock);
 		iommu_unmap_ioapic_intr(io->io_apic_id,
 		    &intpin->io_remap_cookie);
@@ -336,7 +341,7 @@ ioapic_program_intpin(struct ioapic_intsrc *intpin)
 		return;
 	}
 
-#ifdef ACPI_DMAR
+#ifdef IOMMU
 	mtx_unlock_spin(&icu_lock);
 	error = iommu_map_ioapic_intr(io->io_apic_id,
 	    intpin->io_cpu, intpin->io_vector, intpin->io_edgetrigger,
@@ -506,7 +511,6 @@ ioapic_enable_intr(struct intsrc *isrc)
 	apic_enable_vector(intpin->io_cpu, intpin->io_vector);
 }
 
-
 static void
 ioapic_disable_intr(struct intsrc *isrc)
 {
@@ -634,15 +638,12 @@ ioapic_create(vm_paddr_t addr, int32_t apic_id, int intbase)
 	io->pci_wnd = NULL;
 	mtx_lock_spin(&icu_lock);
 	io->io_id = next_id++;
-	io->io_apic_id = ioapic_read(apic, IOAPIC_ID) >> APIC_ID_SHIFT;
-	if (apic_id != -1 && io->io_apic_id != apic_id) {
-		ioapic_write(apic, IOAPIC_ID, apic_id << APIC_ID_SHIFT);
-		mtx_unlock_spin(&icu_lock);
-		io->io_apic_id = apic_id;
-		printf("ioapic%u: Changing APIC ID to %d\n", io->io_id,
-		    apic_id);
-	} else
-		mtx_unlock_spin(&icu_lock);
+	io->io_hw_apic_id = ioapic_read(apic, IOAPIC_ID) >> APIC_ID_SHIFT;
+	io->io_apic_id = apic_id == -1 ? io->io_hw_apic_id : apic_id;
+	mtx_unlock_spin(&icu_lock);
+	if (io->io_hw_apic_id != apic_id)
+		printf("ioapic%u: MADT APIC ID %d != hw id %d\n", io->io_id,
+		    apic_id, io->io_hw_apic_id);
 	if (intbase == -1) {
 		intbase = next_ioapic_base;
 		printf("ioapic%u: Assuming intbase of %d\n", io->io_id,
@@ -712,7 +713,7 @@ ioapic_create(vm_paddr_t addr, int32_t apic_id, int intbase)
 		intpin->io_cpu = PCPU_GET(apic_id);
 		value = ioapic_read(apic, IOAPIC_REDTBL_LO(i));
 		ioapic_write(apic, IOAPIC_REDTBL_LO(i), value | IOART_INTMSET);
-#ifdef ACPI_DMAR
+#ifdef IOMMU
 		/* dummy, but sets cookie */
 		mtx_unlock_spin(&icu_lock);
 		iommu_map_ioapic_intr(io->io_apic_id,
@@ -1017,14 +1018,14 @@ ioapic_pci_attach(device_t dev)
 	}
 	/* Then by apic id */
 	STAILQ_FOREACH(io, &ioapic_list, io_next) {
-		if (io->io_apic_id == apic_id)
+		if (io->io_hw_apic_id == apic_id)
 			goto found;
 	}
 	mtx_unlock_spin(&icu_lock);
 	if (bootverbose)
 		device_printf(dev,
-		    "cannot match pci bar apic id %d against MADT\n",
-		    apic_id);
+		    "cannot match pci bar apic id %d against MADT, BAR0 %#jx\n",
+		    apic_id, (uintmax_t)rman_get_start(res));
 fail:
 	bus_release_resource(dev, SYS_RES_MEMORY, rid, res);
 	return (ENXIO);
@@ -1037,13 +1038,13 @@ found:
 	io->pci_dev = dev;
 	io->pci_wnd = res;
 	if (bootverbose && (io->io_paddr != (vm_paddr_t)rman_get_start(res) ||
-	    io->io_apic_id != apic_id)) {
+	    io->io_hw_apic_id != apic_id)) {
 		device_printf(dev, "pci%d:%d:%d:%d pci BAR0@%jx id %d "
-		    "MADT id %d paddr@%jx\n",
+		    "MADT id %d hw id %d paddr@%jx\n",
 		    pci_get_domain(dev), pci_get_bus(dev),
 		    pci_get_slot(dev), pci_get_function(dev),
 		    (uintmax_t)rman_get_start(res), apic_id,
-		    io->io_apic_id, (uintmax_t)io->io_paddr);
+		    io->io_apic_id, io->io_hw_apic_id, (uintmax_t)io->io_paddr);
 	}
 	mtx_unlock_spin(&icu_lock);
 	return (0);
@@ -1053,7 +1054,6 @@ static device_method_t ioapic_pci_methods[] = {
 	/* Device interface */
 	DEVMETHOD(device_probe,		ioapic_pci_probe),
 	DEVMETHOD(device_attach,	ioapic_pci_attach),
-
 	{ 0, 0 }
 };
 
@@ -1145,7 +1145,6 @@ static device_method_t apic_methods[] = {
 	DEVMETHOD(device_identify,	apic_identify),
 	DEVMETHOD(device_probe,		apic_probe),
 	DEVMETHOD(device_attach,	apic_attach),
-
 	{ 0, 0 }
 };
 

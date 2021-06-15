@@ -44,7 +44,6 @@ __FBSDID("$FreeBSD$");
  * arguments are all at the end, after the NFSPROC_T *p one.
  */
 
-#ifndef APPLEKEXT
 #include "opt_inet6.h"
 
 #include <fs/nfs/nfsport.h>
@@ -66,6 +65,7 @@ SYSCTL_INT(_vfs_nfs, OID_AUTO, dssameconn, CTLFLAG_RW,
 /*
  * Global variables
  */
+extern struct nfsstatsv1 nfsstatsv1;
 extern int nfs_numnfscbd;
 extern struct timeval nfsboottime;
 extern u_int32_t newnfs_false, newnfs_true;
@@ -82,7 +82,6 @@ int nfscl_assumeposixlocks = 1;
 int nfscl_enablecallb = 0;
 short nfsv4_cbport = NFSV4_CBPORT;
 int nfstest_openallsetattr = 0;
-#endif	/* !APPLEKEXT */
 
 #define	DIRHDSIZ	offsetof(struct dirent, d_name)
 
@@ -160,7 +159,6 @@ static int nfscl_dofflayoutio(vnode_t, struct uio *, int *, int *, int *,
     nfsv4stateid_t *, int, struct nfscldevinfo *, struct nfscllayout *,
     struct nfsclflayout *, uint64_t, uint64_t, int, int, struct mbuf *,
     struct nfsclwritedsdorpc *, struct ucred *, NFSPROC_T *);
-static struct mbuf *nfsm_copym(struct mbuf *, int, int);
 static int nfsrpc_readds(vnode_t, struct uio *, nfsv4stateid_t *, int *,
     struct nfsclds *, uint64_t, int, struct nfsfh *, int, int, int,
     struct ucred *, NFSPROC_T *);
@@ -222,23 +220,24 @@ static int nfsrpc_copyrpc(vnode_t, off_t, vnode_t, off_t, size_t *,
     struct nfsvattr *, int *, bool, int *, struct ucred *, NFSPROC_T *);
 static int nfsrpc_seekrpc(vnode_t, off_t *, nfsv4stateid_t *, bool *,
     int, struct nfsvattr *, int *, struct ucred *);
+static struct mbuf *nfsm_split(struct mbuf *, uint64_t);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
 /*
  * nfs null call from vfs.
  */
-APPLESTATIC int
+int
 nfsrpc_null(vnode_t vp, struct ucred *cred, NFSPROC_T *p)
 {
 	int error;
 	struct nfsrv_descript nfsd, *nd = &nfsd;
-	
+
 	NFSCL_REQSTART(nd, NFSPROC_NULL, vp);
 	error = nfscl_request(nd, vp, p, cred, NULL);
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -247,7 +246,7 @@ nfsrpc_null(vnode_t vp, struct ucred *cred, NFSPROC_T *p)
  * For nfs version 3 and 4, use the access rpc to check accessibility. If file
  * modes are changed on the server, accesses might still fail later.
  */
-APPLESTATIC int
+int
 nfsrpc_access(vnode_t vp, int acmode, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp)
 {
@@ -290,7 +289,7 @@ nfsrpc_access(vnode_t vp, int acmode, struct ucred *cred,
 /*
  * The actual rpc, separated out for Darwin.
  */
-APPLESTATIC int
+int
 nfsrpc_accessrpc(vnode_t vp, u_int32_t mode, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, u_int32_t *rmodep,
     void *stuff)
@@ -344,21 +343,21 @@ nfsrpc_accessrpc(vnode_t vp, u_int32_t mode, struct ucred *cred,
 	} else
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs open rpc
  */
-APPLESTATIC int
+int
 nfsrpc_open(vnode_t vp, int amode, struct ucred *cred, NFSPROC_T *p)
 {
 	struct nfsclopen *op;
 	struct nfscldeleg *dp;
 	struct nfsfh *nfhp;
 	struct nfsnode *np = VTONFS(vp);
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	u_int32_t mode, clidrev;
 	int ret, newone, error, expireret = 0, retrycnt;
 
@@ -483,7 +482,7 @@ else printf(" fhl=0\n");
 /*
  * the actual open rpc
  */
-APPLESTATIC int
+int
 nfsrpc_openrpc(struct nfsmount *nmp, vnode_t vp, u_int8_t *nfhp, int fhlen,
     u_int8_t *newfhp, int newfhlen, u_int32_t mode, struct nfsclopen *op,
     u_int8_t *name, int namelen, struct nfscldeleg **dpp,
@@ -679,14 +678,14 @@ nfsmout:
 		*dpp = ndp;
 	else if (ndp != NULL)
 		free(ndp, M_NFSCLDELEG);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * open downgrade rpc
  */
-APPLESTATIC int
+int
 nfsrpc_opendowngrade(vnode_t vp, u_int32_t mode, struct nfsclopen *op,
     struct ucred *cred, NFSPROC_T *p)
 {
@@ -696,7 +695,7 @@ nfsrpc_opendowngrade(vnode_t vp, u_int32_t mode, struct nfsclopen *op,
 
 	NFSCL_REQSTART(nd, NFSPROC_OPENDOWNGRADE, vp);
 	NFSM_BUILD(tl, u_int32_t *, NFSX_STATEID + 3 * NFSX_UNSIGNED);
-	if (NFSHASNFSV4N(VFSTONFS(vnode_mount(vp))))
+	if (NFSHASNFSV4N(VFSTONFS(vp->v_mount)))
 		*tl++ = 0;
 	else
 		*tl++ = op->nfso_stateid.seqid;
@@ -722,14 +721,14 @@ nfsrpc_opendowngrade(vnode_t vp, u_int32_t mode, struct nfsclopen *op,
 	if (error == NFSERR_STALESTATEID)
 		nfscl_initiate_recovery(op->nfso_own->nfsow_clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * V4 Close operation.
  */
-APPLESTATIC int
+int
 nfsrpc_close(vnode_t vp, int doclose, NFSPROC_T *p)
 {
 	struct nfsclclient *clp;
@@ -751,7 +750,7 @@ nfsrpc_close(vnode_t vp, int doclose, NFSPROC_T *p)
 /*
  * Close the open.
  */
-APPLESTATIC void
+void
 nfsrpc_doclose(struct nfsmount *nmp, struct nfsclopen *op, NFSPROC_T *p)
 {
 	struct nfsrv_descript nfsd, *nd = &nfsd;
@@ -848,7 +847,7 @@ nfsrpc_doclose(struct nfsmount *nmp, struct nfsclopen *op, NFSPROC_T *p)
 /*
  * The actual Close RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_closerpc(struct nfsrv_descript *nd, struct nfsmount *nmp,
     struct nfsclopen *op, struct ucred *cred, NFSPROC_T *p,
     int syscred)
@@ -880,14 +879,14 @@ nfsrpc_closerpc(struct nfsrv_descript *nd, struct nfsmount *nmp,
 	if (error == NFSERR_STALESTATEID)
 		nfscl_initiate_recovery(op->nfso_own->nfsow_clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * V4 Open Confirm RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_openconfirm(vnode_t vp, u_int8_t *nfhp, int fhlen,
     struct nfsclopen *op, struct ucred *cred, NFSPROC_T *p)
 {
@@ -896,7 +895,7 @@ nfsrpc_openconfirm(vnode_t vp, u_int8_t *nfhp, int fhlen,
 	struct nfsmount *nmp;
 	int error;
 
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (NFSHASNFSV4N(nmp))
 		return (0);		/* No confirmation for NFSv4.1. */
 	nfscl_reqstart(nd, NFSPROC_OPENCONFIRM, nmp, nfhp, fhlen, NULL, NULL,
@@ -922,7 +921,7 @@ nfsrpc_openconfirm(vnode_t vp, u_int8_t *nfhp, int fhlen,
 	if (error == NFSERR_STALESTATEID)
 		nfscl_initiate_recovery(op->nfso_own->nfsow_clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -930,9 +929,9 @@ nfsmout:
  * Do the setclientid and setclientid confirm RPCs. Called from nfs_statfs()
  * when a mount has just occurred and when the server replies NFSERR_EXPIRED.
  */
-APPLESTATIC int
+int
 nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
-    struct ucred *cred, NFSPROC_T *p)
+    bool *retokp, struct ucred *cred, NFSPROC_T *p)
 {
 	u_int32_t *tl;
 	struct nfsrv_descript nfsd;
@@ -944,27 +943,101 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 	nfsquad_t confirm;
 	u_int32_t lease;
 	static u_int32_t rev = 0;
-	struct nfsclds *dsp;
+	struct nfsclds *dsp, *odsp;
 	struct in6_addr a6;
 	struct nfsclsession *tsep;
+	struct rpc_reconupcall recon;
+	struct nfscl_reconarg *rcp;
 
 	if (nfsboottime.tv_sec == 0)
 		NFSSETBOOTTIME(nfsboottime);
-	clp->nfsc_rev = rev++;
 	if (NFSHASNFSV4N(nmp)) {
-		/*
-		 * Either there was no previous session or the
-		 * previous session has failed, so...
-		 * do an ExchangeID followed by the CreateSession.
-		 */
-		error = nfsrpc_exchangeid(nmp, clp, &nmp->nm_sockreq, 0,
-		    NFSV4EXCH_USEPNFSMDS | NFSV4EXCH_USENONPNFS, &dsp, cred, p);
-		NFSCL_DEBUG(1, "aft exch=%d\n", error);
-		if (error == 0)
+		error = NFSERR_BADSESSION;
+		odsp = dsp = NULL;
+		if (retokp != NULL) {
+			NFSLOCKMNT(nmp);
+			odsp = TAILQ_FIRST(&nmp->nm_sess);
+			NFSUNLOCKMNT(nmp);
+		}
+		if (odsp != NULL) {
+			/*
+			 * When a session already exists, first try a
+			 * CreateSession with the extant ClientID.
+			 */
+			dsp = malloc(sizeof(struct nfsclds) +
+			    odsp->nfsclds_servownlen + 1, M_NFSCLDS,
+			    M_WAITOK | M_ZERO);
+			dsp->nfsclds_expire = NFSD_MONOSEC + clp->nfsc_renew;
+			dsp->nfsclds_servownlen = odsp->nfsclds_servownlen;
+			dsp->nfsclds_sess.nfsess_clientid =
+			    odsp->nfsclds_sess.nfsess_clientid;
+			dsp->nfsclds_sess.nfsess_sequenceid =
+			    odsp->nfsclds_sess.nfsess_sequenceid;
+			dsp->nfsclds_flags = odsp->nfsclds_flags;
+			if (dsp->nfsclds_servownlen > 0)
+				memcpy(dsp->nfsclds_serverown,
+				    odsp->nfsclds_serverown,
+				    dsp->nfsclds_servownlen + 1);
+			mtx_init(&dsp->nfsclds_mtx, "nfsds", NULL, MTX_DEF);
+			mtx_init(&dsp->nfsclds_sess.nfsess_mtx, "nfssession",
+			    NULL, MTX_DEF);
+			nfscl_initsessionslots(&dsp->nfsclds_sess);
 			error = nfsrpc_createsession(nmp, &dsp->nfsclds_sess,
 			    &nmp->nm_sockreq, NULL,
 			    dsp->nfsclds_sess.nfsess_sequenceid, 1, cred, p);
+			NFSCL_DEBUG(1, "create session for extant "
+			    "ClientID=%d\n", error);
+			if (error != 0) {
+				nfscl_freenfsclds(dsp);
+				dsp = NULL;
+				/*
+				 * If *retokp is true, return any error other
+				 * than NFSERR_STALECLIENTID,
+				 * NFSERR_BADSESSION or NFSERR_STALEDONTRECOVER
+				 * so that nfscl_recover() will not loop.
+				 */
+				if (*retokp)
+					return (NFSERR_IO);
+			} else
+				*retokp = true;
+		} else if (retokp != NULL && *retokp)
+			return (NFSERR_IO);
+		if (error != 0) {
+			/*
+			 * Either there was no previous session or the
+			 * CreateSession attempt failed, so...
+			 * do an ExchangeID followed by the CreateSession.
+			 */
+			clp->nfsc_rev = rev++;
+			error = nfsrpc_exchangeid(nmp, clp, &nmp->nm_sockreq, 0,
+			    NFSV4EXCH_USEPNFSMDS | NFSV4EXCH_USENONPNFS, &dsp,
+			    cred, p);
+			NFSCL_DEBUG(1, "aft exch=%d\n", error);
+			if (error == 0)
+				error = nfsrpc_createsession(nmp,
+				    &dsp->nfsclds_sess, &nmp->nm_sockreq, NULL,
+				    dsp->nfsclds_sess.nfsess_sequenceid, 1,
+				    cred, p);
+			NFSCL_DEBUG(1, "aft createsess=%d\n", error);
+		}
 		if (error == 0) {
+			/*
+			 * If the session supports a backchannel, set up
+			 * the BindConnectionToSession call in the krpc
+			 * so that it is done on a reconnection.
+			 */
+			if (nfscl_enablecallb != 0 && nfs_numnfscbd > 0) {
+				rcp = mem_alloc(sizeof(*rcp));
+				rcp->minorvers = nmp->nm_minorvers;
+				memcpy(rcp->sessionid,
+				    dsp->nfsclds_sess.nfsess_sessionid,
+				    NFSX_V4SESSIONID);
+				recon.call = nfsrpc_bindconnsess;
+				recon.arg = rcp;
+				CLNT_CONTROL(nmp->nm_client, CLSET_RECONUPCALL,
+				    &recon);
+			}
+
 			NFSLOCKMNT(nmp);
 			/*
 			 * The old sessions cannot be safely free'd
@@ -988,9 +1061,8 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 				wakeup(&tsep->nfsess_slots);
 			wakeup(&nmp->nm_sess);
 			NFSUNLOCKMNT(nmp);
-		} else
+		} else if (dsp != NULL)
 			nfscl_freenfsclds(dsp);
-		NFSCL_DEBUG(1, "aft createsess=%d\n", error);
 		if (error == 0 && reclaim == 0) {
 			error = nfsrpc_reclaimcomplete(nmp, cred, p);
 			NFSCL_DEBUG(1, "aft reclaimcomp=%d\n", error);
@@ -1000,7 +1072,9 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 				error = 0;
 		}
 		return (error);
-	}
+	} else if (retokp != NULL && *retokp)
+		return (NFSERR_IO);
+	clp->nfsc_rev = rev++;
 
 	/*
 	 * Allocate a single session structure for NFSv4.0, because some of
@@ -1077,7 +1151,7 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 	    tsep->nfsess_clientid.lval[1] = *tl++;
 	    confirm.lval[0] = *tl++;
 	    confirm.lval[1] = *tl;
-	    mbuf_freem(nd->nd_mrep);
+	    m_freem(nd->nd_mrep);
 	    nd->nd_mrep = NULL;
 
 	    /*
@@ -1095,7 +1169,7 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 		cred, NFS_PROG, NFS_VER4, NULL, 1, NULL, NULL);
 	    if (error)
 		return (error);
-	    mbuf_freem(nd->nd_mrep);
+	    m_freem(nd->nd_mrep);
 	    nd->nd_mrep = NULL;
 	    if (nd->nd_repstat == 0) {
 		nfscl_reqstart(nd, NFSPROC_GETATTR, nmp, nmp->nm_fh,
@@ -1123,21 +1197,21 @@ nfsrpc_setclient(struct nfsmount *nmp, struct nfsclclient *clp, int reclaim,
 	}
 	error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs getattr call.
  */
-APPLESTATIC int
+int
 nfsrpc_getattr(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
     struct nfsvattr *nap, void *stuff)
 {
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	int error;
 	nfsattrbit_t attrbits;
-	
+
 	NFSCL_REQSTART(nd, NFSPROC_GETATTR, vp);
 	if (nd->nd_flag & ND_NFSV4) {
 		NFSGETATTR_ATTRBIT(&attrbits);
@@ -1150,14 +1224,14 @@ nfsrpc_getattr(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
 		error = nfsm_loadattr(nd, nap);
 	else
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
- * nfs getattr call with non-vnode arguemnts.
+ * nfs getattr call with non-vnode arguments.
  */
-APPLESTATIC int
+int
 nfsrpc_getattrnovp(struct nfsmount *nmp, u_int8_t *fhp, int fhlen, int syscred,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, u_int64_t *xidp,
     uint32_t *leasep)
@@ -1165,7 +1239,7 @@ nfsrpc_getattrnovp(struct nfsmount *nmp, u_int8_t *fhp, int fhlen, int syscred,
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	int error, vers = NFS_VER2;
 	nfsattrbit_t attrbits;
-	
+
 	nfscl_reqstart(nd, NFSPROC_GETATTR, nmp, fhp, fhlen, NULL, NULL, 0, 0);
 	if (nd->nd_flag & ND_NFSV4) {
 		vers = NFS_VER4;
@@ -1190,21 +1264,21 @@ nfsrpc_getattrnovp(struct nfsmount *nmp, u_int8_t *fhp, int fhlen, int syscred,
 			error = nfsm_loadattr(nd, nap);
 	} else
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * Do an nfs setattr operation.
  */
-APPLESTATIC int
+int
 nfsrpc_setattr(vnode_t vp, struct vattr *vap, NFSACL_T *aclp,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *rnap, int *attrflagp,
     void *stuff)
 {
 	int error, expireret = 0, openerr, retrycnt;
 	u_int32_t clidrev = 0, mode;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsfh *nfhp;
 	nfsv4stateid_t stateid;
 	void *lckp;
@@ -1315,7 +1389,7 @@ nfsrpc_setattrrpc(vnode_t vp, struct vattr *vap,
 		error = nfsrv_getattrbits(nd, &attrbits, NULL, NULL);
 	if (!(nd->nd_flag & ND_NFSV3) && !nd->nd_repstat && !error)
 		error = nfscl_postop_attr(nd, rnap, attrflagp, stuff);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 	return (error);
@@ -1324,7 +1398,7 @@ nfsrpc_setattrrpc(vnode_t vp, struct vattr *vap,
 /*
  * nfs lookup rpc
  */
-APPLESTATIC int
+int
 nfsrpc_lookup(vnode_t dvp, char *name, int len, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *dnap, struct nfsvattr *nap,
     struct nfsfh **nfhpp, int *attrflagp, int *dattrflagp, void *stuff)
@@ -1341,7 +1415,7 @@ nfsrpc_lookup(vnode_t dvp, char *name, int len, struct ucred *cred,
 	*dattrflagp = 0;
 	if (vnode_vtype(dvp) != VDIR)
 		return (ENOTDIR);
-	nmp = VFSTONFS(vnode_mount(dvp));
+	nmp = VFSTONFS(dvp->v_mount);
 	if (len > NFS_MAXNAMLEN)
 		return (ENAMETOOLONG);
 	if (NFSHASNFSV4(nmp) && len == 1 &&
@@ -1387,7 +1461,7 @@ nfsrpc_lookup(vnode_t dvp, char *name, int len, struct ucred *cred,
 		    nfhp->nfh_len = np->n_fhp->nfh_len;
 		    NFSBCOPY(np->n_fhp->nfh_fh, nfhp->nfh_fh, nfhp->nfh_len);
 		    *nfhpp = nfhp;
-		    mbuf_freem(nd->nd_mrep);
+		    m_freem(nd->nd_mrep);
 		    return (0);
 		}
 		if (nd->nd_flag & ND_NFSV3)
@@ -1418,7 +1492,7 @@ nfsrpc_lookup(vnode_t dvp, char *name, int len, struct ucred *cred,
 	if ((nd->nd_flag & ND_NFSV3) && !error)
 		error = nfscl_postop_attr(nd, dnap, dattrflagp, stuff);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	if (!error && nd->nd_repstat)
 		error = nd->nd_repstat;
 	return (error);
@@ -1427,7 +1501,7 @@ nfsmout:
 /*
  * Do a readlink rpc.
  */
-APPLESTATIC int
+int
 nfsrpc_readlink(vnode_t vp, struct uio *uiop, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, void *stuff)
 {
@@ -1476,20 +1550,20 @@ nfsrpc_readlink(vnode_t vp, struct uio *uiop, struct ucred *cred,
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * Read operation.
  */
-APPLESTATIC int
+int
 nfsrpc_read(vnode_t vp, struct uio *uiop, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, void *stuff)
 {
 	int error, expireret = 0, retrycnt;
 	u_int32_t clidrev = 0;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *np = VTONFS(vp);
 	struct ucred *newcred;
 	struct nfsfh *nfhp = NULL;
@@ -1555,13 +1629,13 @@ nfsrpc_readrpc(vnode_t vp, struct uio *uiop, struct ucred *cred,
 	u_int32_t *tl;
 	int error = 0, len, retlen, tsiz, eof = 0;
 	struct nfsrv_descript nfsd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsrv_descript *nd = &nfsd;
 	int rsize;
 	off_t tmp_off;
 
 	*attrflagp = 0;
-	tsiz = uio_uio_resid(uiop);
+	tsiz = uiop->uio_resid;
 	tmp_off = uiop->uio_offset + tsiz;
 	NFSLOCKMNT(nmp);
 	if (tmp_off > nmp->nm_maxfilesize || tmp_off < uiop->uio_offset) {
@@ -1617,7 +1691,7 @@ nfsrpc_readrpc(vnode_t vp, struct uio *uiop, struct ucred *cred,
 		error = nfsm_mbufuio(nd, uiop, retlen);
 		if (error)
 			goto nfsmout;
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 		nd->nd_mrep = NULL;
 		tsiz -= retlen;
 		if (!(nd->nd_flag & ND_NFSV2)) {
@@ -1629,7 +1703,7 @@ nfsrpc_readrpc(vnode_t vp, struct uio *uiop, struct ucred *cred,
 	return (0);
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -1641,14 +1715,14 @@ nfsmout:
  * the recovery thread could get stuck waiting for the buffer and recovery
  * will then deadlock.
  */
-APPLESTATIC int
+int
 nfsrpc_write(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp,
     void *stuff, int called_from_strategy)
 {
 	int error, expireret = 0, retrycnt, nostateid;
 	u_int32_t clidrev = 0;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *np = VTONFS(vp);
 	struct ucred *newcred;
 	struct nfsfh *nfhp = NULL;
@@ -1725,7 +1799,7 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, void *stuff)
 {
 	u_int32_t *tl;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *np = VTONFS(vp);
 	int error = 0, len, tsiz, rlen, commit, committed = NFSWRITE_FILESYNC;
 	int wccflag = 0, wsize;
@@ -1737,7 +1811,7 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
 
 	KASSERT(uiop->uio_iovcnt == 1, ("nfs: writerpc iovcnt > 1"));
 	*attrflagp = 0;
-	tsiz = uio_uio_resid(uiop);
+	tsiz = uiop->uio_resid;
 	tmp_off = uiop->uio_offset + tsiz;
 	NFSLOCKMNT(nmp);
 	if (tmp_off > nmp->nm_maxfilesize || tmp_off < uiop->uio_offset) {
@@ -1783,7 +1857,6 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
 			x = txdr_unsigned(len);
 			*tl++ = x;      /* total to this offset */
 			*tl = x;        /* size of this write */
-
 		}
 		nfsm_uiombuf(nd, uiop, len);
 		/*
@@ -1818,13 +1891,14 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
 		if (nd->nd_repstat) {
 			/*
 			 * In case the rpc gets retried, roll
-			 * the uio fileds changed by nfsm_uiombuf()
+			 * the uio fields changed by nfsm_uiombuf()
 			 * back.
 			 */
 			uiop->uio_offset -= len;
-			uio_uio_resid_add(uiop, len);
-			uio_iov_base_add(uiop, -len);
-			uio_iov_len_add(uiop, len);
+			uiop->uio_resid += len;
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base - len;
+			uiop->uio_iov->iov_len += len;
 		}
 		if (nd->nd_flag & (ND_NFSV3 | ND_NFSV4)) {
 			error = nfscl_wcc_data(nd, vp, nap, attrflagp,
@@ -1842,10 +1916,12 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
 					goto nfsmout;
 				} else if (rlen < len) {
 					backup = len - rlen;
-					uio_iov_base_add(uiop, -(backup));
-					uio_iov_len_add(uiop, backup);
+					uiop->uio_iov->iov_base =
+					    (char *)uiop->uio_iov->iov_base -
+					    backup;
+					uiop->uio_iov->iov_len += backup;
 					uiop->uio_offset -= backup;
-					uio_uio_resid_add(uiop, backup);
+					uiop->uio_resid += backup;
 					len = rlen;
 				}
 				commit = fxdr_unsigned(int, *tl++);
@@ -1885,13 +1961,13 @@ nfsrpc_writerpc(vnode_t vp, struct uio *uiop, int *iomode,
 		if (error)
 			goto nfsmout;
 		NFSWRITERPC_SETTIME(wccflag, np, nap, (nd->nd_flag & ND_NFSV4));
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 		nd->nd_mrep = NULL;
 		tsiz -= len;
 	}
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	*iomode = committed;
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
@@ -1903,7 +1979,7 @@ nfsmout:
  * For NFS v2 this is a kludge. Use a create rpc but with the IFMT bits of the
  * mode set to specify the file type and the size field for rdev.
  */
-APPLESTATIC int
+int
 nfsrpc_mknod(vnode_t dvp, char *name, int namelen, struct vattr *vap,
     u_int32_t rdev, enum vtype vtyp, struct ucred *cred, NFSPROC_T *p,
     struct nfsvattr *dnap, struct nfsvattr *nnap, struct nfsfh **nfhpp,
@@ -1974,7 +2050,7 @@ nfsrpc_mknod(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 	if (!error && nd->nd_repstat)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -1983,7 +2059,7 @@ nfsmout:
  * Mostly just call the approriate routine. (I separated out v4, so that
  * error recovery wouldn't be as difficult.)
  */
-APPLESTATIC int
+int
 nfsrpc_create(vnode_t dvp, char *name, int namelen, struct vattr *vap,
     nfsquad_t cverf, int fmode, struct ucred *cred, NFSPROC_T *p,
     struct nfsvattr *dnap, struct nfsvattr *nnap, struct nfsfh **nfhpp,
@@ -1992,7 +2068,7 @@ nfsrpc_create(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 	int error = 0, newone, expireret = 0, retrycnt, unlocked;
 	struct nfsclowner *owp;
 	struct nfscldeleg *dp;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(dvp));
+	struct nfsmount *nmp = VFSTONFS(dvp->v_mount);
 	u_int32_t clidrev;
 
 	if (NFSHASNFSV4(nmp)) {
@@ -2098,7 +2174,7 @@ nfsrpc_createv23(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 	if (nd->nd_repstat != 0 && error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -2312,7 +2388,7 @@ nfsrpc_createv4(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 		    (owp->nfsow_clp->nfsc_flags & NFSCLFLAGS_GOTDELEG) &&
 		    !error && dp == NULL) {
 		    do {
-			ret = nfsrpc_openrpc(VFSTONFS(vnode_mount(dvp)), dvp,
+			ret = nfsrpc_openrpc(VFSTONFS(dvp->v_mount), dvp,
 			    np->n_fhp->nfh_fh, np->n_fhp->nfh_len,
 			    nfhp->nfh_fh, nfhp->nfh_len,
 			    (NFSV4OPEN_ACCESSWRITE | NFSV4OPEN_ACCESSREAD), op,
@@ -2343,14 +2419,14 @@ nfsmout:
 		*dpp = dp;
 	else if (dp != NULL)
 		free(dp, M_NFSCLDELEG);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * Nfs remove rpc
  */
-APPLESTATIC int
+int
 nfsrpc_remove(vnode_t dvp, char *name, int namelen, vnode_t vp,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *dnap, int *dattrflagp,
     void *dstuff)
@@ -2365,7 +2441,7 @@ nfsrpc_remove(vnode_t dvp, char *name, int namelen, vnode_t vp,
 	*dattrflagp = 0;
 	if (namelen > NFS_MAXNAMLEN)
 		return (ENAMETOOLONG);
-	nmp = VFSTONFS(vnode_mount(dvp));
+	nmp = VFSTONFS(dvp->v_mount);
 tryagain:
 	if (NFSHASNFSV4(nmp) && ret == 0) {
 		ret = nfscl_removedeleg(vp, p, &dstateid);
@@ -2404,7 +2480,7 @@ tryagain:
 			 * If the Delegreturn failed, try again without
 			 * it. The server will Recall, as required.
 			 */
-			mbuf_freem(nd->nd_mrep);
+			m_freem(nd->nd_mrep);
 			goto tryagain;
 		}
 		for (i = 0; i < (ret * 2); i++) {
@@ -2420,14 +2496,14 @@ tryagain:
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * Do an nfs rename rpc.
  */
-APPLESTATIC int
+int
 nfsrpc_rename(vnode_t fdvp, vnode_t fvp, char *fnameptr, int fnamelen,
     vnode_t tdvp, vnode_t tvp, char *tnameptr, int tnamelen, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *fnap, struct nfsvattr *tnap,
@@ -2440,10 +2516,10 @@ nfsrpc_rename(vnode_t fdvp, vnode_t fvp, char *fnameptr, int fnamelen,
 	nfsattrbit_t attrbits;
 	nfsv4stateid_t fdstateid, tdstateid;
 	int error = 0, ret = 0, gottd = 0, gotfd = 0, i;
-	
+
 	*fattrflagp = 0;
 	*tattrflagp = 0;
-	nmp = VFSTONFS(vnode_mount(fdvp));
+	nmp = VFSTONFS(fdvp->v_mount);
 	if (fnamelen > NFS_MAXNAMLEN || tnamelen > NFS_MAXNAMLEN)
 		return (ENAMETOOLONG);
 tryagain:
@@ -2532,7 +2608,7 @@ tryagain:
 			 * If the Delegreturn failed, try again without
 			 * it. The server will Recall, as required.
 			 */
-			mbuf_freem(nd->nd_mrep);
+			m_freem(nd->nd_mrep);
 			goto tryagain;
 		}
 		for (i = 0; i < (ret * 2); i++) {
@@ -2548,7 +2624,7 @@ tryagain:
 				     * If ret > 1, the first iteration of this
 				     * loop is the second DelegReturn result.
 				     */
-				    mbuf_freem(nd->nd_mrep);
+				    m_freem(nd->nd_mrep);
 				    goto tryagain;
 				} else {
 				    nd->nd_flag |= ND_NOMOREDATA;
@@ -2578,14 +2654,14 @@ tryagain:
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs hard link create rpc
  */
-APPLESTATIC int
+int
 nfsrpc_link(vnode_t dvp, vnode_t vp, char *name, int namelen,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *dnap,
     struct nfsvattr *nap, int *attrflagp, int *dattrflagp, void *dstuff)
@@ -2641,14 +2717,14 @@ nfsrpc_link(vnode_t dvp, vnode_t vp, char *name, int namelen,
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs symbolic link create rpc
  */
-APPLESTATIC int
+int
 nfsrpc_symlink(vnode_t dvp, char *name, int namelen, const char *target,
     struct vattr *vap, struct ucred *cred, NFSPROC_T *p, struct nfsvattr *dnap,
     struct nfsvattr *nnap, struct nfsfh **nfhpp, int *attrflagp,
@@ -2662,7 +2738,7 @@ nfsrpc_symlink(vnode_t dvp, char *name, int namelen, const char *target,
 	*nfhpp = NULL;
 	*attrflagp = 0;
 	*dattrflagp = 0;
-	nmp = VFSTONFS(vnode_mount(dvp));
+	nmp = VFSTONFS(dvp->v_mount);
 	slen = strlen(target);
 	if (slen > NFS_MAXPATHLEN || namelen > NFS_MAXNAMLEN)
 		return (ENAMETOOLONG);
@@ -2693,7 +2769,7 @@ nfsrpc_symlink(vnode_t dvp, char *name, int namelen, const char *target,
 	}
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	/*
 	 * Kludge: Map EEXIST => 0 assuming that it is a reply to a retry.
 	 * Only do this if vfs.nfs.ignore_eexist is set.
@@ -2709,7 +2785,7 @@ nfsrpc_symlink(vnode_t dvp, char *name, int namelen, const char *target,
 /*
  * nfs make dir rpc
  */
-APPLESTATIC int
+int
 nfsrpc_mkdir(vnode_t dvp, char *name, int namelen, struct vattr *vap,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *dnap,
     struct nfsvattr *nnap, struct nfsfh **nfhpp, int *attrflagp,
@@ -2725,7 +2801,7 @@ nfsrpc_mkdir(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 	*nfhpp = NULL;
 	*attrflagp = 0;
 	*dattrflagp = 0;
-	nmp = VFSTONFS(vnode_mount(dvp));
+	nmp = VFSTONFS(dvp->v_mount);
 	fhp = VTONFS(dvp)->n_fhp;
 	if (namelen > NFS_MAXNAMLEN)
 		return (ENAMETOOLONG);
@@ -2775,7 +2851,7 @@ nfsrpc_mkdir(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	/*
 	 * Kludge: Map EEXIST => 0 assuming that it is a reply to a retry.
 	 * Only do this if vfs.nfs.ignore_eexist is set.
@@ -2791,7 +2867,7 @@ nfsmout:
 /*
  * nfs remove directory call
  */
-APPLESTATIC int
+int
 nfsrpc_rmdir(vnode_t dvp, char *name, int namelen, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *dnap, int *dattrflagp, void *dstuff)
 {
@@ -2810,7 +2886,7 @@ nfsrpc_rmdir(vnode_t dvp, char *name, int namelen, struct ucred *cred,
 		error = nfscl_wcc_data(nd, dvp, dnap, dattrflagp, NULL, dstuff);
 	if (nd->nd_repstat && !error)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	/*
 	 * Kludge: Map ENOENT => 0 assuming that you have a reply to a retry.
 	 */
@@ -2847,7 +2923,7 @@ nfsrpc_rmdir(vnode_t dvp, char *name, int namelen, struct ucred *cred,
  * and returns the one for the next entry after this directory block in
  * there, as well.
  */
-APPLESTATIC int
+int
 nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp,
     int *eofp, void *stuff)
@@ -2856,7 +2932,7 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	struct dirent *dp = NULL;
 	u_int32_t *tl;
 	nfsquad_t cookie, ncookie;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *dnp = VTONFS(vp);
 	struct nfsvattr nfsva;
 	struct nfsrv_descript nfsd, *nd = &nfsd;
@@ -2869,7 +2945,7 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	size_t tresid;
 
 	KASSERT(uiop->uio_iovcnt == 1 &&
-	    (uio_uio_resid(uiop) & (DIRBLKSIZ - 1)) == 0,
+	    (uiop->uio_resid & (DIRBLKSIZ - 1)) == 0,
 	    ("nfs readdirrpc bad uio"));
 	ncookie.lval[0] = ncookie.lval[1] = 0;
 	/*
@@ -2879,13 +2955,13 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	 * will never make readsize > nm_readdirsize.
 	 */
 	readsize = nmp->nm_readdirsize;
-	if (readsize > uio_uio_resid(uiop))
-		readsize = uio_uio_resid(uiop) + DIRBLKSIZ;
+	if (readsize > uiop->uio_resid)
+		readsize = uiop->uio_resid + DIRBLKSIZ;
 
 	*attrflagp = 0;
 	if (eofp)
 		*eofp = 0;
-	tresid = uio_uio_resid(uiop);
+	tresid = uiop->uio_resid;
 	cookie.lval[0] = cookiep->nfsuquad[0];
 	cookie.lval[1] = cookiep->nfsuquad[1];
 	nd->nd_mrep = NULL;
@@ -2976,11 +3052,11 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			} else {
 			    error = nd->nd_repstat;
 			}
-			mbuf_freem(nd->nd_mrep);
+			m_freem(nd->nd_mrep);
 			if (error)
 			    return (error);
 			nd->nd_mrep = NULL;
-			dp = (struct dirent *)uio_iov_base(uiop);
+			dp = (struct dirent *)uiop->uio_iov->iov_base;
 			dp->d_pad0 = dp->d_pad1 = 0;
 			dp->d_off = 0;
 			dp->d_type = DT_DIR;
@@ -2996,11 +3072,12 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			*tl++ = 0;
 			*tl = 0;
 			blksiz += dp->d_reclen;
-			uio_uio_resid_add(uiop, -(dp->d_reclen));
+			uiop->uio_resid -= dp->d_reclen;
 			uiop->uio_offset += dp->d_reclen;
-			uio_iov_base_add(uiop, dp->d_reclen);
-			uio_iov_len_add(uiop, -(dp->d_reclen));
-			dp = (struct dirent *)uio_iov_base(uiop);
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base + dp->d_reclen;
+			uiop->uio_iov->iov_len -= dp->d_reclen;
+			dp = (struct dirent *)uiop->uio_iov->iov_base;
 			dp->d_pad0 = dp->d_pad1 = 0;
 			dp->d_off = 0;
 			dp->d_type = DT_DIR;
@@ -3017,16 +3094,16 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			*tl++ = 0;
 			*tl = 0;
 			blksiz += dp->d_reclen;
-			uio_uio_resid_add(uiop, -(dp->d_reclen));
+			uiop->uio_resid -= dp->d_reclen;
 			uiop->uio_offset += dp->d_reclen;
-			uio_iov_base_add(uiop, dp->d_reclen);
-			uio_iov_len_add(uiop, -(dp->d_reclen));
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base + dp->d_reclen;
+			uiop->uio_iov->iov_len -= dp->d_reclen;
 		}
 		NFSSETBIT_ATTRBIT(&attrbits, NFSATTRBIT_RDATTRERROR);
 	} else {
 		reqsize = 5 * NFSX_UNSIGNED;
 	}
-
 
 	/*
 	 * Loop around doing readdir rpc's of size readsize.
@@ -3087,7 +3164,7 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 		more_dirs = fxdr_unsigned(int, *tl);
 		if (!more_dirs)
 			tryformoredirs = 0;
-	
+
 		/* loop through the dir entries, doctoring them to 4bsd form */
 		while (more_dirs && bigenough) {
 			if (nd->nd_flag & ND_NFSV4) {
@@ -3115,19 +3192,20 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				tlen += 8;  /* To ensure null termination. */
 			left = DIRBLKSIZ - blksiz;
 			if (_GENERIC_DIRLEN(len) + NFSX_HYPER > left) {
-				NFSBZERO(uio_iov_base(uiop), left);
+				NFSBZERO(uiop->uio_iov->iov_base, left);
 				dp->d_reclen += left;
-				uio_iov_base_add(uiop, left);
-				uio_iov_len_add(uiop, -(left));
-				uio_uio_resid_add(uiop, -(left));
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + left;
+				uiop->uio_iov->iov_len -= left;
+				uiop->uio_resid -= left;
 				uiop->uio_offset += left;
 				blksiz = 0;
 			}
 			if (_GENERIC_DIRLEN(len) + NFSX_HYPER >
-			    uio_uio_resid(uiop))
+			    uiop->uio_resid)
 				bigenough = 0;
 			if (bigenough) {
-				dp = (struct dirent *)uio_iov_base(uiop);
+				dp = (struct dirent *)uiop->uio_iov->iov_base;
 				dp->d_pad0 = dp->d_pad1 = 0;
 				dp->d_off = 0;
 				dp->d_namlen = len;
@@ -3137,21 +3215,24 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				blksiz += dp->d_reclen;
 				if (blksiz == DIRBLKSIZ)
 					blksiz = 0;
-				uio_uio_resid_add(uiop, -(DIRHDSIZ));
+				uiop->uio_resid -= DIRHDSIZ;
 				uiop->uio_offset += DIRHDSIZ;
-				uio_iov_base_add(uiop, DIRHDSIZ);
-				uio_iov_len_add(uiop, -(DIRHDSIZ));
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + DIRHDSIZ;
+				uiop->uio_iov->iov_len -= DIRHDSIZ;
 				error = nfsm_mbufuio(nd, uiop, len);
 				if (error)
 					goto nfsmout;
-				cp = uio_iov_base(uiop);
+				cp = uiop->uio_iov->iov_base;
 				tlen -= len;
 				NFSBZERO(cp, tlen);
 				cp += tlen;	/* points to cookie storage */
 				tl2 = (u_int32_t *)cp;
-				uio_iov_base_add(uiop, (tlen + NFSX_HYPER));
-				uio_iov_len_add(uiop, -(tlen + NFSX_HYPER));
-				uio_uio_resid_add(uiop, -(tlen + NFSX_HYPER));
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + tlen +
+				    NFSX_HYPER;
+				uiop->uio_iov->iov_len -= tlen + NFSX_HYPER;
+				uiop->uio_resid -= tlen + NFSX_HYPER;
 				uiop->uio_offset += (tlen + NFSX_HYPER);
 			} else {
 				error = nfsm_advance(nd, NFSM_RNDUP(len), -1);
@@ -3225,7 +3306,7 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 					goto nfsmout;
 			}
 		}
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 		nd->nd_mrep = NULL;
 	}
 	/*
@@ -3234,11 +3315,12 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	 */
 	if (blksiz > 0) {
 		left = DIRBLKSIZ - blksiz;
-		NFSBZERO(uio_iov_base(uiop), left);
+		NFSBZERO(uiop->uio_iov->iov_base, left);
 		dp->d_reclen += left;
-		uio_iov_base_add(uiop, left);
-		uio_iov_len_add(uiop, -(left));
-		uio_uio_resid_add(uiop, -(left));
+		uiop->uio_iov->iov_base = (char *)uiop->uio_iov->iov_base +
+		    left;
+		uiop->uio_iov->iov_len -= left;
+		uiop->uio_resid -= left;
 		uiop->uio_offset += left;
 	}
 
@@ -3249,7 +3331,7 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	 * Otherwise, return the eof flag from the server.
 	 */
 	if (eofp) {
-		if (tresid == ((size_t)(uio_uio_resid(uiop))))
+		if (tresid == ((size_t)(uiop->uio_resid)))
 			*eofp = 1;
 		else if (!bigenough)
 			*eofp = 0;
@@ -3260,23 +3342,24 @@ nfsrpc_readdir(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	/*
 	 * Add extra empty records to any remaining DIRBLKSIZ chunks.
 	 */
-	while (uio_uio_resid(uiop) > 0 && uio_uio_resid(uiop) != tresid) {
-		dp = (struct dirent *)uio_iov_base(uiop);
+	while (uiop->uio_resid > 0 && uiop->uio_resid != tresid) {
+		dp = (struct dirent *)uiop->uio_iov->iov_base;
 		NFSBZERO(dp, DIRBLKSIZ);
 		dp->d_type = DT_UNKNOWN;
 		tl = (u_int32_t *)&dp->d_name[4];
 		*tl++ = cookie.lval[0];
 		*tl = cookie.lval[1];
 		dp->d_reclen = DIRBLKSIZ;
-		uio_iov_base_add(uiop, DIRBLKSIZ);
-		uio_iov_len_add(uiop, -(DIRBLKSIZ));
-		uio_uio_resid_add(uiop, -(DIRBLKSIZ));
+		uiop->uio_iov->iov_base = (char *)uiop->uio_iov->iov_base +
+		    DIRBLKSIZ;
+		uiop->uio_iov->iov_len -= DIRBLKSIZ;
+		uiop->uio_resid -= DIRBLKSIZ;
 		uiop->uio_offset += DIRBLKSIZ;
 	}
 
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -3286,7 +3369,7 @@ nfsmout:
  * (Also used for NFS V4 when mount flag set.)
  * (ditto above w.r.t. multiple of DIRBLKSIZ, etc.)
  */
-APPLESTATIC int
+int
 nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp,
     int *eofp, void *stuff)
@@ -3298,7 +3381,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	struct nameidata nami, *ndp = &nami;
 	struct componentname *cnp = &ndp->ni_cnd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *dnp = VTONFS(vp), *np;
 	struct nfsvattr nfsva;
 	struct nfsfh *nfhp;
@@ -3315,7 +3398,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	struct timespec dctime;
 
 	KASSERT(uiop->uio_iovcnt == 1 &&
-	    (uio_uio_resid(uiop) & (DIRBLKSIZ - 1)) == 0,
+	    (uiop->uio_resid & (DIRBLKSIZ - 1)) == 0,
 	    ("nfs readdirplusrpc bad uio"));
 	ncookie.lval[0] = ncookie.lval[1] = 0;
 	timespecclear(&dctime);
@@ -3326,7 +3409,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	nd->nd_mrep = NULL;
 	cookie.lval[0] = cookiep->nfsuquad[0];
 	cookie.lval[1] = cookiep->nfsuquad[1];
-	tresid = uio_uio_resid(uiop);
+	tresid = uiop->uio_resid;
 
 	/*
 	 * For NFSv4, first create the "." and ".." entries.
@@ -3413,11 +3496,11 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			} else {
 			    error = nd->nd_repstat;
 			}
-			mbuf_freem(nd->nd_mrep);
+			m_freem(nd->nd_mrep);
 			if (error)
 			    return (error);
 			nd->nd_mrep = NULL;
-			dp = (struct dirent *)uio_iov_base(uiop);
+			dp = (struct dirent *)uiop->uio_iov->iov_base;
 			dp->d_pad0 = dp->d_pad1 = 0;
 			dp->d_off = 0;
 			dp->d_type = DT_DIR;
@@ -3433,11 +3516,12 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			*tl++ = 0;
 			*tl = 0;
 			blksiz += dp->d_reclen;
-			uio_uio_resid_add(uiop, -(dp->d_reclen));
+			uiop->uio_resid -= dp->d_reclen;
 			uiop->uio_offset += dp->d_reclen;
-			uio_iov_base_add(uiop, dp->d_reclen);
-			uio_iov_len_add(uiop, -(dp->d_reclen));
-			dp = (struct dirent *)uio_iov_base(uiop);
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base + dp->d_reclen;
+			uiop->uio_iov->iov_len -= dp->d_reclen;
+			dp = (struct dirent *)uiop->uio_iov->iov_base;
 			dp->d_pad0 = dp->d_pad1 = 0;
 			dp->d_off = 0;
 			dp->d_type = DT_DIR;
@@ -3454,15 +3538,19 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 			*tl++ = 0;
 			*tl = 0;
 			blksiz += dp->d_reclen;
-			uio_uio_resid_add(uiop, -(dp->d_reclen));
+			uiop->uio_resid -= dp->d_reclen;
 			uiop->uio_offset += dp->d_reclen;
-			uio_iov_base_add(uiop, dp->d_reclen);
-			uio_iov_len_add(uiop, -(dp->d_reclen));
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base + dp->d_reclen;
+			uiop->uio_iov->iov_len -= dp->d_reclen;
 		}
 		NFSREADDIRPLUS_ATTRBIT(&attrbits);
 		if (gotmnton)
 			NFSSETBIT_ATTRBIT(&attrbits,
 			    NFSATTRBIT_MOUNTEDONFILEID);
+		if (!NFSISSET_ATTRBIT(&dnp->n_vattr.na_suppattr,
+		    NFSATTRBIT_TIMECREATE))
+			NFSCLRBIT_ATTRBIT(&attrbits, NFSATTRBIT_TIMECREATE);
 	}
 
 	/*
@@ -3512,7 +3600,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 		more_dirs = fxdr_unsigned(int, *tl);
 		if (!more_dirs)
 			tryformoredirs = 0;
-	
+
 		/* loop through the dir entries, doctoring them to 4bsd form */
 		while (more_dirs && bigenough) {
 			NFSM_DISSECT(tl, u_int32_t *, 3 * NFSX_UNSIGNED);
@@ -3533,19 +3621,20 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				tlen += 8;  /* To ensure null termination. */
 			left = DIRBLKSIZ - blksiz;
 			if (_GENERIC_DIRLEN(len) + NFSX_HYPER > left) {
-				NFSBZERO(uio_iov_base(uiop), left);
+				NFSBZERO(uiop->uio_iov->iov_base, left);
 				dp->d_reclen += left;
-				uio_iov_base_add(uiop, left);
-				uio_iov_len_add(uiop, -(left));
-				uio_uio_resid_add(uiop, -(left));
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + left;
+				uiop->uio_iov->iov_len -= left;
+				uiop->uio_resid -= left;
 				uiop->uio_offset += left;
 				blksiz = 0;
 			}
 			if (_GENERIC_DIRLEN(len) + NFSX_HYPER >
-			    uio_uio_resid(uiop))
+			    uiop->uio_resid)
 				bigenough = 0;
 			if (bigenough) {
-				dp = (struct dirent *)uio_iov_base(uiop);
+				dp = (struct dirent *)uiop->uio_iov->iov_base;
 				dp->d_pad0 = dp->d_pad1 = 0;
 				dp->d_off = 0;
 				dp->d_namlen = len;
@@ -3555,17 +3644,18 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				blksiz += dp->d_reclen;
 				if (blksiz == DIRBLKSIZ)
 					blksiz = 0;
-				uio_uio_resid_add(uiop, -(DIRHDSIZ));
+				uiop->uio_resid -= DIRHDSIZ;
 				uiop->uio_offset += DIRHDSIZ;
-				uio_iov_base_add(uiop, DIRHDSIZ);
-				uio_iov_len_add(uiop, -(DIRHDSIZ));
-				cnp->cn_nameptr = uio_iov_base(uiop);
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + DIRHDSIZ;
+				uiop->uio_iov->iov_len -= DIRHDSIZ;
+				cnp->cn_nameptr = uiop->uio_iov->iov_base;
 				cnp->cn_namelen = len;
 				NFSCNHASHZERO(cnp);
 				error = nfsm_mbufuio(nd, uiop, len);
 				if (error)
 					goto nfsmout;
-				cp = uio_iov_base(uiop);
+				cp = uiop->uio_iov->iov_base;
 				tlen -= len;
 				NFSBZERO(cp, tlen);
 				cp += tlen;	/* points to cookie storage */
@@ -3575,9 +3665,11 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 					isdotdot = 1;
 				else
 					isdotdot = 0;
-				uio_iov_base_add(uiop, (tlen + NFSX_HYPER));
-				uio_iov_len_add(uiop, -(tlen + NFSX_HYPER));
-				uio_uio_resid_add(uiop, -(tlen + NFSX_HYPER));
+				uiop->uio_iov->iov_base =
+				    (char *)uiop->uio_iov->iov_base + tlen +
+				    NFSX_HYPER;
+				uiop->uio_iov->iov_len -= tlen + NFSX_HYPER;
+				uiop->uio_resid -= tlen + NFSX_HYPER;
 				uiop->uio_offset += (tlen + NFSX_HYPER);
 			} else {
 				error = nfsm_advance(nd, NFSM_RNDUP(len), -1);
@@ -3669,7 +3761,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				     */
 				    free(nfhp, M_NFSFH);
 				} else {
-				    error = nfscl_nget(vnode_mount(vp), vp,
+				    error = nfscl_nget(vp->v_mount, vp,
 				      nfhp, cnp, p, &np, NULL, LK_EXCLUSIVE);
 				    if (!error) {
 					newvp = NFSTOV(np);
@@ -3692,6 +3784,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 				    ndp->ni_vp = newvp;
 				    NFSCNHASH(cnp, HASHINIT);
 				    if (cnp->cn_namelen <= NCHNAMLEN &&
+					ndp->ni_dvp != ndp->ni_vp &&
 					(newvp->v_type != VDIR ||
 					 dctime.tv_sec != 0)) {
 					cache_enter_time(ndp->ni_dvp,
@@ -3728,7 +3821,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 					goto nfsmout;
 			}
 		}
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 		nd->nd_mrep = NULL;
 	}
 	/*
@@ -3737,11 +3830,12 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	 */
 	if (blksiz > 0) {
 		left = DIRBLKSIZ - blksiz;
-		NFSBZERO(uio_iov_base(uiop), left);
+		NFSBZERO(uiop->uio_iov->iov_base, left);
 		dp->d_reclen += left;
-		uio_iov_base_add(uiop, left);
-		uio_iov_len_add(uiop, -(left));
-		uio_uio_resid_add(uiop, -(left));
+		uiop->uio_iov->iov_base = (char *)uiop->uio_iov->iov_base +
+		    left;
+		uiop->uio_iov->iov_len -= left;
+		uiop->uio_resid -= left;
 		uiop->uio_offset += left;
 	}
 
@@ -3752,7 +3846,7 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	 * Otherwise, return the eof flag from the server.
 	 */
 	if (eofp != NULL) {
-		if (tresid == uio_uio_resid(uiop))
+		if (tresid == uiop->uio_resid)
 			*eofp = 1;
 		else if (!bigenough)
 			*eofp = 0;
@@ -3763,23 +3857,24 @@ nfsrpc_readdirplus(vnode_t vp, struct uio *uiop, nfsuint64 *cookiep,
 	/*
 	 * Add extra empty records to any remaining DIRBLKSIZ chunks.
 	 */
-	while (uio_uio_resid(uiop) > 0 && uio_uio_resid(uiop) != tresid) {
-		dp = (struct dirent *)uio_iov_base(uiop);
+	while (uiop->uio_resid > 0 && uiop->uio_resid != tresid) {
+		dp = (struct dirent *)uiop->uio_iov->iov_base;
 		NFSBZERO(dp, DIRBLKSIZ);
 		dp->d_type = DT_UNKNOWN;
 		tl = (u_int32_t *)&dp->d_name[4];
 		*tl++ = cookie.lval[0];
 		*tl = cookie.lval[1];
 		dp->d_reclen = DIRBLKSIZ;
-		uio_iov_base_add(uiop, DIRBLKSIZ);
-		uio_iov_len_add(uiop, -(DIRBLKSIZ));
-		uio_uio_resid_add(uiop, -(DIRBLKSIZ));
+		uiop->uio_iov->iov_base = (char *)uiop->uio_iov->iov_base +
+		    DIRBLKSIZ;
+		uiop->uio_iov->iov_len -= DIRBLKSIZ;
+		uiop->uio_resid -= DIRBLKSIZ;
 		uiop->uio_offset += DIRBLKSIZ;
 	}
 
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	return (error);
 }
 #endif	/* !APPLE */
@@ -3787,7 +3882,7 @@ nfsmout:
 /*
  * Nfs commit rpc
  */
-APPLESTATIC int
+int
 nfsrpc_commit(vnode_t vp, u_quad_t offset, int cnt, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, void *stuff)
 {
@@ -3795,8 +3890,8 @@ nfsrpc_commit(vnode_t vp, u_quad_t offset, int cnt, struct ucred *cred,
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	nfsattrbit_t attrbits;
 	int error;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
-	
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
+
 	*attrflagp = 0;
 	NFSCL_REQSTART(nd, NFSPROC_COMMIT, vp);
 	NFSM_BUILD(tl, u_int32_t *, 3 * NFSX_UNSIGNED);
@@ -3830,7 +3925,7 @@ nfsrpc_commit(vnode_t vp, u_quad_t offset, int cnt, struct ucred *cred,
 nfsmout:
 	if (!error && nd->nd_repstat)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -3838,7 +3933,7 @@ nfsmout:
  * NFS byte range lock rpc.
  * (Mostly just calls one of the three lower level RPC routines.)
  */
-APPLESTATIC int
+int
 nfsrpc_advlock(vnode_t vp, off_t size, int op, struct flock *fl,
     int reclaim, struct ucred *cred, NFSPROC_T *p, void *id, int flags)
 {
@@ -3846,7 +3941,7 @@ nfsrpc_advlock(vnode_t vp, off_t size, int op, struct flock *fl,
 	struct nfsclclient *clp;
 	struct nfsfh *nfhp;
 	struct nfsrv_descript nfsd, *nd = &nfsd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	u_int64_t off, len;
 	off_t start, end;
 	u_int32_t clidrev = 0;
@@ -3889,7 +3984,7 @@ nfsrpc_advlock(vnode_t vp, off_t size, int op, struct flock *fl,
 	do {
 	    nd->nd_repstat = 0;
 	    if (op == F_GETLK) {
-		error = nfscl_getcl(vnode_mount(vp), cred, p, 1, &clp);
+		error = nfscl_getcl(vp->v_mount, cred, p, 1, &clp);
 		if (error)
 			return (error);
 		error = nfscl_lockt(vp, clp, off, len, fl, p, id, flags);
@@ -3906,7 +4001,7 @@ nfsrpc_advlock(vnode_t vp, off_t size, int op, struct flock *fl,
 		 * We must loop around for all lockowner cases.
 		 */
 		callcnt = 0;
-		error = nfscl_getcl(vnode_mount(vp), cred, p, 1, &clp);
+		error = nfscl_getcl(vp->v_mount, cred, p, 1, &clp);
 		if (error)
 			return (error);
 		do {
@@ -4005,7 +4100,7 @@ nfsrpc_advlock(vnode_t vp, off_t size, int op, struct flock *fl,
 /*
  * The lower level routine for the LockT case.
  */
-APPLESTATIC int
+int
 nfsrpc_lockt(struct nfsrv_descript *nd, vnode_t vp,
     struct nfsclclient *clp, u_int64_t off, u_int64_t len, struct flock *fl,
     struct ucred *cred, NFSPROC_T *p, void *id, int flags)
@@ -4073,7 +4168,7 @@ nfsrpc_lockt(struct nfsrv_descript *nd, vnode_t vp,
 	} else if (nd->nd_repstat == NFSERR_STALECLIENTID)
 		nfscl_initiate_recovery(clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4123,14 +4218,14 @@ nfsrpc_locku(struct nfsrv_descript *nd, struct nfsmount *nmp,
 	} else if (nd->nd_repstat == NFSERR_STALESTATEID)
 		nfscl_initiate_recovery(lp->nfsl_open->nfso_own->nfsow_clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * The actual Lock RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_lock(struct nfsrv_descript *nd, struct nfsmount *nmp, vnode_t vp,
     u_int8_t *nfhp, int fhlen, struct nfscllockowner *lp, int newone,
     int reclaim, u_int64_t off, u_int64_t len, short type, struct ucred *cred,
@@ -4211,7 +4306,7 @@ nfsrpc_lock(struct nfsrv_descript *nd, struct nfsmount *nmp, vnode_t vp,
 	} else if (nd->nd_repstat == NFSERR_STALESTATEID)
 		nfscl_initiate_recovery(lp->nfsl_open->nfso_own->nfsow_clp);
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4219,7 +4314,7 @@ nfsmout:
  * nfs statfs rpc
  * (always called with the vp for the mount point)
  */
-APPLESTATIC int
+int
 nfsrpc_statfs(vnode_t vp, struct nfsstatfs *sbp, struct nfsfsinfo *fsp,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp,
     void *stuff)
@@ -4231,7 +4326,7 @@ nfsrpc_statfs(vnode_t vp, struct nfsstatfs *sbp, struct nfsfsinfo *fsp,
 	int error;
 
 	*attrflagp = 0;
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (NFSHASNFSV4(nmp)) {
 		/*
 		 * For V4, you actually do a getattr.
@@ -4291,14 +4386,14 @@ nfsrpc_statfs(vnode_t vp, struct nfsstatfs *sbp, struct nfsfsinfo *fsp,
 		sbp->sf_bavail = fxdr_unsigned(u_int32_t, *tl);
 	}
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs pathconf rpc
  */
-APPLESTATIC int
+int
 nfsrpc_pathconf(vnode_t vp, struct nfsv3_pathconf *pc,
     struct ucred *cred, NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp,
     void *stuff)
@@ -4310,7 +4405,7 @@ nfsrpc_pathconf(vnode_t vp, struct nfsv3_pathconf *pc,
 	int error;
 
 	*attrflagp = 0;
-	nmp = VFSTONFS(vnode_mount(vp));
+	nmp = VFSTONFS(vp->v_mount);
 	if (NFSHASNFSV4(nmp)) {
 		/*
 		 * For V4, you actually do a getattr.
@@ -4352,14 +4447,14 @@ nfsrpc_pathconf(vnode_t vp, struct nfsv3_pathconf *pc,
 		}
 	}
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs version 3 fsinfo rpc call
  */
-APPLESTATIC int
+int
 nfsrpc_fsinfo(vnode_t vp, struct nfsfsinfo *fsp, struct ucred *cred,
     NFSPROC_T *p, struct nfsvattr *nap, int *attrflagp, void *stuff)
 {
@@ -4391,14 +4486,14 @@ nfsrpc_fsinfo(vnode_t vp, struct nfsfsinfo *fsp, struct ucred *cred,
 		fsp->fs_properties = fxdr_unsigned(u_int32_t, *tl);
 	}
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * This function performs the Renew RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_renew(struct nfsclclient *clp, struct nfsclds *dsp, struct ucred *cred,
     NFSPROC_T *p)
 {
@@ -4445,14 +4540,14 @@ nfsrpc_renew(struct nfsclclient *clp, struct nfsclds *dsp, struct ucred *cred,
 	if (error)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * This function performs the Releaselockowner RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_rellockown(struct nfsmount *nmp, struct nfscllockowner *lp,
     uint8_t *fh, int fhlen, struct ucred *cred, NFSPROC_T *p)
 {
@@ -4484,14 +4579,14 @@ nfsrpc_rellockown(struct nfsmount *nmp, struct nfscllockowner *lp,
 	if (error)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * This function performs the Compound to get the mount pt FH.
  */
-APPLESTATIC int
+int
 nfsrpc_getdirpath(struct nfsmount *nmp, u_char *dirpath, struct ucred *cred,
     NFSPROC_T *p)
 {
@@ -4553,14 +4648,14 @@ nfsrpc_getdirpath(struct nfsmount *nmp, u_char *dirpath, struct ucred *cred,
 	}
 	error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * This function performs the Delegreturn RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_delegreturn(struct nfscldeleg *dp, struct ucred *cred,
     struct nfsmount *nmp, NFSPROC_T *p, int syscred)
 {
@@ -4586,22 +4681,22 @@ nfsrpc_delegreturn(struct nfscldeleg *dp, struct ucred *cred,
 	if (error)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs getacl call.
  */
-APPLESTATIC int
+int
 nfsrpc_getacl(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
     struct acl *aclp, void *stuff)
 {
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	int error;
 	nfsattrbit_t attrbits;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
-	
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
+
 	if (nfsrv_useacl == 0 || !NFSHASNFSV4(nmp))
 		return (EOPNOTSUPP);
 	NFSCL_REQSTART(nd, NFSPROC_GETACL, vp);
@@ -4616,20 +4711,20 @@ nfsrpc_getacl(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
 		    NULL, NULL, NULL, aclp, 0, NULL, NULL, NULL, p, cred);
 	else
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * nfs setacl call.
  */
-APPLESTATIC int
+int
 nfsrpc_setacl(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
     struct acl *aclp, void *stuff)
 {
 	int error;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
-	
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
+
 	if (nfsrv_useacl == 0 || !NFSHASNFSV4(nmp))
 		return (EOPNOTSUPP);
 	error = nfsrpc_setattr(vp, NULL, aclp, cred, p, NULL, NULL, stuff);
@@ -4646,21 +4741,21 @@ nfsrpc_setaclrpc(vnode_t vp, struct ucred *cred, NFSPROC_T *p,
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	int error;
 	nfsattrbit_t attrbits;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
-	
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
+
 	if (!NFSHASNFSV4(nmp))
 		return (EOPNOTSUPP);
 	NFSCL_REQSTART(nd, NFSPROC_SETACL, vp);
 	nfsm_stateidtom(nd, stateidp, NFSSTATEID_PUTSTATEID);
 	NFSZERO_ATTRBIT(&attrbits);
 	NFSSETBIT_ATTRBIT(&attrbits, NFSATTRBIT_ACL);
-	(void) nfsv4_fillattr(nd, vnode_mount(vp), vp, aclp, NULL, NULL, 0,
+	(void) nfsv4_fillattr(nd, vp->v_mount, vp, aclp, NULL, NULL, 0,
 	    &attrbits, NULL, NULL, 0, 0, 0, 0, (uint64_t)0, NULL);
 	error = nfscl_request(nd, vp, p, cred, stuff);
 	if (error)
 		return (error);
 	/* Don't care about the pre/postop attributes */
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (nd->nd_repstat);
 }
 
@@ -4750,7 +4845,7 @@ nfsrpc_exchangeid(struct nfsmount *nmp, struct nfsclclient *clp,
 	}
 	error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4888,7 +4983,7 @@ nfsrpc_createsession(struct nfsmount *nmp, struct nfsclsession *sep,
 	}
 	error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4916,7 +5011,7 @@ nfsrpc_destroysession(struct nfsmount *nmp, struct nfsclclient *clp,
 	if (error != 0)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4945,7 +5040,7 @@ nfsrpc_destroyclient(struct nfsmount *nmp, struct nfsclclient *clp,
 	if (error != 0)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -4977,7 +5072,7 @@ nfsrpc_layoutget(struct nfsmount *nmp, uint8_t *fhp, int fhlen, int iomode,
 		    flhp);
 	if (error == 0 && nd->nd_repstat != 0)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -5048,7 +5143,7 @@ nfsrpc_getdeviceinfo(struct nfsmount *nmp, uint8_t *deviceid, int layouttype,
 				error = NFSERR_BADXDR;
 				goto nfsmout;
 			}
-	
+
 			/*
 			 * Now we know how many stripe indices and addresses, so
 			 * we can allocate the structure the correct size.
@@ -5211,7 +5306,7 @@ nfsrpc_getdeviceinfo(struct nfsmount *nmp, uint8_t *deviceid, int layouttype,
 nfsmout:
 	if (error != 0 && ndi != NULL)
 		nfscl_freedevinfo(ndi);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -5260,7 +5355,7 @@ nfsrpc_layoutcommit(struct nfsmount *nmp, uint8_t *fh, int fhlen, int reclaim,
 	if (error != 0)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -5348,7 +5443,7 @@ nfsrpc_layoutreturn(struct nfsmount *nmp, uint8_t *fh, int fhlen, int reclaim,
 	} else
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -5540,7 +5635,7 @@ nfsrpc_fillsa(struct nfsmount *nmp, struct sockaddr_in *sin,
 	 * unmount, but I did it anyhow.
 	 */
 	nrp->nr_cred = crhold(nmp->nm_sockreq.nr_cred);
-	error = newnfs_connect(nmp, nrp, NULL, p, 0);
+	error = newnfs_connect(nmp, nrp, NULL, p, 0, false);
 	NFSCL_DEBUG(3, "DS connect=%d\n", error);
 
 	dsp = NULL;
@@ -5645,7 +5740,7 @@ nfsrpc_reclaimcomplete(struct nfsmount *nmp, struct ucred *cred, NFSPROC_T *p)
 	if (error != 0)
 		return (error);
 	error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -5675,11 +5770,11 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
     uint32_t rwaccess, int docommit, struct ucred *cred, NFSPROC_T *p)
 {
 	struct nfsnode *np = VTONFS(vp);
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfscllayout *layp;
 	struct nfscldevinfo *dip;
 	struct nfsclflayout *rflp;
-	struct mbuf *m;
+	struct mbuf *m, *m2;
 	struct nfsclwritedsdorpc *drpc, *tdrpc;
 	nfsv4stateid_t stateid;
 	struct ucred *newcred;
@@ -5785,7 +5880,7 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 						    uiop->uio_iov->iov_base;
 						iovlen = uiop->uio_iov->iov_len;
 						m = nfsm_uiombuflist(uiop, len,
-						    NULL, NULL);
+						    0);
 					}
 					tdrpc = drpc = malloc(sizeof(*drpc) *
 					    (mirrorcnt - 1), M_TEMP, M_WAITOK |
@@ -5793,6 +5888,13 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 				}
 			}
 			for (i = firstmirror; i < mirrorcnt && error == 0; i++){
+				m2 = NULL;
+				if (m != NULL && i < mirrorcnt - 1)
+					m2 = m_copym(m, 0, M_COPYALL, M_WAITOK);
+				else {
+					m2 = m;
+					m = NULL;
+				}
 				if ((layp->nfsly_flags & NFSLY_FLEXFILE) != 0) {
 					dev = rflp->nfsfl_ffm[i].dev;
 					dip = nfscl_getdevinfo(nmp->nm_clp, dev,
@@ -5809,7 +5911,7 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 						    uiop, iomode, must_commit,
 						    &eof, &stateid, rwaccess,
 						    dip, layp, rflp, off, xfer,
-						    i, docommit, m, tdrpc,
+						    i, docommit, m2, tdrpc,
 						    newcred, p);
 					else
 						error = nfscl_doflayoutio(vp,
@@ -5818,8 +5920,11 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 						    dip, layp, rflp, off, xfer,
 						    docommit, newcred, p);
 					nfscl_reldevinfo(dip);
-				} else
+				} else {
+					if (m2 != NULL)
+						m_freem(m2);
 					error = EIO;
+				}
 				tdrpc++;
 			}
 			if (m != NULL)
@@ -5885,38 +5990,6 @@ nfscl_doiods(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 }
 
 /*
- * Make a copy of the mbuf chain and add an mbuf for null padding, as required.
- */
-static struct mbuf *
-nfsm_copym(struct mbuf *m, int off, int xfer)
-{
-	struct mbuf *m2, *m3, *m4;
-	uint32_t *tl;
-	int rem;
-
-	m2 = m_copym(m, off, xfer, M_WAITOK);
-	rem = NFSM_RNDUP(xfer) - xfer;
-	if (rem > 0) {
-		/*
-		 * The zero padding to a multiple of 4 bytes is required by
-		 * the XDR. So that the mbufs copied by reference aren't
-		 * modified, add an mbuf with the zero'd bytes to the list.
-		 * rem will be a maximum of 3, so one zero'd uint32_t is
-		 * sufficient.
-		 */
-		m3 = m2;
-		while (m3->m_next != NULL)
-			m3 = m3->m_next;
-		NFSMGET(m4);
-		tl = NFSMTOD(m4, uint32_t *);
-		*tl = 0;
-		mbuf_setlen(m4, rem);
-		mbuf_setnext(m3, m4);
-	}
-	return (m2);
-}
-
-/*
  * Find a file layout that will handle the first bytes of the requested
  * range and return the information from it needed to the I/O operation.
  */
@@ -5974,7 +6047,7 @@ nfscl_doflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 
 	np = VTONFS(vp);
 	rel_off = off - flp->nfsfl_patoff;
-	stripe_unit_size = (flp->nfsfl_util >> 6) & 0x3ffffff;
+	stripe_unit_size = flp->nfsfl_util & NFSFLAYUTIL_STRIPE_MASK;
 	stripe_pos = (rel_off / stripe_unit_size + flp->nfsfl_stripe1) %
 	    dp->nfsdi_stripecnt;
 	transfer = stripe_unit_size - (rel_off % stripe_unit_size);
@@ -6071,17 +6144,17 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
     uint64_t len, int mirror, int docommit, struct mbuf *mp,
     struct nfsclwritedsdorpc *drpc, struct ucred *cred, NFSPROC_T *p)
 {
-	uint64_t transfer, xfer;
-	int error, rel_off;
+	uint64_t xfer;
+	int error;
 	struct nfsnode *np;
 	struct nfsfh *fhp;
 	struct nfsclds **dspp;
 	struct ucred *tcred;
-	struct mbuf *m;
+	struct mbuf *m, *m2;
+	uint32_t copylen;
 
 	np = VTONFS(vp);
 	error = 0;
-	rel_off = 0;
 	NFSCL_DEBUG(4, "nfscl_dofflayoutio: off=%ju len=%ju\n", (uintmax_t)off,
 	    (uintmax_t)len);
 	/* Loop around, doing I/O for each stripe unit. */
@@ -6099,14 +6172,31 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 		} else
 			tcred = cred;
 		if (rwflag == NFSV4OPEN_ACCESSREAD)
-			transfer = dp->nfsdi_rsize;
-		else
-			transfer = dp->nfsdi_wsize;
+			copylen = dp->nfsdi_rsize;
+		else {
+			copylen = dp->nfsdi_wsize;
+			if (len > copylen && mp != NULL) {
+				/*
+				 * When a mirrored configuration needs to do
+				 * multiple writes to each mirror, all writes
+				 * except the last one must be a multiple of
+				 * 4 bytes.  This is required so that the XDR
+				 * does not need padding.
+				 * If possible, clip the size to an exact
+				 * multiple of the mbuf length, so that the
+				 * split will be on an mbuf boundary.
+				 */
+				copylen &= 0xfffffffc;
+				if (copylen > mp->m_len)
+					copylen = copylen / mp->m_len *
+					    mp->m_len;
+			}
+		}
 		NFSLOCKNODE(np);
 		np->n_flag |= NDSCOMMIT;
 		NFSUNLOCKNODE(np);
-		if (len > transfer && docommit == 0)
-			xfer = transfer;
+		if (len > copylen && docommit == 0)
+			xfer = copylen;
 		else
 			xfer = len;
 		if (docommit != 0) {
@@ -6167,24 +6257,41 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 					NFSUNLOCKCLSTATE();
 				}
 			} else {
-				m = nfsm_copym(mp, rel_off, xfer);
-				NFSCL_DEBUG(4, "mcopy reloff=%d xfer=%jd\n",
-				    rel_off, (uintmax_t)xfer);
+				m = mp;
+				if (xfer < len) {
+					/* The mbuf list must be split. */
+					m2 = nfsm_split(mp, xfer);
+					if (m2 != NULL)
+						mp = m2;
+					else {
+						m_freem(mp);
+						error = EIO;
+					}
+				}
+				NFSCL_DEBUG(4, "mcopy len=%jd xfer=%jd\n",
+				    (uintmax_t)len, (uintmax_t)xfer);
 				/*
 				 * Do last write to a mirrored DS with this
 				 * thread.
 				 */
-				if (mirror < flp->nfsfl_mirrorcnt - 1)
-					error = nfsio_writedsmir(vp, iomode,
-					    must_commit, stateidp, *dspp, off,
-					    xfer, fhp, m, dp->nfsdi_vers,
-					    dp->nfsdi_minorvers, drpc, tcred,
-					    p);
-				else
-					error = nfsrpc_writedsmir(vp, iomode,
-					    must_commit, stateidp, *dspp, off,
-					    xfer, fhp, m, dp->nfsdi_vers,
-					    dp->nfsdi_minorvers, tcred, p);
+				if (error == 0) {
+					if (mirror < flp->nfsfl_mirrorcnt - 1)
+						error = nfsio_writedsmir(vp,
+						    iomode, must_commit,
+						    stateidp, *dspp, off,
+						    xfer, fhp, m,
+						    dp->nfsdi_vers,
+						    dp->nfsdi_minorvers, drpc,
+						    tcred, p);
+					else
+						error = nfsrpc_writedsmir(vp,
+						    iomode, must_commit,
+						    stateidp, *dspp, off,
+						    xfer, fhp, m,
+						    dp->nfsdi_vers,
+						    dp->nfsdi_minorvers, tcred,
+						    p);
+				}
 				NFSCL_DEBUG(4, "nfsio_writedsmir=%d\n", error);
 				if (error != 0 && error != EACCES && error !=
 				    ESTALE) {
@@ -6199,7 +6306,6 @@ nfscl_dofflayoutio(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 		if (error == 0) {
 			len -= xfer;
 			off += xfer;
-			rel_off += xfer;
 		}
 		if ((dp->nfsdi_flags & NFSDI_TIGHTCOUPLED) == 0)
 			NFSFREECRED(tcred);
@@ -6219,7 +6325,7 @@ nfsrpc_readds(vnode_t vp, struct uio *uiop, nfsv4stateid_t *stateidp, int *eofp,
 	uint32_t *tl;
 	int attrflag, error, retlen;
 	struct nfsrv_descript nfsd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsrv_descript *nd = &nfsd;
 	struct nfssockreq *nrp;
 	struct nfsvattr na;
@@ -6237,6 +6343,8 @@ nfsrpc_readds(vnode_t vp, struct uio *uiop, nfsv4stateid_t *stateidp, int *eofp,
 	} else {
 		nfscl_reqstart(nd, NFSPROC_READ, nmp, fhp->nfh_fh,
 		    fhp->nfh_len, NULL, &dsp->nfsclds_sess, vers, minorvers);
+		NFSDECRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_READ]);
+		NFSINCRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_READDS]);
 		NFSCL_DEBUG(4, "nfsrpc_readds: vers3\n");
 	}
 	NFSM_BUILD(tl, uint32_t *, NFSX_UNSIGNED * 3);
@@ -6275,7 +6383,7 @@ nfsrpc_readds(vnode_t vp, struct uio *uiop, nfsv4stateid_t *stateidp, int *eofp,
 	error = nfsm_mbufuio(nd, uiop, retlen);
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -6289,7 +6397,7 @@ nfsrpc_writeds(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
     struct ucred *cred, NFSPROC_T *p)
 {
 	uint32_t *tl;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	int attrflag, error, rlen, commit, committed = NFSWRITE_FILESYNC;
 	int32_t backup;
 	struct nfsrv_descript nfsd;
@@ -6312,6 +6420,8 @@ nfsrpc_writeds(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 	} else {
 		nfscl_reqstart(nd, NFSPROC_WRITE, nmp, fhp->nfh_fh,
 		    fhp->nfh_len, NULL, &dsp->nfsclds_sess, vers, minorvers);
+		NFSDECRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_WRITE]);
+		NFSINCRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_WRITEDS]);
 		NFSCL_DEBUG(4, "nfsrpc_writeds: vers3\n");
 		NFSM_BUILD(tl, uint32_t *, NFSX_HYPER + 3 * NFSX_UNSIGNED);
 	}
@@ -6335,13 +6445,13 @@ nfsrpc_writeds(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 	if (nd->nd_repstat != 0) {
 		/*
 		 * In case the rpc gets retried, roll
-		 * the uio fileds changed by nfsm_uiombuf()
+		 * the uio fields changed by nfsm_uiombuf()
 		 * back.
 		 */
 		uiop->uio_offset -= len;
-		uio_uio_resid_add(uiop, len);
-		uio_iov_base_add(uiop, -len);
-		uio_iov_len_add(uiop, len);
+		uiop->uio_resid += len;
+		uiop->uio_iov->iov_base = (char *)uiop->uio_iov->iov_base - len;
+		uiop->uio_iov->iov_len += len;
 		error = nd->nd_repstat;
 	} else {
 		if (vers == NFS_VER3) {
@@ -6359,10 +6469,11 @@ nfsrpc_writeds(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 			goto nfsmout;
 		} else if (rlen < len) {
 			backup = len - rlen;
-			uio_iov_base_add(uiop, -(backup));
-			uio_iov_len_add(uiop, backup);
+			uiop->uio_iov->iov_base =
+			    (char *)uiop->uio_iov->iov_base - backup;
+			uiop->uio_iov->iov_len += backup;
 			uiop->uio_offset -= backup;
-			uio_uio_resid_add(uiop, backup);
+			uiop->uio_resid += backup;
 			len = rlen;
 		}
 		commit = fxdr_unsigned(int, *tl++);
@@ -6400,7 +6511,7 @@ nfsrpc_writeds(vnode_t vp, struct uio *uiop, int *iomode, int *must_commit,
 	}
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	*iomode = committed;
 	if (nd->nd_repstat != 0 && error == 0)
 		error = nd->nd_repstat;
@@ -6419,7 +6530,7 @@ nfsrpc_writedsmir(vnode_t vp, int *iomode, int *must_commit,
     struct ucred *cred, NFSPROC_T *p)
 {
 	uint32_t *tl;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	int attrflag, error, commit, committed = NFSWRITE_FILESYNC, rlen;
 	struct nfsrv_descript nfsd;
 	struct nfsrv_descript *nd = &nfsd;
@@ -6438,6 +6549,8 @@ nfsrpc_writedsmir(vnode_t vp, int *iomode, int *must_commit,
 	} else {
 		nfscl_reqstart(nd, NFSPROC_WRITE, nmp, fhp->nfh_fh,
 		    fhp->nfh_len, NULL, &dsp->nfsclds_sess, vers, minorvers);
+		NFSDECRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_WRITE]);
+		NFSINCRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_WRITEDS]);
 		NFSCL_DEBUG(4, "nfsrpc_writedsmir: vers3\n");
 		NFSM_BUILD(tl, uint32_t *, NFSX_HYPER + 3 * NFSX_UNSIGNED);
 	}
@@ -6450,12 +6563,6 @@ nfsrpc_writedsmir(vnode_t vp, int *iomode, int *must_commit,
 	if (len > 0) {
 		/* Put data in mbuf chain. */
 		nd->nd_mb->m_next = m;
-		/* Set nd_mb and nd_bpos to end of data. */
-		while (m->m_next != NULL)
-			m = m->m_next;
-		nd->nd_mb = m;
-		nd->nd_bpos = mtod(m, char *) + m->m_len;
-		NFSCL_DEBUG(4, "nfsrpc_writedsmir: lastmb len=%d\n", m->m_len);
 	}
 	nrp = dsp->nfsclds_sockp;
 	if (nrp == NULL)
@@ -6511,7 +6618,7 @@ nfsrpc_writedsmir(vnode_t vp, int *iomode, int *must_commit,
 	}
 nfsmout:
 	if (nd->nd_mrep != NULL)
-		mbuf_freem(nd->nd_mrep);
+		m_freem(nd->nd_mrep);
 	*iomode = committed;
 	if (nd->nd_repstat != 0 && error == 0)
 		error = nd->nd_repstat;
@@ -6632,7 +6739,6 @@ nfscl_getsameserver(struct nfsmount *nmp, struct nfsclds *newdsp,
 				*retdspp = dsp;
 				return (NFSDSP_USETHISSESSION);
 			}
-
 		}
 	}
 	if (fndseq != 0)
@@ -6650,19 +6756,22 @@ nfsrpc_commitds(vnode_t vp, uint64_t offset, int cnt, struct nfsclds *dsp,
 {
 	uint32_t *tl;
 	struct nfsrv_descript nfsd, *nd = &nfsd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfssockreq *nrp;
 	struct nfsvattr na;
 	int attrflag, error;
-	
+
 	nd->nd_mrep = NULL;
 	if (vers == 0 || vers == NFS_VER4) {
 		nfscl_reqstart(nd, NFSPROC_COMMITDS, nmp, fhp->nfh_fh,
 		    fhp->nfh_len, NULL, &dsp->nfsclds_sess, vers, minorvers);
 		vers = NFS_VER4;
-	} else
+	} else {
 		nfscl_reqstart(nd, NFSPROC_COMMIT, nmp, fhp->nfh_fh,
 		    fhp->nfh_len, NULL, &dsp->nfsclds_sess, vers, minorvers);
+		NFSDECRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_COMMIT]);
+		NFSINCRGLOBAL(nfsstatsv1.rpccnt[NFSPROC_COMMITDS]);
+	}
 	NFSCL_DEBUG(4, "nfsrpc_commitds: vers=%d minvers=%d\n", vers,
 	    minorvers);
 	NFSM_BUILD(tl, uint32_t *, NFSX_HYPER + NFSX_UNSIGNED);
@@ -6698,7 +6807,7 @@ nfsrpc_commitds(vnode_t vp, uint64_t offset, int cnt, struct nfsclds *dsp,
 nfsmout:
 	if (error == 0 && nd->nd_repstat != 0)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -6755,7 +6864,7 @@ nfsio_commitds(vnode_t vp, uint64_t offset, int cnt, struct nfsclds *dsp,
 /*
  * NFS Advise rpc
  */
-APPLESTATIC int
+int
 nfsrpc_advise(vnode_t vp, off_t offset, uint64_t cnt, int advise,
     struct ucred *cred, NFSPROC_T *p)
 {
@@ -6763,7 +6872,7 @@ nfsrpc_advise(vnode_t vp, off_t offset, uint64_t cnt, int advise,
 	struct nfsrv_descript nfsd, *nd = &nfsd;
 	nfsattrbit_t hints;
 	int error;
-	
+
 	NFSZERO_ATTRBIT(&hints);
 	if (advise == POSIX_FADV_WILLNEED)
 		NFSSETBIT_ATTRBIT(&hints, NFSV4IOHINT_WILLNEED);
@@ -6783,7 +6892,7 @@ nfsrpc_advise(vnode_t vp, off_t offset, uint64_t cnt, int advise,
 		return (error);
 	if (nd->nd_repstat != 0)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -6798,11 +6907,11 @@ nfsrpc_adviseds(vnode_t vp, uint64_t offset, int cnt, int advise,
 {
 	uint32_t *tl;
 	struct nfsrv_descript nfsd, *nd = &nfsd;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfssockreq *nrp;
 	nfsattrbit_t hints;
 	int error;
-	
+
 	/* For NFS DSs prior to NFSv4.2, just return OK. */
 	if (vers == NFS_VER3 || minorversion < NFSV42_MINORVERSION)
 		return (0);
@@ -6837,7 +6946,7 @@ nfsrpc_adviseds(vnode_t vp, uint64_t offset, int cnt, int advise,
 		return (error);
 	if (nd->nd_repstat != 0)
 		error = nd->nd_repstat;
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -6896,13 +7005,13 @@ nfsio_adviseds(vnode_t vp, uint64_t offset, int cnt, int advise,
 /*
  * Do the Allocate operation, retrying for recovery.
  */
-APPLESTATIC int
+int
 nfsrpc_allocate(vnode_t vp, off_t off, off_t len, struct nfsvattr *nap,
     int *attrflagp, struct ucred *cred, NFSPROC_T *p, void *stuff)
 {
 	int error, expireret = 0, retrycnt, nostateid;
 	uint32_t clidrev = 0;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsfh *nfhp = NULL;
 	nfsv4stateid_t stateid;
 	off_t tmp_off;
@@ -7001,7 +7110,7 @@ nfsrpc_allocaterpc(vnode_t vp, off_t off, off_t len, nfsv4stateid_t *stateidp,
 	} else
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -7616,7 +7725,7 @@ nfsrpc_openlayoutrpc(struct nfsmount *nmp, vnode_t vp, u_int8_t *nfhp,
 		error = nd->nd_repstat;
 nfsmout:
 	free(ndp, M_NFSCLDELEG);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -7843,7 +7952,7 @@ nfsrpc_createlayout(vnode_t dvp, char *name, int namelen, struct vattr *vap,
 				goto nfsmout;
 			op->nfso_stateid = stateid;
 			newnfs_copyincred(cred, &op->nfso_cred);
-	
+
 			nfscl_openrelease(nmp, op, error, newone);
 			*unlockedp = 1;
 
@@ -7873,7 +7982,7 @@ nfsmout:
 		*dpp = dp;
 	else
 		free(dp, M_NFSCLDELEG);
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
@@ -8003,7 +8112,7 @@ out:
 /*
  * nfs copy_file_range operation.
  */
-APPLESTATIC int
+int
 nfsrpc_copy_file_range(vnode_t invp, off_t *inoffp, vnode_t outvp,
     off_t *outoffp, size_t *lenp, unsigned int flags, int *inattrflagp,
     struct nfsvattr *innap, int *outattrflagp, struct nfsvattr *outnap,
@@ -8011,7 +8120,7 @@ nfsrpc_copy_file_range(vnode_t invp, off_t *inoffp, vnode_t outvp,
 {
 	int commit, error, expireret = 0, retrycnt;
 	u_int32_t clidrev = 0;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(invp));
+	struct nfsmount *nmp = VFSTONFS(invp->v_mount);
 	struct nfsfh *innfhp = NULL, *outnfhp = NULL;
 	nfsv4stateid_t instateid, outstateid;
 	void *inlckp, *outlckp;
@@ -8190,20 +8299,20 @@ nfsrpc_copyrpc(vnode_t invp, off_t inoff, vnode_t outvp, off_t outoff,
 	if (error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * Seek operation.
  */
-APPLESTATIC int
+int
 nfsrpc_seek(vnode_t vp, off_t *offp, bool *eofp, int content,
     struct ucred *cred, struct nfsvattr *nap, int *attrflagp)
 {
 	int error, expireret = 0, retrycnt;
 	u_int32_t clidrev = 0;
-	struct nfsmount *nmp = VFSTONFS(vnode_mount(vp));
+	struct nfsmount *nmp = VFSTONFS(vp->v_mount);
 	struct nfsnode *np = VTONFS(vp);
 	struct nfsfh *nfhp = NULL;
 	nfsv4stateid_t stateid;
@@ -8284,14 +8393,14 @@ nfsrpc_seekrpc(vnode_t vp, off_t *offp, nfsv4stateid_t *stateidp, bool *eofp,
 	}
 	error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * The getextattr RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_getextattr(vnode_t vp, const char *name, struct uio *uiop, ssize_t *lenp,
     struct nfsvattr *nap, int *attrflagp, struct ucred *cred, NFSPROC_T *p)
 {
@@ -8341,7 +8450,7 @@ nfsrpc_getextattr(vnode_t vp, const char *name, struct uio *uiop, ssize_t *lenp,
 		} else if (uiop == NULL && len > 0) {
 			/* Just wants the length and not the data. */
 			error = nfsm_advance(nd, NFSM_RNDUP(len), -1);
-		} else
+		} else if (len > 0)
 			error = ENOATTR;
 		if (error != 0)
 			goto nfsmout;
@@ -8355,14 +8464,14 @@ nfsrpc_getextattr(vnode_t vp, const char *name, struct uio *uiop, ssize_t *lenp,
 	if (error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * The setextattr RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_setextattr(vnode_t vp, const char *name, struct uio *uiop,
     struct nfsvattr *nap, int *attrflagp, struct ucred *cred, NFSPROC_T *p)
 {
@@ -8376,7 +8485,7 @@ nfsrpc_setextattr(vnode_t vp, const char *name, struct uio *uiop,
 	NFSCL_REQSTART(nd, NFSPROC_SETEXTATTR, vp);
 	if (uiop->uio_resid > nd->nd_maxreq) {
 		/* nd_maxreq is set by NFSCL_REQSTART(). */
-		mbuf_freem(nd->nd_mreq);
+		m_freem(nd->nd_mreq);
 		return (EINVAL);
 	}
 	NFSM_BUILD(tl, uint32_t *, NFSX_UNSIGNED);
@@ -8403,14 +8512,14 @@ nfsrpc_setextattr(vnode_t vp, const char *name, struct uio *uiop,
 	if (error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * The removeextattr RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_rmextattr(vnode_t vp, const char *name, struct nfsvattr *nap,
     int *attrflagp, struct ucred *cred, NFSPROC_T *p)
 {
@@ -8432,7 +8541,7 @@ nfsrpc_rmextattr(vnode_t vp, const char *name, struct nfsvattr *nap,
 		return (error);
 	if (nd->nd_repstat == 0) {
 		/* Just skip over the reply and Getattr op status. */
-		NFSM_DISSECT(tl, uint32_t *, 2 * NFSX_HYPER + 2 *
+		NFSM_DISSECT(tl, uint32_t *, 2 * NFSX_HYPER + 3 *
 		    NFSX_UNSIGNED);
 		error = nfsm_loadattr(nd, nap);
 		if (error == 0)
@@ -8441,14 +8550,14 @@ nfsrpc_rmextattr(vnode_t vp, const char *name, struct nfsvattr *nap,
 	if (error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
 /*
  * The listextattr RPC.
  */
-APPLESTATIC int
+int
 nfsrpc_listextattr(vnode_t vp, uint64_t *cookiep, struct uio *uiop,
     size_t *lenp, bool *eofp, struct nfsvattr *nap, int *attrflagp,
     struct ucred *cred, NFSPROC_T *p)
@@ -8518,7 +8627,178 @@ nfsrpc_listextattr(vnode_t vp, uint64_t *cookiep, struct uio *uiop,
 	if (error == 0)
 		error = nd->nd_repstat;
 nfsmout:
-	mbuf_freem(nd->nd_mrep);
+	m_freem(nd->nd_mrep);
 	return (error);
 }
 
+/*
+ * Split an mbuf list.  For non-M_EXTPG mbufs, just use m_split().
+ */
+static struct mbuf *
+nfsm_split(struct mbuf *mp, uint64_t xfer)
+{
+	struct mbuf *m, *m2;
+	vm_page_t pg;
+	int i, j, left, pgno, plen, trim;
+	char *cp, *cp2;
+
+	if ((mp->m_flags & M_EXTPG) == 0) {
+		m = m_split(mp, xfer, M_WAITOK);
+		return (m);
+	}
+
+	/* Find the correct mbuf to split at. */
+	for (m = mp; m != NULL && xfer > m->m_len; m = m->m_next)
+		xfer -= m->m_len;
+	if (m == NULL)
+		return (NULL);
+
+	/* If xfer == m->m_len, we can just split the mbuf list. */
+	if (xfer == m->m_len) {
+		m2 = m->m_next;
+		m->m_next = NULL;
+		return (m2);
+	}
+
+	/* Find the page to split at. */
+	pgno = 0;
+	left = xfer;
+	do {
+		if (pgno == 0)
+			plen = m_epg_pagelen(m, 0, m->m_epg_1st_off);
+		else
+			plen = m_epg_pagelen(m, pgno, 0);
+		if (left <= plen)
+			break;
+		left -= plen;
+		pgno++;
+	} while (pgno < m->m_epg_npgs);
+	if (pgno == m->m_epg_npgs)
+		panic("nfsm_split: eroneous ext_pgs mbuf");
+
+	m2 = mb_alloc_ext_pgs(M_WAITOK, mb_free_mext_pgs);
+	m2->m_epg_flags |= EPG_FLAG_ANON;
+
+	/*
+	 * If left < plen, allocate a new page for the new mbuf
+	 * and copy the data after left in the page to this new
+	 * page.
+	 */
+	if (left < plen) {
+		do {
+			pg = vm_page_alloc(NULL, 0, VM_ALLOC_NORMAL |
+			    VM_ALLOC_NOOBJ | VM_ALLOC_NODUMP |
+			    VM_ALLOC_WIRED);
+			if (pg == NULL)
+				vm_wait(NULL);
+		} while (pg == NULL);
+		m2->m_epg_pa[0] = VM_PAGE_TO_PHYS(pg);
+		m2->m_epg_npgs = 1;
+
+		/* Copy the data after left to the new page. */
+		trim = plen - left;
+		cp = (char *)(void *)PHYS_TO_DMAP(m->m_epg_pa[pgno]);
+		if (pgno == 0)
+			cp += m->m_epg_1st_off;
+		cp += left;
+		cp2 = (char *)(void *)PHYS_TO_DMAP(m2->m_epg_pa[0]);
+		if (pgno == m->m_epg_npgs - 1)
+			m2->m_epg_last_len = trim;
+		else {
+			cp2 += PAGE_SIZE - trim;
+			m2->m_epg_1st_off = PAGE_SIZE - trim;
+			m2->m_epg_last_len = m->m_epg_last_len;
+		}
+		memcpy(cp2, cp, trim);
+		m2->m_len = trim;
+	} else {
+		m2->m_len = 0;
+		m2->m_epg_last_len = m->m_epg_last_len;
+	}
+
+	/* Move the pages beyond pgno to the new mbuf. */
+	for (i = pgno + 1, j = m2->m_epg_npgs; i < m->m_epg_npgs; i++, j++) {
+		m2->m_epg_pa[j] = m->m_epg_pa[i];
+		/* Never moves page 0. */
+		m2->m_len += m_epg_pagelen(m, i, 0);
+	}
+	m2->m_epg_npgs = j;
+	m->m_epg_npgs = pgno + 1;
+	m->m_epg_last_len = left;
+	m->m_len = xfer;
+
+	m2->m_next = m->m_next;
+	m->m_next = NULL;
+	return (m2);
+}
+
+/*
+ * Do the NFSv4.1 Bind Connection to Session.
+ * Called from the reconnect layer of the krpc (sys/rpc/clnt_rc.c).
+ */
+void
+nfsrpc_bindconnsess(CLIENT *cl, void *arg, struct ucred *cr)
+{
+	struct nfscl_reconarg *rcp = (struct nfscl_reconarg *)arg;
+	uint32_t res, *tl;
+	struct nfsrv_descript nfsd;
+	struct nfsrv_descript *nd = &nfsd;
+	struct rpc_callextra ext;
+	struct timeval utimeout;
+	enum clnt_stat stat;
+	int error;
+
+	nfscl_reqstart(nd, NFSPROC_BINDCONNTOSESS, NULL, NULL, 0, NULL, NULL,
+	    NFS_VER4, rcp->minorvers);
+	NFSM_BUILD(tl, uint32_t *, NFSX_V4SESSIONID + 2 * NFSX_UNSIGNED);
+	memcpy(tl, rcp->sessionid, NFSX_V4SESSIONID);
+	tl += NFSX_V4SESSIONID / NFSX_UNSIGNED;
+	*tl++ = txdr_unsigned(NFSCDFC4_FORE_OR_BOTH);
+	*tl = newnfs_false;
+
+	memset(&ext, 0, sizeof(ext));
+	utimeout.tv_sec = 30;
+	utimeout.tv_usec = 0;
+	ext.rc_auth = authunix_create(cr);
+	nd->nd_mrep = NULL;
+	stat = CLNT_CALL_MBUF(cl, &ext, NFSV4PROC_COMPOUND, nd->nd_mreq,
+	    &nd->nd_mrep, utimeout);
+	AUTH_DESTROY(ext.rc_auth);
+	if (stat != RPC_SUCCESS) {
+		printf("nfsrpc_bindconnsess: call failed stat=%d\n", stat);
+		return;
+	}
+	if (nd->nd_mrep == NULL) {
+		printf("nfsrpc_bindconnsess: no reply args\n");
+		return;
+	}
+	error = 0;
+	newnfs_realign(&nd->nd_mrep, M_WAITOK);
+	nd->nd_md = nd->nd_mrep;
+	nd->nd_dpos = mtod(nd->nd_md, char *);
+	NFSM_DISSECT(tl, uint32_t *, 2 * NFSX_UNSIGNED);
+	nd->nd_repstat = fxdr_unsigned(uint32_t, *tl++);
+	if (nd->nd_repstat == NFSERR_OK) {
+		res = fxdr_unsigned(uint32_t, *tl);
+		if (res > 0 && (error = nfsm_advance(nd, NFSM_RNDUP(res),
+		    -1)) != 0)
+			goto nfsmout;
+		NFSM_DISSECT(tl, uint32_t *, NFSX_V4SESSIONID +
+		    4 * NFSX_UNSIGNED);
+		tl += 3;
+		if (!NFSBCMP(tl, rcp->sessionid, NFSX_V4SESSIONID)) {
+			tl += NFSX_V4SESSIONID / NFSX_UNSIGNED;
+			res = fxdr_unsigned(uint32_t, *tl);
+			if (res != NFSCDFS4_BOTH)
+				printf("nfsrpc_bindconnsess: did not "
+				    "return FS4_BOTH\n");
+		} else
+			printf("nfsrpc_bindconnsess: not same "
+			    "sessionid\n");
+	} else if (nd->nd_repstat != NFSERR_BADSESSION)
+		printf("nfsrpc_bindconnsess: returned %d\n", nd->nd_repstat);
+nfsmout:
+	if (error != 0)
+		printf("nfsrpc_bindconnsess: reply bad xdr\n");
+	m_freem(nd->nd_mrep);
+}

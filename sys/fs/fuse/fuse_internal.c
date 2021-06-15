@@ -158,6 +158,7 @@ fuse_internal_get_cached_vnode(struct mount* mp, ino_t ino, int flags,
 	return 0;
 }
 
+SDT_PROBE_DEFINE0(fusefs, , internal, access_vadmin);
 /* Synchronously send a FUSE_ACCESS operation */
 int
 fuse_internal_access(struct vnode *vp,
@@ -207,13 +208,21 @@ fuse_internal_access(struct vnode *vp,
 
 		fuse_internal_getattr(vp, &va, cred, td);
 		return vaccess(vp->v_type, va.va_mode, va.va_uid,
-		    va.va_gid, mode, cred, NULL);
+		    va.va_gid, mode, cred);
 	}
 
-	if (!fsess_isimpl(mp, FUSE_ACCESS))
+	if (mode & VADMIN) {
+		/*
+		 * The FUSE protocol doesn't have an equivalent of VADMIN, so
+		 * it's a bug if we ever reach this point with that bit set.
+		 */
+		SDT_PROBE0(fusefs, , internal, access_vadmin);
+	}
+
+	if (fsess_not_impl(mp, FUSE_ACCESS))
 		return 0;
 
-	if ((mode & (VWRITE | VAPPEND | VADMIN)) != 0)
+	if ((mode & (VWRITE | VAPPEND)) != 0)
 		mask |= W_OK;
 	if ((mode & VREAD) != 0)
 		mask |= R_OK;
@@ -303,7 +312,6 @@ fuse_internal_cache_attrs(struct vnode *vp, struct fuse_attr *attr,
 		memcpy(vap, vp_cache_at, sizeof(*vap));
 }
 
-
 /* fsync */
 
 int
@@ -329,14 +337,14 @@ fuse_internal_fsync(struct vnode *vp,
 	int op = FUSE_FSYNC;
 	int err = 0;
 
-	if (!fsess_isimpl(vnode_mount(vp),
+	if (fsess_not_impl(vnode_mount(vp),
 	    (vnode_vtype(vp) == VDIR ? FUSE_FSYNCDIR : FUSE_FSYNC))) {
 		return 0;
 	}
 	if (vnode_isdir(vp))
 		op = FUSE_FSYNCDIR;
 
-	if (!fsess_isimpl(mp, op))
+	if (fsess_not_impl(mp, op))
 		return 0;
 
 	fdisp_init(&fdi, sizeof(*ffsi));
@@ -345,6 +353,7 @@ fuse_internal_fsync(struct vnode *vp,
 	 * which file handle the caller is really referring to.
 	 */
 	LIST_FOREACH(fufh, &fvdat->handles, next) {
+		fdi.iosize = sizeof(*ffsi);
 		if (ffsi == NULL)
 			fdisp_make_vp(&fdi, op, vp, td, NULL);
 		else
@@ -376,8 +385,8 @@ fuse_internal_fsync(struct vnode *vp,
 }
 
 /* Asynchronous invalidation */
-SDT_PROBE_DEFINE2(fusefs, , internal, invalidate_cache_hit,
-	"struct vnode*", "struct vnode*");
+SDT_PROBE_DEFINE3(fusefs, , internal, invalidate_entry,
+	"struct vnode*", "struct fuse_notify_inval_entry_out*", "char*");
 int
 fuse_internal_invalidate_entry(struct mount *mp, struct uio *uio)
 {
@@ -406,6 +415,7 @@ fuse_internal_invalidate_entry(struct mount *mp, struct uio *uio)
 	else
 		err = fuse_internal_get_cached_vnode( mp, fnieo.parent,
 			LK_SHARED, &dvp);
+	SDT_PROBE3(fusefs, , internal, invalidate_entry, dvp, &fnieo, name);
 	/* 
 	 * If dvp is not in the cache, then it must've been reclaimed.  And
 	 * since fuse_vnop_reclaim does a cache_purge, name's entry must've
@@ -434,6 +444,8 @@ fuse_internal_invalidate_entry(struct mount *mp, struct uio *uio)
 	return (0);
 }
 
+SDT_PROBE_DEFINE2(fusefs, , internal, invalidate_inode,
+	"struct vnode*", "struct fuse_notify_inval_inode_out *");
 int
 fuse_internal_invalidate_inode(struct mount *mp, struct uio *uio)
 {
@@ -449,6 +461,7 @@ fuse_internal_invalidate_inode(struct mount *mp, struct uio *uio)
 	else
 		err = fuse_internal_get_cached_vnode(mp, fniio.ino, LK_SHARED,
 			&vp);
+	SDT_PROBE2(fusefs, , internal, invalidate_inode, vp, &fniio);
 	if (err != 0 || vp == NULL)
 		return (err);
 	/*
@@ -484,7 +497,7 @@ fuse_internal_mknod(struct vnode *dvp, struct vnode **vpp,
 	fmni.rdev = vap->va_rdev;
 	if (fuse_libabi_geq(data, 7, 12)) {
 		insize = sizeof(fmni);
-		fmni.umask = curthread->td_proc->p_fd->fd_cmask;
+		fmni.umask = curthread->td_proc->p_pd->pd_cmask;
 	} else {
 		insize = FUSE_COMPAT_MKNOD_IN_SIZE;
 	}
@@ -570,7 +583,7 @@ fuse_internal_readdir_processdata(struct uio *uio,
     u_long **cookiesp)
 {
 	int err = 0;
-	int bytesavail;
+	int oreclen;
 	size_t freclen;
 
 	struct dirent *de;
@@ -607,10 +620,10 @@ fuse_internal_readdir_processdata(struct uio *uio,
 			err = EINVAL;
 			break;
 		}
-		bytesavail = GENERIC_DIRSIZ((struct pseudo_dirent *)
+		oreclen = GENERIC_DIRSIZ((struct pseudo_dirent *)
 					    &fudge->namelen);
 
-		if (bytesavail > uio_resid(uio)) {
+		if (oreclen > uio_resid(uio)) {
 			/* Out of space for the dir so we are done. */
 			err = -1;
 			break;
@@ -620,12 +633,13 @@ fuse_internal_readdir_processdata(struct uio *uio,
 		 * the requested offset in the directory is found.
 		 */
 		if (*fnd_start != 0) {
-			fiov_adjust(cookediov, bytesavail);
-			bzero(cookediov->base, bytesavail);
+			fiov_adjust(cookediov, oreclen);
+			bzero(cookediov->base, oreclen);
 
 			de = (struct dirent *)cookediov->base;
 			de->d_fileno = fudge->ino;
-			de->d_reclen = bytesavail;
+			de->d_off = fudge->off;
+			de->d_reclen = oreclen;
 			de->d_type = fudge->type;
 			de->d_namlen = fudge->namelen;
 			memcpy((char *)cookediov->base + sizeof(struct dirent) -
@@ -856,6 +870,9 @@ fuse_internal_forget_send(struct mount *mp,
 	fdisp_destroy(&fdi);
 }
 
+SDT_PROBE_DEFINE2(fusefs, , internal, getattr_cache_incoherent,
+	"struct vnode*", "struct fuse_attr_out*");
+
 /* Fetch the vnode's attributes from the daemon*/
 int
 fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
@@ -898,6 +915,24 @@ fuse_internal_do_getattr(struct vnode *vp, struct vattr *vap,
 		fao->attr.mtime = old_mtime.tv_sec;
 		fao->attr.mtimensec = old_mtime.tv_nsec;
 	}
+	if (vnode_isreg(vp) &&
+	    fvdat->cached_attrs.va_size != VNOVAL &&
+	    fao->attr.size != fvdat->cached_attrs.va_size) {
+		/*
+		 * The server changed the file's size even though we had it
+		 * cached!  That's a server bug.
+		 */
+		SDT_PROBE2(fusefs, , internal, getattr_cache_incoherent, vp,
+		    fao);
+		printf("%s: cache incoherent on %s!  "
+		    "Buggy FUSE server detected.  To prevent data corruption, "
+		    "disable the data cache by mounting with -o direct_io, or "
+		    "as directed otherwise by your FUSE server's "
+		    "documentation\n", __func__,
+		    vnode_mount(vp)->mnt_stat.f_mntonname);
+		int iosize = fuse_iosize(vp);
+		v_inval_buf_range(vp, 0, INT64_MAX, iosize);
+	}
 	fuse_internal_cache_attrs(vp, &fao->attr, fao->attr_valid,
 		fao->attr_valid_nsec, vap);
 	if (vtyp != vnode_vtype(vp)) {
@@ -937,6 +972,8 @@ fuse_internal_vnode_disappear(struct vnode *vp)
 
 /* fuse start/stop */
 
+SDT_PROBE_DEFINE2(fusefs, , internal, init_done,
+	"struct fuse_data*", "struct fuse_init_out*");
 int
 fuse_internal_init_callback(struct fuse_ticket *tick, struct uio *uio)
 {
@@ -1015,12 +1052,19 @@ fuse_internal_init_callback(struct fuse_ticket *tick, struct uio *uio)
 	else
 		data->cache_mode = FUSE_CACHE_WT;
 
+	if (!fuse_libabi_geq(data, 7, 24))
+		fsess_set_notimpl(data->mp, FUSE_LSEEK);
+
+	if (!fuse_libabi_geq(data, 7, 28))
+		fsess_set_notimpl(data->mp, FUSE_COPY_FILE_RANGE);
+
 out:
 	if (err) {
 		fdata_set_dead(data);
 	}
 	FUSE_LOCK();
 	data->dataflags |= FSESS_INITED;
+	SDT_PROBE2(fusefs, , internal, init_done, data, fiio);
 	wakeup(&data->ticketer);
 	FUSE_UNLOCK();
 
@@ -1058,6 +1102,12 @@ fuse_internal_send_init(struct fuse_data *data, struct thread *td)
 	 * FUSE_READDIRPLUS_AUTO: not yet implemented
 	 * FUSE_ASYNC_DIO: not yet implemented
 	 * FUSE_NO_OPEN_SUPPORT: not yet implemented
+	 * FUSE_PARALLEL_DIROPS: not yet implemented
+	 * FUSE_HANDLE_KILLPRIV: not yet implemented
+	 * FUSE_POSIX_ACL: not yet implemented
+	 * FUSE_ABORT_ERROR: not yet implemented
+	 * FUSE_CACHE_SYMLINKS: not yet implemented
+	 * FUSE_MAX_PAGES: not yet implemented
 	 */
 	fiii->flags = FUSE_ASYNC_READ | FUSE_POSIX_LOCKS | FUSE_EXPORT_SUPPORT
 		| FUSE_BIG_WRITES | FUSE_WRITEBACK_CACHE;
@@ -1186,6 +1236,45 @@ int fuse_internal_setattr(struct vnode *vp, struct vattr *vap,
 out:
 	fdisp_destroy(&fdi);
 	return err;
+}
+
+/*
+ * FreeBSD clears the SUID and SGID bits on any write by a non-root user.
+ */
+void
+fuse_internal_clear_suid_on_write(struct vnode *vp, struct ucred *cred,
+	struct thread *td)
+{
+	struct fuse_data *data;
+	struct mount *mp;
+	struct vattr va;
+	int dataflags;
+
+	mp = vnode_mount(vp);
+	data = fuse_get_mpdata(mp);
+	dataflags = data->dataflags;
+
+	ASSERT_VOP_LOCKED(vp, __func__);
+
+	if (dataflags & FSESS_DEFAULT_PERMISSIONS) {
+		if (priv_check_cred(cred, PRIV_VFS_RETAINSUGID)) {
+			fuse_internal_getattr(vp, &va, cred, td);
+			if (va.va_mode & (S_ISUID | S_ISGID)) {
+				mode_t mode = va.va_mode & ~(S_ISUID | S_ISGID);
+				/* Clear all vattr fields except mode */
+				vattr_null(&va);
+				va.va_mode = mode;
+
+				/*
+				 * Ignore fuse_internal_setattr's return value,
+				 * because at this point the write operation has
+				 * already succeeded and we don't want to return
+				 * failing status for that.
+				 */
+				(void)fuse_internal_setattr(vp, &va, td, NULL);
+			}
+		}
+	}
 }
 
 #ifdef ZERO_PAD_INCOMPLETE_BUFS

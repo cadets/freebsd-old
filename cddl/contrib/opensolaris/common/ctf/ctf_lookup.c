@@ -91,7 +91,7 @@ ctf_lookup_by_name(ctf_file_t *fp, const char *name)
 	if (name == NULL)
 		return (ctf_set_errno(fp, EINVAL));
 
-	for (p = name, end = name + strlen(name); p && *p != '\0'; p = q) {
+	for (p = name, end = name + strlen(name); *p != '\0'; p = q) {
 		while (isspace(*p))
 			p++; /* skip leading ws */
 
@@ -132,9 +132,9 @@ ctf_lookup_by_name(ctf_file_t *fp, const char *name)
 			continue; /* skip qualifier keyword */
 
 		for (lp = fp->ctf_lookups; lp->ctl_prefix != NULL; lp++) {
-			if ((size_t)(q - p) >= lp->ctl_len &&
-			    (lp->ctl_prefix[0] == '\0' ||
-			    strncmp(p, lp->ctl_prefix, (size_t)(q - p)) == 0)) {
+			if (lp->ctl_prefix[0] == '\0' ||
+			    ((size_t)(q - p) >= lp->ctl_len && strncmp(p,
+			    lp->ctl_prefix, (size_t)(q - p)) == 0)) {
 				for (p += lp->ctl_len; isspace(*p); p++)
 					continue; /* skip prefix and next ws */
 

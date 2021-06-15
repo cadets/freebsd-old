@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2004,2010 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2004,2010 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -37,7 +38,7 @@
 
 #include "menu.priv.h"
 
-MODULE_ID("$Id: m_item_val.c,v 1.15 2010/01/23 21:20:10 tom Exp $")
+MODULE_ID("$Id: m_item_val.c,v 1.18 2020/12/12 00:38:08 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnmenu  
@@ -52,8 +53,8 @@ MODULE_ID("$Id: m_item_val.c,v 1.15 2010/01/23 21:20:10 tom Exp $")
 |   Return Values :  E_OK              - success
 |                    E_REQUEST_DENIED  - not selectable or single valued menu
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
-set_item_value(ITEM * item, bool value)
+MENU_EXPORT(int)
+set_item_value(ITEM *item, bool value)
 {
   MENU *menu;
 
@@ -94,8 +95,8 @@ set_item_value(ITEM * item, bool value)
 |   Return Values :  TRUE   - if item is selected
 |                    FALSE  - if item is not selected
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(bool)
-item_value(const ITEM * item)
+MENU_EXPORT(bool)
+item_value(const ITEM *item)
 {
   T((T_CALLED("item_value(%p)"), (const void *)item));
   returnBool((Normalize_Item(item)->value) ? TRUE : FALSE);

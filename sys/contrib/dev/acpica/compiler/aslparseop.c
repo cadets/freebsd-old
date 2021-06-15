@@ -8,7 +8,7 @@
  *
  * 1. Copyright Notice
  *
- * Some or all of this work - Copyright (c) 1999 - 2020, Intel Corp.
+ * Some or all of this work - Copyright (c) 1999 - 2021, Intel Corp.
  * All rights reserved.
  *
  * 2. License
@@ -388,6 +388,8 @@ TrCreateValuedLeafOp (
     UINT64                  Value)
 {
     ACPI_PARSE_OBJECT       *Op;
+    UINT32                  i;
+    char                    *StringPtr = NULL;
 
 
     Op = TrAllocateOp (ParseOpcode);
@@ -408,11 +410,35 @@ TrCreateValuedLeafOp (
 
     case PARSEOP_NAMESEG:
 
+        /* Check for mixed case (or all lower case). Issue a remark in this case */
+
+        for (i = 0; i < ACPI_NAMESEG_SIZE; i++)
+        {
+            if (islower ((int) Op->Asl.Value.Name[i]))
+            {
+                AcpiUtStrupr (&Op->Asl.Value.Name[i]);
+                AslError (ASL_REMARK, ASL_MSG_LOWER_CASE_NAMESEG, Op, Op->Asl.Value.Name);
+                break;
+            }
+        }
         DbgPrint (ASL_PARSE_OUTPUT, "NAMESEG->%s", Op->Asl.Value.String);
         break;
 
     case PARSEOP_NAMESTRING:
 
+        /* Check for mixed case (or all lower case). Issue a remark in this case */
+
+        StringPtr = Op->Asl.Value.Name;
+        for (i = 0; *StringPtr; i++)
+        {
+            if (islower ((int) *StringPtr))
+            {
+                AcpiUtStrupr (&Op->Asl.Value.Name[i]);
+                AslError (ASL_REMARK, ASL_MSG_LOWER_CASE_NAMEPATH, Op, Op->Asl.Value.Name);
+                break;
+            }
+            StringPtr++;
+        }
         DbgPrint (ASL_PARSE_OUTPUT, "NAMESTRING->%s", Op->Asl.Value.String);
         break;
 
@@ -743,13 +769,18 @@ TrCreateConstantLeafOp (
 
         /* Get a copy of the current time */
 
+        Op->Asl.Value.String = "";
         CurrentTime = time (NULL);
-        StaticTimeString = ctime (&CurrentTime);
-        TimeString = UtLocalCalloc (strlen (StaticTimeString) + 1);
-        strcpy (TimeString, StaticTimeString);
 
-        TimeString[strlen(TimeString) -1] = 0;  /* Remove trailing newline */
-        Op->Asl.Value.String = TimeString;
+        StaticTimeString = ctime (&CurrentTime);
+        if (StaticTimeString)
+        {
+            TimeString = UtLocalCalloc (strlen (StaticTimeString) + 1);
+            strcpy (TimeString, StaticTimeString);
+
+            TimeString[strlen(TimeString) -1] = 0;  /* Remove trailing newline */
+            Op->Asl.Value.String = TimeString;
+        }
         break;
 
     default: /* This would be an internal error */

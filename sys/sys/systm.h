@@ -49,6 +49,7 @@
 
 __NULLABILITY_PRAGMA_PUSH
 
+#ifdef _KERNEL
 extern int cold;		/* nonzero if we are doing a cold boot */
 extern int suspend_blocked;	/* block suspend due to pending shutdown */
 extern int rebooting;		/* kern_reboot() has been called. */
@@ -73,6 +74,8 @@ extern int maxusers;		/* system tune hint */
 extern int ngroups_max;		/* max # of supplemental groups */
 extern int vm_guest;		/* Running as virtual machine guest? */
 
+extern u_long maxphys;		/* max raw I/O transfer size */
+
 /*
  * Detected virtual machine guest types. The intention is to expand
  * and/or add to the VM_GUEST_VM type if specific VM functionality is
@@ -83,28 +86,7 @@ enum VM_GUEST { VM_GUEST_NO = 0, VM_GUEST_VM, VM_GUEST_XEN, VM_GUEST_HV,
 		VM_GUEST_VMWARE, VM_GUEST_KVM, VM_GUEST_BHYVE, VM_GUEST_VBOX,
 		VM_GUEST_PARALLELS, VM_LAST };
 
-/*
- * These functions need to be declared before the KASSERT macro is invoked in
- * !KASSERT_PANIC_OPTIONAL builds, so their declarations are sort of out of
- * place compared to other function definitions in this header.  On the other
- * hand, this header is a bit disorganized anyway.
- */
-void	panic(const char *, ...) __dead2 __printflike(1, 2);
-void	vpanic(const char *, __va_list) __dead2 __printflike(1, 0);
-
-#if defined(WITNESS) || defined(INVARIANT_SUPPORT)
-#ifdef KASSERT_PANIC_OPTIONAL
-void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
-#else
-#define kassert_panic	panic
-#endif
-#endif
-
 #ifdef	INVARIANTS		/* The option is always available */
-#define	KASSERT(exp,msg) do {						\
-	if (__predict_false(!(exp)))					\
-		kassert_panic msg;					\
-} while (0)
 #define	VNASSERT(exp, vp, msg) do {					\
 	if (__predict_false(!(exp))) {					\
 		vn_printf(vp, "VNASSERT failed: %s not true at %s:%d (%s)\n",\
@@ -117,25 +99,84 @@ void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
 	VNASSERT(exp, vp, ("condition %s not met at %s:%d (%s)",	\
 	    _exp, __FILE__, __LINE__, __func__));			\
 } while (0)
+#define	__assert_unreachable() \
+	panic("executing segment marked as unreachable at %s:%d (%s)\n", \
+	    __FILE__, __LINE__, __func__)
 #else
-#define	KASSERT(exp,msg) do { \
-} while (0)
-
 #define	VNASSERT(exp, vp, msg) do { \
 } while (0)
 #define	VNPASS(exp, vp) do { \
 } while (0)
+#define	__assert_unreachable()	__unreachable()
 #endif
 
 #ifndef CTASSERT	/* Allow lint to override */
 #define	CTASSERT(x)	_Static_assert(x, "compile-time assertion failed")
 #endif
+#endif /* KERNEL */
 
-#if defined(_KERNEL)
+/*
+ * These functions need to be declared before the KASSERT macro is invoked in
+ * !KASSERT_PANIC_OPTIONAL builds, so their declarations are sort of out of
+ * place compared to other function definitions in this header.  On the other
+ * hand, this header is a bit disorganized anyway.
+ */
+void	panic(const char *, ...) __dead2 __printflike(1, 2);
+void	vpanic(const char *, __va_list) __dead2 __printflike(1, 0);
+
+
+#if defined(_STANDALONE)
+struct ucred;
+/*
+ * Until we have more experience with KASSERTS that are called
+ * from the boot loader, they are off. The bootloader does this
+ * a little differently than the kernel (we just call printf atm).
+ * we avoid most of the common functions in the boot loader, so
+ * declare printf() here too.
+ */
+int	printf(const char *, ...) __printflike(1, 2);
+#  define kassert_panic printf
+#else /* !_STANDALONE */
+#  if defined(WITNESS) || defined(INVARIANT_SUPPORT)
+#    ifdef KASSERT_PANIC_OPTIONAL
+void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
+#    else
+#      define kassert_panic	panic
+#    endif /* KASSERT_PANIC_OPTIONAL */
+#  endif /* defined(WITNESS) || defined(INVARIANT_SUPPORT) */
+#endif /* _STANDALONE */
+
+#if defined(INVARIANTS) || defined(_STANDALONE)
+#define	KASSERT(exp,msg) do {						\
+	if (__predict_false(!(exp)))					\
+		kassert_panic msg;					\
+} while (0)
+#else /* !INVARIANTS && !_STANDALONE */
+#define	KASSERT(exp,msg) do { \
+} while (0)
+#endif /* INVARIANTS || _STANDALONE */
+
+/*
+ * Helpful macros for quickly coming up with assertions with informative
+ * panic messages.
+ */
+#define MPASS(ex)		MPASS4(ex, #ex, __FILE__, __LINE__)
+#define MPASS2(ex, what)	MPASS4(ex, what, __FILE__, __LINE__)
+#define MPASS3(ex, file, line)	MPASS4(ex, #ex, file, line)
+#define MPASS4(ex, what, file, line)					\
+	KASSERT((ex), ("Assertion %s failed at %s:%d", what, file, line))
+
+/*
+ * Align variables.
+ */
+#define	__read_mostly		__section(".data.read_mostly")
+#define	__read_frequently	__section(".data.read_frequently")
+#define	__exclusive_cache_line	__aligned(CACHE_LINE_SIZE) \
+				    __section(".data.exclusive_cache_line")
+#ifdef _KERNEL
 #include <sys/param.h>		/* MAXCPU */
 #include <sys/pcpu.h>		/* curthread */
 #include <sys/kpilite.h>
-#endif
 
 /*
  * Assert that a pointer can be loaded from memory atomically.
@@ -152,8 +193,8 @@ void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
  * Assert that a thread is in critical(9) section.
  */
 #define	CRITICAL_ASSERT(td)						\
-	KASSERT((td)->td_critnest >= 1, ("Not in critical section"));
- 
+	KASSERT((td)->td_critnest >= 1, ("Not in critical section"))
+
 /*
  * If we have already panic'd and this is the thread that called
  * panic(), then don't block on any mutexes but silently succeed.
@@ -166,28 +207,7 @@ void	kassert_panic(const char *fmt, ...)  __printflike(1, 2);
 })
 #define	SCHEDULER_STOPPED() SCHEDULER_STOPPED_TD(curthread)
 
-/*
- * Align variables.
- */
-#define	__read_mostly		__section(".data.read_mostly")
-#define	__read_frequently	__section(".data.read_frequently")
-#define	__exclusive_cache_line	__aligned(CACHE_LINE_SIZE) \
-				    __section(".data.exclusive_cache_line")
-/*
- * XXX the hints declarations are even more misplaced than most declarations
- * in this file, since they are needed in one file (per arch) and only used
- * in two files.
- * XXX most of these variables should be const.
- */
 extern int osreldate;
-extern bool dynamic_kenv;
-extern struct mtx kenv_lock;
-extern char *kern_envp;
-extern char *md_envp;
-extern char static_env[];
-extern char static_hints[];	/* by config for now */
-
-extern char **kenvp;
 
 extern const void *zero_region;	/* address space maps to a zeroed page	*/
 
@@ -237,7 +257,6 @@ void	*phashinit_flags(int count, struct malloc_type *type, u_long *nentries,
     int flags);
 void	g_waitidle(void);
 
-void	cpu_boot(int);
 void	cpu_flush_dcache(void *, size_t);
 void	cpu_rootconf(void);
 void	critical_enter_KBI(void);
@@ -254,7 +273,6 @@ void	tablefull(const char *);
 extern int (*lkpi_alloc_current)(struct thread *, int);
 int linux_alloc_current_noop(struct thread *, int);
 
-
 #if defined(KLD_MODULE) || defined(KTR_CRITICAL) || !defined(_KERNEL) || defined(GENOFFSET)
 #define critical_enter() critical_enter_KBI()
 #define critical_exit() critical_exit_KBI()
@@ -266,7 +284,7 @@ critical_enter(void)
 
 	td = (struct thread_lite *)curthread;
 	td->td_critnest++;
-	__compiler_membar();
+	atomic_interrupt_fence();
 }
 
 static __inline void
@@ -277,15 +295,14 @@ critical_exit(void)
 	td = (struct thread_lite *)curthread;
 	KASSERT(td->td_critnest != 0,
 	    ("critical_exit: td_critnest == 0"));
-	__compiler_membar();
+	atomic_interrupt_fence();
 	td->td_critnest--;
-	__compiler_membar();
+	atomic_interrupt_fence();
 	if (__predict_false(td->td_owepreempt))
 		critical_exit_preempt();
 
 }
 #endif
-
 
 #ifdef  EARLY_PRINTF
 typedef void early_putc_t(int ch);
@@ -334,18 +351,28 @@ void	*memcpy(void * _Nonnull to, const void * _Nonnull from, size_t len);
 void	*memmove(void * _Nonnull dest, const void * _Nonnull src, size_t n);
 int	memcmp(const void *b1, const void *b2, size_t len);
 
-#ifdef KCSAN
-void	*kcsan_memset(void *, int, size_t);
-void	*kcsan_memcpy(void *, const void *, size_t);
-void	*kcsan_memmove(void *, const void *, size_t);
-int	kcsan_memcmp(const void *, const void *, size_t);
-#define bcopy(from, to, len) kcsan_memmove((to), (from), (len))
-#define bzero(buf, len) kcsan_memset((buf), 0, (len))
-#define bcmp(b1, b2, len) kcsan_memcmp((b1), (b2), (len))
-#define memset(buf, c, len) kcsan_memset((buf), (c), (len))
-#define memcpy(to, from, len) kcsan_memcpy((to), (from), (len))
-#define memmove(dest, src, n) kcsan_memmove((dest), (src), (n))
-#define memcmp(b1, b2, len) kcsan_memcmp((b1), (b2), (len))
+#if defined(KASAN)
+#define	SAN_PREFIX	kasan_
+#elif defined(KCSAN)
+#define	SAN_PREFIX	kcsan_
+#endif
+
+#ifdef SAN_PREFIX
+#define	SAN_INTERCEPTOR(func)	__CONCAT(SAN_PREFIX, func)
+
+void	*SAN_INTERCEPTOR(memset)(void *, int, size_t);
+void	*SAN_INTERCEPTOR(memcpy)(void *, const void *, size_t);
+void	*SAN_INTERCEPTOR(memmove)(void *, const void *, size_t);
+int	SAN_INTERCEPTOR(memcmp)(const void *, const void *, size_t);
+#ifndef SAN_RUNTIME
+#define bcopy(from, to, len)	SAN_INTERCEPTOR(memmove)((to), (from), (len))
+#define bzero(buf, len)		SAN_INTERCEPTOR(memset)((buf), 0, (len))
+#define bcmp(b1, b2, len)	SAN_INTERCEPTOR(memcmp)((b1), (b2), (len))
+#define memset(buf, c, len)	SAN_INTERCEPTOR(memset)((buf), (c), (len))
+#define memcpy(to, from, len)	SAN_INTERCEPTOR(memcpy)((to), (from), (len))
+#define memmove(dest, src, n)	SAN_INTERCEPTOR(memmove)((dest), (src), (n))
+#define memcmp(b1, b2, len)	SAN_INTERCEPTOR(memcmp)((b1), (b2), (len))
+#endif /* !SAN_RUNTIME */
 #else
 #define bcopy(from, to, len) __builtin_memmove((to), (from), (len))
 #define bzero(buf, len) __builtin_memset((buf), 0, (len))
@@ -354,7 +381,7 @@ int	kcsan_memcmp(const void *, const void *, size_t);
 #define memcpy(to, from, len) __builtin_memcpy((to), (from), (len))
 #define memmove(dest, src, n) __builtin_memmove((dest), (src), (n))
 #define memcmp(b1, b2, len) __builtin_memcmp((b1), (b2), (len))
-#endif
+#endif /* !SAN_PREFIX */
 
 void	*memset_early(void * _Nonnull buf, int c, size_t len);
 #define bzero_early(buf, len) memset_early((buf), 0, (len))
@@ -362,9 +389,17 @@ void	*memcpy_early(void * _Nonnull to, const void * _Nonnull from, size_t len);
 void	*memmove_early(void * _Nonnull dest, const void * _Nonnull src, size_t n);
 #define bcopy_early(from, to, len) memmove_early((to), (from), (len))
 
-int	copystr(const void * _Nonnull __restrict kfaddr,
-	    void * _Nonnull __restrict kdaddr, size_t len,
-	    size_t * __restrict lencopied);
+#define	copystr(src, dst, len, outlen)	({			\
+	size_t __r, __len, *__outlen;				\
+								\
+	__len = (len);						\
+	__outlen = (outlen);					\
+	__r = strlcpy((dst), (src), __len);			\
+	if (__outlen != NULL)					\
+		*__outlen = ((__r >= __len) ? __len : __r + 1);	\
+	((__r >= __len) ? ENAMETOOLONG : 0);			\
+})
+
 int	copyinstr(const void * __restrict udaddr,
 	    void * _Nonnull __restrict kaddr, size_t len,
 	    size_t * __restrict lencopied);
@@ -377,16 +412,16 @@ int	copyout(const void * _Nonnull __restrict kaddr,
 int	copyout_nofault(const void * _Nonnull __restrict kaddr,
 	    void * __restrict udaddr, size_t len);
 
-#ifdef KCSAN
-int	kcsan_copystr(const void *, void *, size_t, size_t *);
-int	kcsan_copyin(const void *, void *, size_t);
-int	kcsan_copyinstr(const void *, void *, size_t, size_t *);
-int	kcsan_copyout(const void *, void *, size_t);
-#define	copystr(kf, k, l, lc) kcsan_copystr((kf), (k), (l), (lc))
-#define	copyin(u, k, l) kcsan_copyin((u), (k), (l))
-#define	copyinstr(u, k, l, lc) kcsan_copyinstr((u), (k), (l), (lc))
-#define	copyout(k, u, l) kcsan_copyout((k), (u), (l))
-#endif
+#ifdef SAN_PREFIX
+int	SAN_INTERCEPTOR(copyin)(const void *, void *, size_t);
+int	SAN_INTERCEPTOR(copyinstr)(const void *, void *, size_t, size_t *);
+int	SAN_INTERCEPTOR(copyout)(const void *, void *, size_t);
+#ifndef SAN_RUNTIME
+#define	copyin(u, k, l)		SAN_INTERCEPTOR(copyin)((u), (k), (l))
+#define	copyinstr(u, k, l, lc)	SAN_INTERCEPTOR(copyinstr)((u), (k), (l), (lc))
+#define	copyout(k, u, l)	SAN_INTERCEPTOR(copyout)((k), (u), (l))
+#endif /* !SAN_RUNTIME */
+#endif /* SAN_PREFIX */
 
 int	fubyte(volatile const void *base);
 long	fuword(volatile const void *base);
@@ -443,6 +478,9 @@ int	getenv_string(const char *name, char *data, int size);
 int	getenv_int64(const char *name, int64_t *data);
 int	getenv_uint64(const char *name, uint64_t *data);
 int	getenv_quad(const char *name, quad_t *data);
+int	getenv_bool(const char *name, bool *data);
+bool	getenv_is_true(const char *name);
+bool	getenv_is_false(const char *name);
 int	kern_setenv(const char *name, const char *value);
 int	kern_unsetenv(const char *name);
 int	testenv(const char *name);
@@ -458,11 +496,6 @@ extern cpu_tick_f *cpu_ticks;
 uint64_t cpu_tickrate(void);
 uint64_t cputick2usec(uint64_t tick);
 
-#ifdef APM_FIXUP_CALLTODO
-struct timeval;
-void	adjust_timeout_calltodo(struct timeval *time_change);
-#endif /* APM_FIXUP_CALLTODO */
-
 #include <sys/libkern.h>
 
 /* Initialize the world */
@@ -477,9 +510,6 @@ void	kern_reboot(int) __dead2;
 void	shutdown_nice(int);
 
 /* Stubs for obsolete functions that used to be for interrupt management */
-static __inline intrmask_t	splbio(void)		{ return 0; }
-static __inline intrmask_t	splcam(void)		{ return 0; }
-static __inline intrmask_t	splclock(void)		{ return 0; }
 static __inline intrmask_t	splhigh(void)		{ return 0; }
 static __inline intrmask_t	splimp(void)		{ return 0; }
 static __inline intrmask_t	splnet(void)		{ return 0; }
@@ -548,7 +578,6 @@ void root_mount_hold_token(const char *identifier, struct root_hold_token *h);
 void root_mount_rel(struct root_hold_token *h);
 int root_mounted(void);
 
-
 /*
  * Unit number allocation API. (kern/subr_unit.c)
  */
@@ -597,9 +626,8 @@ void counted_warning(unsigned *counter, const char *msg);
 /*
  * APIs to manage deprecation and obsolescence.
  */
-struct device;
 void _gone_in(int major, const char *msg);
-void _gone_in_dev(struct device *dev, int major, const char *msg);
+void _gone_in_dev(device_t dev, int major, const char *msg);
 #ifdef NO_OBSOLETE_CODE
 #define __gone_ok(m, msg)					 \
 	_Static_assert(m < P_OSREL_MAJOR(__FreeBSD_version)),	 \
@@ -609,7 +637,7 @@ void _gone_in_dev(struct device *dev, int major, const char *msg);
 #endif
 #define gone_in(major, msg)		__gone_ok(major, msg) _gone_in(major, msg)
 #define gone_in_dev(dev, major, msg)	__gone_ok(major, msg) _gone_in_dev(dev, major, msg)
+#endif /* _KERNEL */
 
 __NULLABILITY_PRAGMA_POP
-
 #endif /* !_SYS_SYSTM_H_ */

@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/sysproto.h>
+#include <sys/abi_compat.h>
 #include <sys/eventhandler.h>
 #include <sys/kernel.h>
 #include <sys/proc.h>
@@ -186,27 +187,27 @@ struct sem_undo {
 #define	SEM_ALIGN(bytes) roundup2(bytes, sizeof(long))
 
 /* actual size of an undo structure */
-#define SEMUSZ	SEM_ALIGN(offsetof(struct sem_undo, un_ent[SEMUME]))
+#define SEMUSZ(x)	SEM_ALIGN(offsetof(struct sem_undo, un_ent[(x)]))
 
 /*
  * Macro to find a particular sem_undo vector
  */
 #define SEMU(ix) \
-	((struct sem_undo *)(((intptr_t)semu)+ix * seminfo.semusz))
+	((struct sem_undo *)(((intptr_t)semu) + (ix) * seminfo.semusz))
 
 /*
  * semaphore info struct
  */
 struct seminfo seminfo = {
-                SEMMNI,         /* # of semaphore identifiers */
-                SEMMNS,         /* # of semaphores in system */
-                SEMMNU,         /* # of undo structures in system */
-                SEMMSL,         /* max # of semaphores per id */
-                SEMOPM,         /* max # of operations per semop call */
-                SEMUME,         /* max # of undo entries per process */
-                SEMUSZ,         /* size in bytes of undo structure */
-                SEMVMX,         /* semaphore maximum value */
-                SEMAEM          /* adjust on exit max value */
+	.semmni =	SEMMNI,	/* # of semaphore identifiers */
+	.semmns =	SEMMNS,	/* # of semaphores in system */
+	.semmnu =	SEMMNU,	/* # of undo structures in system */
+	.semmsl =	SEMMSL,	/* max # of semaphores per id */
+	.semopm =	SEMOPM,	/* max # of operations per semop call */
+	.semume =	SEMUME,	/* max # of undo entries per process */
+	.semusz =	SEMUSZ(SEMUME),	/* size in bytes of undo structure */
+	.semvmx =	SEMVMX,	/* semaphore maximum value */
+	.semaem =	SEMAEM,	/* adjust on exit max value */
 };
 
 SYSCTL_INT(_kern_ipc, OID_AUTO, semmni, CTLFLAG_RDTUN, &seminfo.semmni, 0,
@@ -221,7 +222,7 @@ SYSCTL_INT(_kern_ipc, OID_AUTO, semopm, CTLFLAG_RDTUN, &seminfo.semopm, 0,
     "Max operations per semop call");
 SYSCTL_INT(_kern_ipc, OID_AUTO, semume, CTLFLAG_RDTUN, &seminfo.semume, 0,
     "Max undo entries per process");
-SYSCTL_INT(_kern_ipc, OID_AUTO, semusz, CTLFLAG_RDTUN, &seminfo.semusz, 0,
+SYSCTL_INT(_kern_ipc, OID_AUTO, semusz, CTLFLAG_RD, &seminfo.semusz, 0,
     "Size in bytes of undo structure");
 SYSCTL_INT(_kern_ipc, OID_AUTO, semvmx, CTLFLAG_RWTUN, &seminfo.semvmx, 0,
     "Semaphore maximum value");
@@ -283,6 +284,7 @@ seminit(void)
 	    M_WAITOK | M_ZERO);
 	sema_mtx = malloc(sizeof(struct mtx) * seminfo.semmni, M_SEM,
 	    M_WAITOK | M_ZERO);
+	seminfo.semusz = SEMUSZ(seminfo.semume);
 	semu = malloc(seminfo.semmnu * seminfo.semusz, M_SEM, M_WAITOK);
 
 	for (i = 0; i < seminfo.semmni; i++) {
@@ -319,7 +321,7 @@ seminit(void)
 		if (rsv == NULL)
 			rsv = osd_reserve(sem_prison_slot);
 		prison_lock(pr);
-		if ((pr->pr_allow & PR_ALLOW_SYSVIPC) && pr->pr_ref > 0) {
+		if (pr->pr_allow & PR_ALLOW_SYSVIPC) {
 			(void)osd_jail_set_reserved(pr, sem_prison_slot, rsv,
 			    &prison0);
 			rsv = NULL;
@@ -380,8 +382,6 @@ sysvsem_modload(struct module *module, int cmd, void *arg)
 	switch (cmd) {
 	case MOD_LOAD:
 		error = seminit();
-		if (error != 0)
-			semunload();
 		break;
 	case MOD_UNLOAD:
 		error = semunload();
@@ -558,8 +558,14 @@ sem_remove(int semidx, struct ucred *cred)
 	int i;
 
 	KASSERT(semidx >= 0 && semidx < seminfo.semmni,
-		("semidx out of bounds"));
+	    ("semidx out of bounds"));
+	mtx_assert(&sem_mtx, MA_OWNED);
 	semakptr = &sema[semidx];
+	KASSERT(semakptr->u.__sem_base - sem + semakptr->u.sem_nsems <= semtot,
+	    ("sem_remove: sema %d corrupted sem pointer %p %p %d %d",
+	    semidx, semakptr->u.__sem_base, sem, semakptr->u.sem_nsems,
+	    semtot));
+
 	semakptr->u.sem_perm.cuid = cred ? cred->cr_uid : 0;
 	semakptr->u.sem_perm.uid = cred ? cred->cr_uid : 0;
 	semakptr->u.sem_perm.mode = 0;
@@ -578,8 +584,9 @@ sem_remove(int semidx, struct ucred *cred)
 		    sema[i].u.__sem_base > semakptr->u.__sem_base)
 			mtx_lock_flags(&sema_mtx[i], LOP_DUPOK);
 	}
-	for (i = semakptr->u.__sem_base - sem; i < semtot; i++)
-		sem[i] = sem[i + semakptr->u.sem_nsems];
+	for (i = semakptr->u.__sem_base - sem + semakptr->u.sem_nsems;
+	    i < semtot; i++)
+		sem[i - semakptr->u.sem_nsems] = sem[i];
 	for (i = 0; i < seminfo.semmni; i++) {
 		if ((sema[i].u.sem_perm.mode & SEM_ALLOC) &&
 		    sema[i].u.__sem_base > semakptr->u.__sem_base) {
@@ -790,6 +797,13 @@ kern_semctl(struct thread *td, int semid, int semnum, int cmd,
 		bcopy(&semakptr->u, arg->buf, sizeof(struct semid_ds));
 		if (cred->cr_prison != semakptr->cred->cr_prison)
 			arg->buf->sem_perm.key = IPC_PRIVATE;
+
+		/*
+		 * Try to hide the fact that the structure layout is shared by
+		 * both the kernel and userland.  This pointer is not useful to
+		 * userspace.
+		 */
+		arg->buf->__sem_base = NULL;
 		break;
 
 	case GETNCNT:
@@ -1142,7 +1156,7 @@ sys_semop(struct thread *td, struct semop_args *uap)
 		DPRINTF(("error = %d from copyin(%p, %p, %d)\n", error,
 		    uap->sops, sops, nsops * sizeof(sops[0])));
 		if (sops != small_sops)
-			free(sops, M_SEM);
+			free(sops, M_TEMP);
 		return (error);
 	}
 
@@ -1393,7 +1407,7 @@ done:
 done2:
 	mtx_unlock(sema_mtxp);
 	if (sops != small_sops)
-		free(sops, M_SEM);
+		free(sops, M_TEMP);
 	return (error);
 }
 
@@ -1744,10 +1758,6 @@ sys_semsys(td, uap)
 	error = (*semcalls[uap->which])(td, &uap->a2);
 	return (error);
 }
-
-#ifndef CP
-#define CP(src, dst, fld)	do { (dst).fld = (src).fld; } while (0)
-#endif
 
 #ifndef _SYS_SYSPROTO_H_
 struct freebsd7___semctl_args {

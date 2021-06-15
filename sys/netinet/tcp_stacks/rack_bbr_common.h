@@ -1,7 +1,7 @@
 #ifndef __rack_bbr_common_h__
 #define __rack_bbr_common_h__
 /*-
- * Copyright (c) 2017-9 Netflix, Inc.
+ * Copyright (c) 2016-2020 Netflix, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,11 +26,6 @@
  *
  * __FBSDID("$FreeBSD$");
  */
-
-/* XXXLAS: Couple STATS to NETFLIX_STATS until stats(3) is fully upstreamed. */
-#ifndef	NETFLIX_STATS
-#undef	STATS
-#endif
 
 /* Common defines and such used by both RACK and BBR */
 /* Special values for mss accounting array */
@@ -85,7 +80,7 @@
 /* Bits per second in bytes per second */
 #define FORTY_EIGHT_MBPS 6000000 /* 48 megabits in bytes */
 #define THIRTY_MBPS 3750000 /* 30 megabits in bytes */
-#define TWENTY_THREE_MBPS 2896000
+#define TWENTY_THREE_MBPS 2896000 /* 23 megabits in bytes */
 #define FIVETWELVE_MBPS 64000000 /* 512 megabits in bytes */
 #define ONE_POINT_TWO_MEG 150000 /* 1.2 megabits in bytes */
 
@@ -103,12 +98,20 @@ ctf_do_queued_segments(struct socket *so, struct tcpcb *tp, int have_pkt);
 uint32_t ctf_outstanding(struct tcpcb *tp);
 uint32_t ctf_flight_size(struct tcpcb *tp, uint32_t rc_sacked);
 int
-ctf_drop_checks(struct tcpopt *to, struct mbuf *m,
-    struct tcphdr *th, struct tcpcb *tp, int32_t * tlenp, int32_t * thf,
-    int32_t * drop_hdrlen, int32_t * ret_val);
+_ctf_drop_checks(struct tcpopt *to, struct mbuf *m, struct tcphdr *th,
+    struct tcpcb *tp, int32_t *tlenp,
+    int32_t *thf, int32_t *drop_hdrlen, int32_t *ret_val,
+    uint32_t *ts, uint32_t *cnt);
+void ctf_ack_war_checks(struct tcpcb *tp, uint32_t *ts, uint32_t *cnt);
+#define ctf_drop_checks(a, b, c, d, e, f, g, h) _ctf_drop_checks(a, b, c, d, e, f, g, h, NULL, NULL)
+
 void
-ctf_do_dropafterack(struct mbuf *m, struct tcpcb *tp,
-    struct tcphdr *th, int32_t thflags, int32_t tlen, int32_t * ret_val);
+__ctf_do_dropafterack(struct mbuf *m, struct tcpcb *tp,
+      struct tcphdr *th, int32_t thflags, int32_t tlen,
+      int32_t *ret_val, uint32_t *ts, uint32_t *cnt);
+
+#define ctf_do_dropafterack(a, b, c, d, e, f) __ctf_do_dropafterack(a, b, c, d, e, f, NULL, NULL)
+
 void
 ctf_do_dropwithreset(struct mbuf *m, struct tcpcb *tp,
 	struct tcphdr *th, int32_t rstreason, int32_t tlen);
@@ -127,6 +130,9 @@ int
 ctf_ts_check(struct mbuf *m, struct tcphdr *th,
     struct tcpcb *tp, int32_t tlen, int32_t thflags, int32_t * ret_val);
 
+int
+ctf_ts_check_ac(struct tcpcb *tp, int32_t thflags);
+
 void
 ctf_calc_rwin(struct socket *so, struct tcpcb *tp);
 
@@ -134,14 +140,17 @@ void
 ctf_do_dropwithreset_conn(struct mbuf *m, struct tcpcb *tp, struct tcphdr *th,
     int32_t rstreason, int32_t tlen);
 
-uint32_t 
+uint32_t
 ctf_fixed_maxseg(struct tcpcb *tp);
 
 void
 ctf_log_sack_filter(struct tcpcb *tp, int num_sack_blks, struct sackblk *sack_blocks);
 
-uint32_t 
+uint32_t
 ctf_decay_count(uint32_t count, uint32_t decay_percentage);
+
+int32_t
+ctf_progress_timeout_check(struct tcpcb *tp, bool log);
 
 #endif
 #endif

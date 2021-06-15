@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2010,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2010,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -32,7 +33,7 @@
 
 #include "form.priv.h"
 
-MODULE_ID("$Id: fld_page.c,v 1.12 2012/06/10 00:12:47 tom Exp $")
+MODULE_ID("$Id: fld_page.c,v 1.15 2020/12/11 23:15:26 tom Exp $")
 
 /*---------------------------------------------------------------------------
 |   Facility      :  libnform  
@@ -44,7 +45,7 @@ MODULE_ID("$Id: fld_page.c,v 1.12 2012/06/10 00:12:47 tom Exp $")
 |   Return Values :  E_OK         - success
 |                    E_CONNECTED  - field is connected
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(int)
+FORM_EXPORT(int)
 set_new_page(FIELD *field, bool new_page_flag)
 {
   T((T_CALLED("set_new_page(%p,%d)"), (void *)field, new_page_flag));
@@ -65,13 +66,13 @@ set_new_page(FIELD *field, bool new_page_flag)
 |   Facility      :  libnform  
 |   Function      :  bool new_page(const FIELD *field)
 |   
-|   Description   :  Retrieve the info whether or not the field starts a
-|                    new page on the form.
+|   Description   :  Retrieve the information whether or not the field starts
+|                    a new page on the form.
 |
 |   Return Values :  TRUE  - field starts a new page
 |                    FALSE - field doesn't start a new page
 +--------------------------------------------------------------------------*/
-NCURSES_EXPORT(bool)
+FORM_EXPORT(bool)
 new_page(const FIELD *field)
 {
   T((T_CALLED("new_page(%p)"), (const void *)field));

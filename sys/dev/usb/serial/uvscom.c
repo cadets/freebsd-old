@@ -72,7 +72,8 @@ __FBSDID("$FreeBSD$");
 #ifdef USB_DEBUG
 static int uvscom_debug = 0;
 
-static SYSCTL_NODE(_hw_usb, OID_AUTO, uvscom, CTLFLAG_RW, 0, "USB uvscom");
+static SYSCTL_NODE(_hw_usb, OID_AUTO, uvscom, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "USB uvscom");
 SYSCTL_INT(_hw_usb_uvscom, OID_AUTO, debug, CTLFLAG_RWTUN,
     &uvscom_debug, 0, "Debug level");
 #endif
@@ -191,7 +192,6 @@ static uint16_t	uvscom_cfg_read_status(struct uvscom_softc *);
 static void	uvscom_poll(struct ucom_softc *ucom);
 
 static const struct usb_config uvscom_config[UVSCOM_N_TRANSFER] = {
-
 	[UVSCOM_BULK_DT_WR] = {
 		.type = UE_BULK,
 		.endpoint = UE_ADDR_ANY,
@@ -394,7 +394,6 @@ tr_setup:
 		pc = usbd_xfer_get_frame(xfer, 0);
 		if (ucom_get_data(&sc->sc_ucom, pc, 0,
 		    UVSCOM_BULK_BUF_SIZE, &actlen)) {
-
 			usbd_xfer_set_frame_len(xfer, 0, actlen);
 			usbd_transfer_submit(xfer);
 		}
@@ -453,7 +452,6 @@ uvscom_intr_callback(struct usb_xfer *xfer, usb_error_t error)
 	switch (USB_GET_STATE(xfer)) {
 	case USB_ST_TRANSFERRED:
 		if (actlen >= 2) {
-
 			pc = usbd_xfer_get_frame(xfer, 0);
 			usbd_copy_out(pc, 0, buf, sizeof(buf));
 

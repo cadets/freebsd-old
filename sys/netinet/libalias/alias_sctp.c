@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2008
- * 	Swinburne University of Technology, Melbourne, Australia.
+ *	Swinburne University of Technology, Melbourne, Australia.
  *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions
@@ -128,15 +128,15 @@ static void TxAbortErrorM(struct libalias *la,  struct sctp_nat_msg *sm,\
     struct sctp_nat_assoc *assoc, int sndrply, int direction);
 
 /* Hash Table Functions */
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpLocal(struct libalias *la, struct in_addr l_addr, struct in_addr g_addr, uint32_t l_vtag, uint16_t l_port, uint16_t g_port);
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpGlobal(struct libalias *la, struct in_addr g_addr, uint32_t g_vtag, uint16_t g_port, uint16_t l_port, int *partial_match);
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpGlobalClash(struct libalias *la,  struct sctp_nat_assoc *Cassoc);
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpLocalT(struct libalias *la,  struct in_addr g_addr, uint32_t l_vtag, uint16_t g_port, uint16_t l_port);
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpGlobalT(struct libalias *la, struct in_addr g_addr, uint32_t g_vtag, uint16_t l_port, uint16_t g_port);
 
 static int AddSctpAssocLocal(struct libalias *la, struct sctp_nat_assoc *assoc, struct in_addr g_addr);
@@ -150,9 +150,8 @@ static void sctp_RmTimeOut(struct libalias *la, struct sctp_nat_assoc *assoc);
 static void sctp_ResetTimeOut(struct libalias *la, struct sctp_nat_assoc *assoc, int newexp);
 void sctp_CheckTimers(struct libalias *la);
 
-
 /* Logging Functions */
-static void logsctperror(char* errormsg, uint32_t vtag, int error, int direction);
+static void logsctperror(char *errormsg, uint32_t vtag, int error, int direction);
 static void logsctpparse(int direction, struct sctp_nat_msg *sm);
 static void logsctpassoc(struct sctp_nat_assoc *assoc, char *s);
 static void logTimerQ(struct libalias *la);
@@ -182,7 +181,7 @@ static void SctpAliasLog(const char *format, ...);
  */
 void SctpShowAliasStats(struct libalias *la);
 
-#ifdef	_KERNEL
+#ifdef _KERNEL
 
 static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 /* Use kernel allocator. */
@@ -243,7 +242,6 @@ static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 #define SN_SCTP_ASCONF      0x0100    /**< a packet containing an ASCONF chunk */
 #define SN_SCTP_ASCONFACK   0x0200    /**< a packet containing an ASCONF-ACK chunk */
 #define SN_SCTP_OTHER       0xFFFF    /**< a packet containing a chunk that is not of interest */
-
 /** @}
  * @defgroup state_machine SCTP NAT State Machine
  *
@@ -255,7 +253,6 @@ static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 #define SN_UP  0x0100		/**< Association in UP state */
 #define SN_CL  0x1000		/**< Closing state */
 #define SN_RM  0x2000		/**< Removing state */
-
 /** @}
  * @defgroup Logging Logging Functionality
  *
@@ -270,7 +267,6 @@ static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 #define	SN_LOG_DEBUG_MAX  5
 
 #define	SN_LOG(level, action)	if (sysctl_log_level >= level) { action; } /**< Perform log action ONLY if the current log level meets the specified log level */
-
 /** @}
  * @defgroup Hash Hash Table Macros and Functions
  *
@@ -292,7 +288,6 @@ static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 #define SN_ADD_CLASH              1   /**< Clash when trying to add the assoc. info to the table */
 
 #define SN_TABLE_HASH(vtag, port, size) (((u_int) vtag + (u_int) port) % (u_int) size) /**< Calculate the hash table lookup position */
-
 /** @}
  * @defgroup Timer Timer Queue Macros and Functions
  *
@@ -307,7 +302,6 @@ static MALLOC_DEFINE(M_SCTPNAT, "sctpnat", "sctp nat dbs");
 #define SN_U_T(la) (la->timeStamp + sysctl_up_timer)         /**< UP State expiration time in seconds */
 #define SN_C_T(la) (la->timeStamp + sysctl_shutdown_timer)   /**< CL State expiration time in seconds */
 #define SN_X_T(la) (la->timeStamp + sysctl_holddown_timer)   /**< Wait after a shutdown complete in seconds */
-
 /** @}
  * @defgroup sysctl SysCtl Variable and callback function declarations
  *
@@ -367,47 +361,70 @@ SYSCTL_DECL(_net_inet);
 SYSCTL_DECL(_net_inet_ip);
 SYSCTL_DECL(_net_inet_ip_alias);
 
-static SYSCTL_NODE(_net_inet_ip_alias, OID_AUTO, sctp, CTLFLAG_RW, NULL,
+static SYSCTL_NODE(_net_inet_ip_alias, OID_AUTO, sctp,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, NULL,
     "SCTP NAT");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, log_level, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, log_level,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_log_level, 0, sysctl_chg_loglevel, "IU",
     "Level of detail (0 - default, 1 - event, 2 - info, 3 - detail, 4 - debug, 5 - max debug)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, init_timer, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, init_timer,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_init_timer, 0, sysctl_chg_timer, "IU",
     "Timeout value (s) while waiting for (INIT-ACK|AddIP-ACK)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, up_timer, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, up_timer,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_up_timer, 0, sysctl_chg_timer, "IU",
     "Timeout value (s) to keep an association up with no traffic");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, shutdown_timer, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, shutdown_timer,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_shutdown_timer, 0, sysctl_chg_timer, "IU",
     "Timeout value (s) while waiting for SHUTDOWN-COMPLETE");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, holddown_timer, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, holddown_timer,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_holddown_timer, 0, sysctl_chg_timer, "IU",
     "Hold association in table for this many seconds after receiving a SHUTDOWN-COMPLETE");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, hashtable_size, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, hashtable_size,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_hashtable_size, 0, sysctl_chg_hashtable_size, "IU",
     "Size of hash tables used for NAT lookups (100 < prime_number > 1000001)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, error_on_ootb, CTLTYPE_UINT | CTLFLAG_RW,
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, error_on_ootb,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_error_on_ootb, 0, sysctl_chg_error_on_ootb, "IU",
-    "ErrorM sent on receipt of ootb packet:\n\t0 - none,\n\t1 - to local only,\n\t2 - to local and global if a partial association match,\n\t3 - to local and global (DoS risk)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, accept_global_ootb_addip, CTLTYPE_UINT | CTLFLAG_RW,
+    "ErrorM sent on receipt of ootb packet:\n\t0 - none,\n"
+    "\t1 - to local only,\n"
+    "\t2 - to local and global if a partial association match,\n"
+    "\t3 - to local and global (DoS risk)");
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, accept_global_ootb_addip,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_accept_global_ootb_addip, 0, sysctl_chg_accept_global_ootb_addip, "IU",
-    "NAT response to receipt of global OOTB AddIP:\n\t0 - No response,\n\t1 - NAT will accept OOTB global AddIP messages for processing (Security risk)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, initialising_chunk_proc_limit, CTLTYPE_UINT | CTLFLAG_RW,
-    &sysctl_initialising_chunk_proc_limit, 0, sysctl_chg_initialising_chunk_proc_limit, "IU",
-    "Number of chunks that should be processed if there is no current association found:\n\t > 0 (A high value is a DoS risk)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, chunk_proc_limit, CTLTYPE_UINT | CTLFLAG_RW,
+    "NAT response to receipt of global OOTB AddIP:\n"
+    "\t0 - No response,\n"
+    "\t1 - NAT will accept OOTB global AddIP messages for processing (Security risk)");
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, initialising_chunk_proc_limit,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    &sysctl_initialising_chunk_proc_limit, 0,
+    sysctl_chg_initialising_chunk_proc_limit, "IU",
+    "Number of chunks that should be processed if there is no current "
+    "association found:\n\t > 0 (A high value is a DoS risk)");
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, chunk_proc_limit,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_chunk_proc_limit, 0, sysctl_chg_chunk_proc_limit, "IU",
-    "Number of chunks that should be processed to find key chunk:\n\t>= initialising_chunk_proc_limit (A high value is a DoS risk)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, param_proc_limit, CTLTYPE_UINT | CTLFLAG_RW,
+    "Number of chunks that should be processed to find key chunk:\n"
+    "\t>= initialising_chunk_proc_limit (A high value is a DoS risk)");
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, param_proc_limit,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_param_proc_limit, 0, sysctl_chg_param_proc_limit, "IU",
-    "Number of parameters (in a chunk) that should be processed to find key parameters:\n\t> 1 (A high value is a DoS risk)");
-SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, track_global_addresses, CTLTYPE_UINT | CTLFLAG_RW,
+    "Number of parameters (in a chunk) that should be processed to find key "
+    "parameters:\n\t> 1 (A high value is a DoS risk)");
+SYSCTL_PROC(_net_inet_ip_alias_sctp, OID_AUTO, track_global_addresses,
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
     &sysctl_track_global_addresses, 0, sysctl_chg_track_global_addresses, "IU",
-    "Configures the global address tracking option within the NAT:\n\t0 - Global tracking is disabled,\n\t> 0 - enables tracking but limits the number of global IP addresses to this value");
+    "Configures the global address tracking option within the NAT:\n"
+    "\t0 - Global tracking is disabled,\n"
+    "\t> 0 - enables tracking but limits the number of global IP addresses to this value");
 
 #endif /* SYSCTL_NODE */
-
 /** @}
  * @ingroup sysctl
  * @brief sysctl callback for changing net.inet.ip.fw.sctp.log_level
@@ -421,7 +438,8 @@ int sysctl_chg_loglevel(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &level, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	level = (level > SN_LOG_DEBUG_MAX) ? (SN_LOG_DEBUG_MAX) : (level);
 	level = (level < SN_LOG_LOW) ? (SN_LOG_LOW) : (level);
@@ -442,7 +460,8 @@ int sysctl_chg_timer(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &timer, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	timer = (timer > SN_MAX_TIMER) ? (SN_MAX_TIMER) : (timer);
 
@@ -470,7 +489,8 @@ int sysctl_chg_hashtable_size(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &size, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	size = (size < SN_MIN_HASH_SIZE) ? (SN_MIN_HASH_SIZE) : ((size > SN_MAX_HASH_SIZE) ? (SN_MAX_HASH_SIZE) : (size));
 
@@ -498,7 +518,8 @@ int sysctl_chg_error_on_ootb(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &flag, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_error_on_ootb = (flag > SN_ERROR_ON_OOTB) ? SN_ERROR_ON_OOTB: flag;
 
@@ -517,7 +538,8 @@ int sysctl_chg_accept_global_ootb_addip(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &flag, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_accept_global_ootb_addip = (flag == 1) ? 1: 0;
 
@@ -537,7 +559,8 @@ int sysctl_chg_initialising_chunk_proc_limit(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &proclimit, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_initialising_chunk_proc_limit = (proclimit < 1) ? 1: proclimit;
 	sysctl_chunk_proc_limit =
@@ -559,14 +582,14 @@ int sysctl_chg_chunk_proc_limit(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &proclimit, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_chunk_proc_limit =
 		(proclimit < sysctl_initialising_chunk_proc_limit) ? sysctl_initialising_chunk_proc_limit : proclimit;
 
 	return (0);
 }
-
 
 /** @ingroup sysctl
  * @brief sysctl callback for changing net.inet.ip.alias.sctp.param_proc_limit
@@ -581,7 +604,8 @@ int sysctl_chg_param_proc_limit(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &proclimit, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_param_proc_limit =
 		(proclimit < 2) ? 2 : proclimit;
@@ -602,13 +626,13 @@ int sysctl_chg_track_global_addresses(SYSCTL_HANDLER_ARGS)
 	int error;
 
 	error = sysctl_handle_int(oidp, &num_to_track, 0, req);
-	if (error) return (error);
+	if (error)
+		return (error);
 
 	sysctl_track_global_addresses = (num_to_track > SN_MAX_GLOBAL_ADDRESSES) ? SN_MAX_GLOBAL_ADDRESSES : num_to_track;
 
 	return (0);
 }
-
 
 /* ----------------------------------------------------------------------
  *                            CODE BEGINS HERE
@@ -622,7 +646,8 @@ int sysctl_chg_track_global_addresses(SYSCTL_HANDLER_ARGS)
  *
  * @param la Pointer to the relevant libalias instance
  */
-void AliasSctpInit(struct libalias *la)
+void
+AliasSctpInit(struct libalias *la)
 {
 	/* Initialise association tables*/
 	int i;
@@ -662,7 +687,8 @@ void AliasSctpInit(struct libalias *la)
  *
  * @param la Pointer to the relevant libalias instance
  */
-void AliasSctpTerm(struct libalias *la)
+void
+AliasSctpTerm(struct libalias *la)
 {
 	struct sctp_nat_assoc *assoc1, *assoc2;
 	int                   i;
@@ -758,7 +784,7 @@ SctpAlias(struct libalias *la, struct ip *pip, int direction)
 	SN_LOG(SN_LOG_DETAIL,
 	    logsctpassoc(assoc, "*");
 	    logsctpparse(direction, &msg);
-		);
+	);
 
 	/* Process the SCTP message */
 	rtnval = ProcessSctpMsg(la, direction, &msg, assoc);
@@ -767,7 +793,7 @@ SctpAlias(struct libalias *la, struct ip *pip, int direction)
 	    logsctpassoc(assoc, "-");
 	    logSctpLocal(la);
 	    logSctpGlobal(la);
-		);
+	);
 	SN_LOG(SN_LOG_DEBUG, logTimerQ(la));
 
 	switch (rtnval) {
@@ -800,7 +826,7 @@ SctpAlias(struct libalias *la, struct ip *pip, int direction)
 	default:
 		// big error, remove association and go to idle and write log messages
 		SN_LOG(SN_LOG_LOW, logsctperror("SN_PROCESSING_ERROR", msg.sctp_hdr->v_tag, rtnval, direction));
-		assoc->state=SN_RM;/* Mark for removal*/
+		assoc->state = SN_RM;/* Mark for removal*/
 		break;
 	}
 
@@ -984,12 +1010,12 @@ TxAbortErrorM(struct libalias *la, struct sctp_nat_msg *sm, struct sctp_nat_asso
 	memcpy(sm->ip_hdr, ip, ip_size);
 
 	SN_LOG(SN_LOG_EVENT,SctpAliasLog("%s %s 0x%x (->%s:%u vtag=0x%x crc=0x%x)\n",
-		((sndrply == SN_SEND_ABORT) ? "Sending" : "Replying"),
-		((sndrply & SN_TX_ERROR) ? "ErrorM" : "AbortM"),
-		(include_error_cause ? ntohs(error_cause->code) : 0),
-		inet_ntoa_r(ip->ip_dst, INET_NTOA_BUF(addrbuf)),
-		ntohs(sctp_hdr->dest_port),
-		ntohl(sctp_hdr->v_tag), ntohl(sctp_hdr->checksum)));
+	    ((sndrply == SN_SEND_ABORT) ? "Sending" : "Replying"),
+	    ((sndrply & SN_TX_ERROR) ? "ErrorM" : "AbortM"),
+	    (include_error_cause ? ntohs(error_cause->code) : 0),
+	    inet_ntoa_r(ip->ip_dst, INET_NTOA_BUF(addrbuf)),
+	    ntohs(sctp_hdr->dest_port),
+	    ntohl(sctp_hdr->v_tag), ntohl(sctp_hdr->checksum)));
 }
 
 /* ----------------------------------------------------------------------
@@ -1250,7 +1276,7 @@ GetAsconfVtags(struct libalias *la, struct sctp_nat_msg *sm, uint32_t *l_vtag, u
 		struct sctp_paramhdr ph;/* type=SCTP_VTAG_PARAM */
 		uint32_t local_vtag;
 		uint32_t remote_vtag;
-	}                    __attribute__((packed));
+	} __attribute__((packed));
 
 	struct sctp_vtag_param *vtag_param;
 	struct sctp_paramhdr *param;
@@ -1283,7 +1309,8 @@ GetAsconfVtags(struct libalias *la, struct sctp_nat_msg *sm, uint32_t *l_vtag, u
 		}
 
 		bytes_left -= param_size;
-		if (bytes_left < SN_MIN_PARAM_SIZE) return (0);
+		if (bytes_left < SN_MIN_PARAM_SIZE)
+			return (0);
 
 		param = SN_SCTP_NEXTPARAM(param);
 		param_size = SCTP_SIZE32(ntohs(param->param_length));
@@ -1440,7 +1467,8 @@ AddGlobalIPAddresses(struct sctp_nat_msg *sm, struct sctp_nat_assoc *assoc, int 
  *
  * @return 1 - success | 0 - fail
  */
-static int  Add_Global_Address_to_List(struct sctp_nat_assoc *assoc,  struct sctp_GlobalAddress *G_addr)
+static int
+Add_Global_Address_to_List(struct sctp_nat_assoc *assoc,  struct sctp_GlobalAddress *G_addr)
 {
 	struct sctp_GlobalAddress *iter_G_Addr = NULL, *first_G_Addr = NULL;
 	first_G_Addr = LIST_FIRST(&(assoc->Gaddr));
@@ -1535,7 +1563,8 @@ RmGlobalIPAddresses(struct sctp_nat_msg *sm, struct sctp_nat_assoc *assoc, int d
 			}
 		}
 		bytes_left -= param_size;
-		if (bytes_left == 0) return;
+		if (bytes_left == 0)
+			return;
 		else if (bytes_left < SN_MIN_PARAM_SIZE) {
 			SN_LOG(SN_LOG_EVENT,
 			    logsctperror("RmGlobalIPAddress: truncated packet - may not have removed all IP addresses",
@@ -1599,13 +1628,14 @@ IsASCONFack(struct libalias *la, struct sctp_nat_msg *sm, int direction)
 			return (1); /* success - but can't match correlation IDs - should only be one */
 		/* check others just in case */
 		bytes_left -= param_size;
-		if (bytes_left >= SN_MIN_PARAM_SIZE) {
+		if (bytes_left >= SN_MIN_PARAM_SIZE)
 			param = SN_SCTP_NEXTPARAM(param);
-		} else {
+		else
 			return (0);
-		}
+
 		param_size = SCTP_SIZE32(ntohs(param->param_length));
-		if (bytes_left < param_size) return (0);
+		if (bytes_left < param_size)
+			return (0);
 
 		if (++param_count > sysctl_param_proc_limit) {
 			SN_LOG(SN_LOG_EVENT,
@@ -1652,13 +1682,14 @@ IsADDorDEL(struct libalias *la, struct sctp_nat_msg *sm, int direction)
 			return (SCTP_DEL_IP_ADDRESS);
 		/* check others just in case */
 		bytes_left -= param_size;
-		if (bytes_left >= SN_MIN_PARAM_SIZE) {
+		if (bytes_left >= SN_MIN_PARAM_SIZE)
 			param = SN_SCTP_NEXTPARAM(param);
-		} else {
+		else
 			return (0); /*Neither found */
-		}
+
 		param_size = SCTP_SIZE32(ntohs(param->param_length));
-		if (bytes_left < param_size) return (0);
+		if (bytes_left < param_size)
+			return (0);
 
 		if (++param_count > sysctl_param_proc_limit) {
 			SN_LOG(SN_LOG_EVENT,
@@ -1756,7 +1787,7 @@ ID_process(struct libalias *la, int direction, struct sctp_nat_assoc *assoc, str
 			assoc->g_port = sm->sctp_hdr->dest_port;
 			if (sm->msg == SN_SCTP_INIT)
 				assoc->g_vtag = sm->sctpchnk.Init->initiate_tag;
-			if (AddSctpAssocGlobal(la, assoc)) /* DB clash *///**** need to add dst address
+			if (AddSctpAssocGlobal(la, assoc)) /* DB clash: need to add dst address */
 				return ((sm->msg == SN_SCTP_INIT) ? SN_REPLY_ABORT : SN_REPLY_ERROR);
 			if (sm->msg == SN_SCTP_ASCONF) {
 				if (AddSctpAssocLocal(la, assoc, sm->ip_hdr->ip_dst)) /* DB clash */
@@ -1774,10 +1805,10 @@ ID_process(struct libalias *la, int direction, struct sctp_nat_assoc *assoc, str
 			if (AddSctpAssocLocal(la, assoc, sm->ip_hdr->ip_src)) /* DB clash */
 				return ((sm->msg == SN_SCTP_INIT) ? SN_REPLY_ABORT : SN_REPLY_ERROR);
 			if (sm->msg == SN_SCTP_ASCONF) {
-				if (AddSctpAssocGlobal(la, assoc)) /* DB clash */ //**** need to add src address
+				if (AddSctpAssocGlobal(la, assoc)) /* DB clash: need to add src address */
 					return (SN_REPLY_ERROR);
 				assoc->TableRegister |= SN_WAIT_TOGLOBAL; /* wait for toglobal ack */
-					}
+			}
 			break;
 		}
 		assoc->state = (sm->msg == SN_SCTP_INIT) ? SN_INi : SN_INa;
@@ -1923,7 +1954,8 @@ UP_process(struct libalias *la, int direction, struct sctp_nat_assoc *assoc, str
 			case SCTP_DEL_IP_ADDRESS:
 				RmGlobalIPAddresses(sm, assoc, direction);
 				break;
-			} /* fall through to default */
+			}
+		/* fall through to default */
 	default:
 		sctp_ResetTimeOut(la,assoc, SN_U_T(la));
 		return (SN_NAT_PKT);  /* forward packet */
@@ -1994,7 +2026,7 @@ CL_process(struct libalias *la, int direction,struct sctp_nat_assoc *assoc, stru
  *
  * @return pointer to association or NULL
  */
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpLocal(struct libalias *la, struct in_addr l_addr, struct in_addr g_addr, uint32_t l_vtag, uint16_t l_port, uint16_t g_port)
 {
 	u_int i;
@@ -2031,8 +2063,8 @@ FindSctpLocal(struct libalias *la, struct in_addr l_addr, struct in_addr g_addr,
  *
  * @return pointer to association or NULL
  */
-static struct sctp_nat_assoc*
-FindSctpGlobalClash(struct libalias *la,  struct sctp_nat_assoc *Cassoc)
+static struct sctp_nat_assoc *
+FindSctpGlobalClash(struct libalias *la, struct sctp_nat_assoc *Cassoc)
 {
 	u_int i;
 	struct sctp_nat_assoc *assoc = NULL;
@@ -2078,7 +2110,7 @@ FindSctpGlobalClash(struct libalias *la,  struct sctp_nat_assoc *Cassoc)
  *
  * @return pointer to association or NULL
  */
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpGlobal(struct libalias *la, struct in_addr g_addr, uint32_t g_vtag, uint16_t g_port, uint16_t l_port, int *partial_match)
 {
 	u_int i;
@@ -2119,7 +2151,7 @@ FindSctpGlobal(struct libalias *la, struct in_addr g_addr, uint32_t g_vtag, uint
  *
  * @return pointer to association or NULL
  */
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpLocalT(struct libalias *la, struct in_addr g_addr, uint32_t l_vtag, uint16_t g_port, uint16_t l_port)
 {
 	u_int i;
@@ -2137,7 +2169,8 @@ FindSctpLocalT(struct libalias *la, struct in_addr g_addr, uint32_t l_vtag, uint
 							return (assoc); /* full match */
 					}
 				} else {
-					if (++cnt > 1) return (NULL);
+					if (++cnt > 1)
+						return (NULL);
 					lastmatch = assoc;
 				}
 			}
@@ -2161,7 +2194,7 @@ FindSctpLocalT(struct libalias *la, struct in_addr g_addr, uint32_t l_vtag, uint
  *
  * @return pointer to association or NULL
  */
-static struct sctp_nat_assoc*
+static struct sctp_nat_assoc *
 FindSctpGlobalT(struct libalias *la, struct in_addr g_addr, uint32_t g_vtag, uint16_t l_port, uint16_t g_port)
 {
 	u_int i;
@@ -2267,8 +2300,9 @@ AddSctpAssocGlobal(struct libalias *la, struct sctp_nat_assoc *assoc)
 	LIBALIAS_LOCK_ASSERT(la);
 	found = FindSctpGlobalClash(la, assoc);
 	if (found != NULL) {
-		if ((found->TableRegister == SN_GLOBAL_TBL) &&			\
-		    (found->l_addr.s_addr == assoc->l_addr.s_addr) && (found->l_port == assoc->l_port)) { /* resent message */
+		if ((found->TableRegister == SN_GLOBAL_TBL) &&
+		    (found->l_addr.s_addr == assoc->l_addr.s_addr) &&
+		    (found->l_port == assoc->l_port)) { /* resent message */
 			RmSctpAssoc(la, found);
 			sctp_RmTimeOut(la, found);
 			freeGlobalAddressList(found);
@@ -2414,7 +2448,6 @@ sctp_RmTimeOut(struct libalias *la, struct sctp_nat_assoc *assoc)
 	LIST_REMOVE(assoc, timer_Q);/* Note this is O(1) */
 }
 
-
 /** @ingroup Timer
  * @brief Reset timer in timer queue
  *
@@ -2501,7 +2534,7 @@ sctp_CheckTimers(struct libalias *la)
  * @param direction Direction of packet
  */
 static void
-logsctperror(char* errormsg, uint32_t vtag, int error, int direction)
+logsctperror(char *errormsg, uint32_t vtag, int error, int direction)
 {
 	char dir;
 	switch (direction) {
@@ -2576,7 +2609,7 @@ logsctpparse(int direction, struct sctp_nat_msg *sm)
  * @param assoc pointer to sctp association
  * @param s Character that indicates the state of processing for this packet
  */
-static void logsctpassoc(struct sctp_nat_assoc *assoc, char* s)
+static void logsctpassoc(struct sctp_nat_assoc *assoc, char *s)
 {
 	struct sctp_GlobalAddress *G_Addr = NULL;
 	char *sp;
@@ -2628,7 +2661,7 @@ static void logSctpGlobal(struct libalias *la)
 	struct sctp_nat_assoc *assoc = NULL;
 
 	SctpAliasLog("G->\n");
-	for (i=0; i < la->sctpNatTableSize; i++) {
+	for (i = 0; i < la->sctpNatTableSize; i++) {
 		LIST_FOREACH(assoc, &la->sctpTableGlobal[i], list_G) {
 			logsctpassoc(assoc, " ");
 		}
@@ -2646,7 +2679,7 @@ static void logSctpLocal(struct libalias *la)
 	struct sctp_nat_assoc *assoc = NULL;
 
 	SctpAliasLog("L->\n");
-	for (i=0; i < la->sctpNatTableSize; i++) {
+	for (i = 0; i < la->sctpNatTableSize; i++) {
 		LIST_FOREACH(assoc, &la->sctpTableLocal[i], list_L) {
 			logsctpassoc(assoc, " ");
 		}
@@ -2665,7 +2698,7 @@ static void logTimerQ(struct libalias *la)
 	struct sctp_nat_assoc *assoc = NULL;
 
 	SctpAliasLog("t->\n");
-	for (i=0; i < SN_TIMER_QUEUE_SIZE; i++) {
+	for (i = 0; i < SN_TIMER_QUEUE_SIZE; i++) {
 		LIST_FOREACH(assoc, &la->sctpNatTimer.TimerQ[i], timer_Q) {
 			snprintf(buf, 50, " l=%u ",i);
 			//SctpAliasLog(la->logDesc," l=%d ",i);
@@ -2691,8 +2724,7 @@ SctpAliasLog(const char *format, ...)
 	va_start(ap, format);
 	vsnprintf(buffer, LIBALIAS_BUF_SIZE, format, ap);
 	va_end(ap);
-	log(LOG_SECURITY | LOG_INFO,
-	    "alias_sctp: %s", buffer);
+	log(LOG_SECURITY | LOG_INFO, "alias_sctp: %s", buffer);
 }
 #else
 static void

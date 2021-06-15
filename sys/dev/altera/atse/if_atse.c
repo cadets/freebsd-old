@@ -588,7 +588,6 @@ atse_get_eth_address(struct atse_softc *sc)
 	if (sc->atse_eth_addr[0] == 0x00 && sc->atse_eth_addr[1] == 0x07 &&
 	    sc->atse_eth_addr[2] == 0xed && sc->atse_eth_addr[3] == 0xff &&
 	    sc->atse_eth_addr[4] == 0xed && sc->atse_eth_addr[5] == 0x15) {
-
 		device_printf(sc->atse_dev, "Factory programmed Ethernet "
 		    "hardware address blacklisted.  Falling back to random "
 		    "address to avoid collisions.\n");
@@ -1177,7 +1176,6 @@ static struct atse_rx_err_stats_regs {
 	const char *name;
 	const char *descr;
 } atse_rx_err_stats_regs[] = {
-
 #define	ATSE_RX_ERR_FIFO_THRES_EOP	0 /* FIFO threshold reached, on EOP. */
 #define	ATSE_RX_ERR_ELEN		1 /* Frame/payload length not valid. */
 #define	ATSE_RX_ERR_CRC32		2 /* CRC-32 error. */
@@ -1237,7 +1235,8 @@ atse_sysctl_stats_attach(device_t dev)
 		}
 
 		SYSCTL_ADD_PROC(sctx, SYSCTL_CHILDREN(soid), OID_AUTO,
-		    atse_mac_stats_regs[i].name, CTLTYPE_UINT|CTLFLAG_RD,
+		    atse_mac_stats_regs[i].name,
+		    CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
 		    sc, i, sysctl_atse_mac_stats_proc, "IU",
 		    atse_mac_stats_regs[i].descr);
 	}
@@ -1250,7 +1249,8 @@ atse_sysctl_stats_attach(device_t dev)
 		}
 
 		SYSCTL_ADD_PROC(sctx, SYSCTL_CHILDREN(soid), OID_AUTO,
-		    atse_rx_err_stats_regs[i].name, CTLTYPE_UINT|CTLFLAG_RD,
+		    atse_rx_err_stats_regs[i].name,
+		    CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
 		    sc, i, sysctl_atse_rx_err_stats_proc, "IU",
 		    atse_rx_err_stats_regs[i].descr);
 	}
@@ -1293,7 +1293,8 @@ atse_attach(device_t dev)
 	}
 
 	/* Setup interrupt handler. */
-	error = xdma_setup_intr(sc->xchan_tx, atse_xdma_tx_intr, sc, &sc->ih_tx);
+	error = xdma_setup_intr(sc->xchan_tx, 0,
+	    atse_xdma_tx_intr, sc, &sc->ih_tx);
 	if (error) {
 		device_printf(sc->dev,
 		    "Can't setup xDMA interrupt handler.\n");
@@ -1324,7 +1325,8 @@ atse_attach(device_t dev)
 	}
 
 	/* Setup interrupt handler. */
-	error = xdma_setup_intr(sc->xchan_rx, atse_xdma_rx_intr, sc, &sc->ih_rx);
+	error = xdma_setup_intr(sc->xchan_rx, XDMA_INTR_NET,
+	    atse_xdma_rx_intr, sc, &sc->ih_rx);
 	if (error) {
 		device_printf(sc->dev,
 		    "Can't setup xDMA interrupt handler.\n");
@@ -1381,8 +1383,7 @@ atse_attach(device_t dev)
 	}
 	ifp->if_softc = sc;
 	if_initname(ifp, device_get_name(dev), device_get_unit(dev));
-	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST |
-	    IFF_NEEDSEPOCH;
+	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	ifp->if_ioctl = atse_ioctl;
 	ifp->if_transmit = atse_transmit;
 	ifp->if_qflush = atse_qflush;
@@ -1556,7 +1557,6 @@ atse_miibus_statchg(device_t dev)
 
 	if ((mii->mii_media_status & (IFM_ACTIVE | IFM_AVALID)) ==
 	    (IFM_ACTIVE | IFM_AVALID)) {
-
 		switch (IFM_SUBTYPE(mii->mii_media_active)) {
 		case IFM_10_T:
 			val4 |= BASE_CFG_COMMAND_CONFIG_ENA_10;

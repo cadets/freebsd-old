@@ -29,25 +29,17 @@ static const char rcsid[] = "@(#)$Id$";
 
 extern	char	*optarg;
 extern	int	optind;
-extern	void	iplang __P((FILE *));
+extern	void	iplang(FILE *);
 
 char	options[68];
 int	opts;
-# ifdef ultrix
-char	default_device[] = "ln0";
-# else
-#  ifdef __bsdi__
-char	default_device[] = "ef0";
-#  else
 char	default_device[] = "le0";
-#  endif /* __bsdi__ */
-# endif /* ultrix */
 
 
-static	void	usage __P((char *));
-static	void	do_icmp __P((ip_t *, char *));
+static	void	usage(char *);
+static	void	do_icmp(ip_t *, char *);
 void udpcksum(ip_t *, struct udphdr *, int);
-int	main __P((int, char **));
+int	main(int, char **);
 
 
 static	void	usage(prog)

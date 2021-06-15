@@ -150,16 +150,6 @@ wtap_medium_enqueue(struct wtap_vap *avp, struct mbuf *m)
 	return medium_transmit(avp->av_md, avp->id, m);
 }
 
-static int
-wtap_media_change(struct ifnet *ifp)
-{
-
-	DWTAP_PRINTF("%s\n", __func__);
-	int error = ieee80211_media_change(ifp);
-	/* NB: only the fixed rate can change and that doesn't need a reset */
-	return (error == ENETRESET ? 0 : error);
-}
-
 /*
  * Intercept management frames to collect beacon rssi data
  * and to do ibss merges.
@@ -352,8 +342,8 @@ wtap_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ],
 	vap->iv_bmiss = wtap_bmiss;
 
 	/* complete setup */
-	ieee80211_vap_attach(vap, wtap_media_change, ieee80211_media_status,
-	    mac);
+	ieee80211_vap_attach(vap, ieee80211_media_change,
+	    ieee80211_media_status, mac);
 	avp->av_dev = make_dev(&wtap_cdevsw, 0, UID_ROOT, GID_WHEEL, 0600,
 	    "%s", (const char *)sc->name);
 
@@ -446,44 +436,6 @@ wtap_inject(struct wtap_softc *sc, struct mbuf *m)
       STAILQ_INSERT_TAIL(&sc->sc_rxbuf, bf, bf_list);
       taskqueue_enqueue(sc->sc_tq, &sc->sc_rxtask);
       mtx_unlock(&sc->sc_mtx);
-}
-
-void
-wtap_rx_deliver(struct wtap_softc *sc, struct mbuf *m)
-{
-	struct epoch_tracker et;
-	struct ieee80211com *ic = &sc->sc_ic;
-	struct ieee80211_node *ni;
-	int type;
-#if 0
-	DWTAP_PRINTF("%s\n", __func__);
-#endif
-
-	DWTAP_PRINTF("[%d] receiving m=%p\n", sc->id, m);
-	if (m == NULL) {		/* NB: shouldn't happen */
-		ic_printf(ic, "%s: no mbuf!\n", __func__);
-	}
-
-	ieee80211_dump_pkt(ic, mtod(m, caddr_t), 0,0,0);
-
-	/*
-	  * Locate the node for sender, track state, and then
-	  * pass the (referenced) node up to the 802.11 layer
-	  * for its use.
-	  */
-	ni = ieee80211_find_rxnode_withkey(ic,
-	    mtod(m, const struct ieee80211_frame_min *),IEEE80211_KEYIX_NONE);
-	NET_EPOCH_ENTER(et);
-	if (ni != NULL) {
-		/*
-		 * Sending station is known, dispatch directly.
-		 */
-		type = ieee80211_input(ni, m, 1<<7, 10);
-		ieee80211_free_node(ni);
-	} else {
-		type = ieee80211_input_all(ic, m, 1<<7, 10);
-	}
-	NET_EPOCH_EXIT(et);
 }
 
 static void
@@ -637,7 +589,7 @@ wtap_attach(struct wtap_softc *sc, const uint8_t *macaddr)
 	sc->sc_tq = taskqueue_create("wtap_taskq", M_NOWAIT | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->sc_tq);
 	taskqueue_start_threads(&sc->sc_tq, 1, PI_SOFT, "%s taskQ", sc->name);
-	TASK_INIT(&sc->sc_rxtask, 0, wtap_rx_proc, sc);
+	NET_TASK_INIT(&sc->sc_rxtask, 0, wtap_rx_proc, sc);
 
 	ic->ic_softc = sc;
 	ic->ic_name = sc->name;

@@ -31,18 +31,10 @@
 #ifndef _COMPAT_FREEBSD32_FREEBSD32_H_
 #define _COMPAT_FREEBSD32_FREEBSD32_H_
 
+#include <sys/abi_compat.h>
 #include <sys/procfs.h>
 #include <sys/socket.h>
 #include <sys/user.h>
-
-#define PTRIN(v)	(void *)(uintptr_t) (v)
-#define PTROUT(v)	(u_int32_t)(uintptr_t) (v)
-
-#define CP(src,dst,fld) do { (dst).fld = (src).fld; } while (0)
-#define PTRIN_CP(src,dst,fld) \
-	do { (dst).fld = PTRIN((src).fld); } while (0)
-#define PTROUT_CP(src,dst,fld) \
-	do { (dst).fld = PTROUT((src).fld); } while (0)
 
 /*
  * i386 is the only arch with a 32-bit time_t
@@ -57,37 +49,21 @@ struct timeval32 {
 	time32_t tv_sec;
 	int32_t tv_usec;
 };
-#define TV_CP(src,dst,fld) do {			\
-	CP((src).fld,(dst).fld,tv_sec);		\
-	CP((src).fld,(dst).fld,tv_usec);	\
-} while (0)
 
 struct timespec32 {
 	time32_t tv_sec;
 	int32_t tv_nsec;
 };
-#define TS_CP(src,dst,fld) do {			\
-	CP((src).fld,(dst).fld,tv_sec);		\
-	CP((src).fld,(dst).fld,tv_nsec);	\
-} while (0)
 
 struct itimerspec32 {
 	struct timespec32  it_interval;
 	struct timespec32  it_value;
 };
-#define ITS_CP(src, dst) do {			\
-	TS_CP((src), (dst), it_interval);	\
-	TS_CP((src), (dst), it_value);		\
-} while (0)
 
 struct bintime32 {
 	time32_t sec;
 	uint32_t frac[2];
 };
-#define BT_CP(src, dst, fld) do {				\
-	CP((src).fld, (dst).fld, sec);				\
-	*(uint64_t *)&(dst).fld.frac[0] = (src).fld.frac;	\
-} while (0)
 
 struct rusage32 {
 	struct timeval32 ru_utime;
@@ -116,6 +92,27 @@ struct wrusage32 {
 struct itimerval32 {
 	struct timeval32 it_interval;
 	struct timeval32 it_value;
+};
+
+struct umtx_time32 {
+	struct	timespec32	_timeout;
+	uint32_t		_flags;
+	uint32_t		_clockid;
+};
+
+struct umtx_robust_lists_params_compat32 {
+	uint32_t	robust_list_offset;
+	uint32_t	robust_priv_list_offset;
+	uint32_t	robust_inact_offset;
+};
+
+struct umutex32 {
+	volatile __lwpid_t	m_owner;	/* Owner of the mutex */
+	__uint32_t		m_flags;	/* Flags of the mutex */
+	__uint32_t		m_ceilings[2];	/* Priority protect ceiling */
+	__uint32_t		m_rb_lnk;	/* Robust linkage */
+	__uint32_t		m_pad;
+	__uint32_t		m_spare[2];
 };
 
 #define FREEBSD4_MFSNAMELEN	16
@@ -411,5 +408,32 @@ struct procctl_reaper_pids32 {
 	u_int	rp_pad0[15];
 	uint32_t rp_pids;
 };
+
+struct timex32 {
+	unsigned int modes;
+	int32_t	offset;
+	int32_t	freq;
+	int32_t	maxerror;
+	int32_t	esterror;
+	int	status;
+	int32_t	constant;
+	int32_t	precision;
+	int32_t	tolerance;
+	int32_t	ppsfreq;
+	int32_t	jitter;
+	int	shift;
+	int32_t	stabil;
+	int32_t	jitcnt;
+	int32_t	calcnt;
+	int32_t	errcnt;
+	int32_t	stbcnt;
+};
+
+struct ptrace_coredump32 {
+	int		pc_fd;
+	uint32_t	pc_flags;
+	uint32_t	pc_limit1, pc_limit2;
+};
+
 
 #endif /* !_COMPAT_FREEBSD32_FREEBSD32_H_ */

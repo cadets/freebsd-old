@@ -156,7 +156,6 @@ static int sysctl_int_range(SYSCTL_HANDLER_ARGS, int, int);
 static int sysctl_hw_age_proc_limit(SYSCTL_HANDLER_ARGS);
 static int sysctl_hw_age_int_mod(SYSCTL_HANDLER_ARGS);
 
-
 static device_method_t age_methods[] = {
 	/* Device interface. */
 	DEVMETHOD(device_probe,		age_probe),
@@ -170,7 +169,6 @@ static device_method_t age_methods[] = {
 	DEVMETHOD(miibus_readreg,	age_miibus_readreg),
 	DEVMETHOD(miibus_writereg,	age_miibus_writereg),
 	DEVMETHOD(miibus_statchg,	age_miibus_statchg),
-
 	{ NULL, NULL }
 };
 
@@ -566,7 +564,6 @@ age_attach(device_t dev)
 		goto fail;
 	}
 
-
 	/* Get DMA parameters from PCIe device control register. */
 	if (pci_find_cap(dev, PCIY_EXPRESS, &i) == 0) {
 		sc->age_flags |= AGE_FLAG_PCIE;
@@ -749,13 +746,14 @@ age_sysctl_node(struct age_softc *sc)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->age_dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(sc->age_dev)), OID_AUTO,
-	    "stats", CTLTYPE_INT | CTLFLAG_RW, sc, 0, sysctl_age_stats,
-	    "I", "Statistics");
+	    "stats", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    sc, 0, sysctl_age_stats, "I", "Statistics");
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->age_dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(sc->age_dev)), OID_AUTO,
-	    "int_mod", CTLTYPE_INT | CTLFLAG_RW, &sc->age_int_mod, 0,
-	    sysctl_hw_age_int_mod, "I", "age interrupt moderation");
+	    "int_mod", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &sc->age_int_mod, 0, sysctl_hw_age_int_mod, "I",
+	    "age interrupt moderation");
 
 	/* Pull in device tunables. */
 	sc->age_int_mod = AGE_IM_TIMER_DEFAULT;
@@ -773,8 +771,8 @@ age_sysctl_node(struct age_softc *sc)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(sc->age_dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(sc->age_dev)), OID_AUTO,
-	    "process_limit", CTLTYPE_INT | CTLFLAG_RW, &sc->age_process_limit,
-	    0, sysctl_hw_age_proc_limit, "I",
+	    "process_limit", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &sc->age_process_limit, 0, sysctl_hw_age_proc_limit, "I",
 	    "max number of Rx events to process");
 
 	/* Pull in device tunables. */

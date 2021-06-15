@@ -11,7 +11,7 @@
         private
             bsdstat
             ..
-            event
+            event1
             ..
             gmock
                 internal
@@ -34,18 +34,22 @@
         ..
     ..
     lib
-        aout
-        ..
         clang
-            9.0.1
+            12.0.0
                 include
                     cuda_wrappers
+                    ..
+                    fuzzer
                     ..
                     openmp_wrappers
                     ..
                     ppc_wrappers
                     ..
+                    profile
+                    ..
                     sanitizer
+                    ..
+                    xray
                     ..
                 ..
                 lib
@@ -55,12 +59,12 @@
             ..
         ..
         compat
-            aout
-            ..
         ..
         dtrace
         ..
         engines
+        ..
+        flua
         ..
         i18n
         ..
@@ -160,7 +164,7 @@
     sbin
     ..
     share
-        atf
+        atf             tags=package=tests
         ..
         bsdconfig
             media
@@ -211,7 +215,9 @@
         doc
             IPv6
             ..
-            atf
+            atf             tags=package=tests
+            ..
+            kyua             tags=package=tests
             ..
             legal
             ..
@@ -271,6 +277,8 @@
             ..
             find_interface
             ..
+            flua
+            ..
             hast
             ..
             hostapd
@@ -306,6 +314,8 @@
                     test
                     ..
                 ..
+            ..
+            kyua             tags=package=tests
             ..
             libusb20
             ..
@@ -359,6 +369,8 @@
             ..
         ..
         firmware
+        ..
+        flua
         ..
         games
             fortune
@@ -442,6 +454,12 @@
                 ..
                 trusted tags=package=runtime
                 ..
+            ..
+        ..
+        kyua             tags=package=tests
+            misc         tags=package=tests
+            ..
+            store        tags=package=tests
             ..
         ..
         locale
@@ -837,6 +855,8 @@
             ..
             man3
             ..
+            man3lua
+            ..
             man4
                 aarch64
                 ..
@@ -847,8 +867,6 @@
                 i386
                 ..
                 powerpc
-                ..
-                sparc64
                 ..
             ..
             man5
@@ -863,8 +881,6 @@
                 i386
                 ..
                 powerpc
-                ..
-                sparc64
                 ..
             ..
             man9
@@ -1214,6 +1230,10 @@
             keymaps
             ..
         ..
+        zfs
+            compatibility.d
+            ..
+        ..
         zoneinfo
             Africa
             ..
@@ -1237,15 +1257,25 @@
             ..
             Australia
             ..
+            Brazil
+            ..
+            Canada
+            ..
+            Chile
+            ..
             Etc
             ..
             Europe
             ..
             Indian
             ..
+            Mexico
+            ..
             Pacific
             ..
             SystemV
+            ..
+            US
             ..
         ..
     ..

@@ -37,7 +37,6 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
-#include "opt_mpath.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -63,9 +62,6 @@ __FBSDID("$FreeBSD$");
 #include <net/if_dl.h>
 #include <net/if_var.h>
 #include <net/route.h>
-#ifdef RADIX_MPATH
-#include <net/radix_mpath.h>
-#endif
 #include <net/vnet.h>
 
 #include <netinet/in.h>
@@ -140,7 +136,8 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 
 	ifp = m->m_pkthdr.rcvif;
 	ip6 = mtod(m, struct ip6_hdr *);
-	if (ip6->ip6_hlim != 255) {
+	if (__predict_false(ip6->ip6_hlim != 255)) {
+		ICMP6STAT_INC(icp6s_invlhlim);
 		nd6log((LOG_ERR,
 		    "nd6_ns_input: invalid hlim (%d) from %s to %s on %s\n",
 		    ip6->ip6_hlim, ip6_sprintf(ip6bufs, &ip6->ip6_src),
@@ -276,7 +273,6 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		    0, 0, &info) == 0) {
 			if ((info.rti_flags & RTF_ANNOUNCE) != 0 &&
 			    rt_gateway.sdl_family == AF_LINK) {
-
 				/*
 				 * proxy NDP for single entry
 				 */
@@ -416,6 +412,8 @@ nd6_ns_output_fib(struct ifnet *ifp, const struct in6_addr *saddr6,
 	int icmp6len;
 	int maxlen;
 	caddr_t mac;
+
+	NET_EPOCH_ASSERT();
 
 	if (IN6_IS_ADDR_MULTICAST(taddr6))
 		return;
@@ -646,7 +644,8 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 
 	ifp = m->m_pkthdr.rcvif;
 	ip6 = mtod(m, struct ip6_hdr *);
-	if (ip6->ip6_hlim != 255) {
+	if (__predict_false(ip6->ip6_hlim != 255)) {
+		ICMP6STAT_INC(icp6s_invlhlim);
 		nd6log((LOG_ERR,
 		    "nd6_na_input: invalid hlim (%d) from %s to %s on %s\n",
 		    ip6->ip6_hlim, ip6_sprintf(ip6bufs, &ip6->ip6_src),
@@ -753,6 +752,12 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
 	if (ln == NULL) {
 		goto freeit;
 	}
+
+	/*
+	 * Do not try to override static entry.
+	 */
+	if (ln->la_flags & LLE_STATIC)
+		goto freeit;
 
 	if (ln->ln_state == ND6_LLINFO_INCOMPLETE) {
 		/*
@@ -943,6 +948,8 @@ nd6_na_output_fib(struct ifnet *ifp, const struct in6_addr *daddr6_0,
 	struct ip6_moptions im6o;
 	struct in6_addr daddr6, dst6, src6;
 	uint32_t scopeid;
+
+	NET_EPOCH_ASSERT();
 
 	int icmp6len, maxlen, error;
 	caddr_t mac = NULL;

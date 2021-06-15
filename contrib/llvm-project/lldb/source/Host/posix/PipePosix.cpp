@@ -1,4 +1,4 @@
-//===-- PipePosix.cpp -------------------------------------------*- C++ -*-===//
+//===-- PipePosix.cpp -----------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -117,7 +117,7 @@ Status PipePosix::CreateNew(llvm::StringRef name, bool child_process_inherit) {
     return Status("Pipe is already opened");
 
   Status error;
-  if (::mkfifo(name.data(), 0660) != 0)
+  if (::mkfifo(name.str().c_str(), 0660) != 0)
     error.SetErrorToErrno();
 
   return error;
@@ -138,8 +138,8 @@ Status PipePosix::CreateWithUniqueName(llvm::StringRef prefix,
   // try again.
   Status error;
   do {
-    llvm::sys::fs::createUniqueFile(tmpdir_file_spec.GetPath(),
-                                    named_pipe_path);
+    llvm::sys::fs::createUniquePath(tmpdir_file_spec.GetPath(), named_pipe_path,
+                                    /*MakeAbsolute=*/false);
     error = CreateNew(named_pipe_path, child_process_inherit);
   } while (error.GetError() == EEXIST);
 
@@ -158,7 +158,7 @@ Status PipePosix::OpenAsReader(llvm::StringRef name,
     flags |= O_CLOEXEC;
 
   Status error;
-  int fd = llvm::sys::RetryAfterSignal(-1, ::open, name.data(), flags);
+  int fd = llvm::sys::RetryAfterSignal(-1, ::open, name.str().c_str(), flags);
   if (fd != -1)
     m_fds[READ] = fd;
   else
@@ -189,7 +189,7 @@ PipePosix::OpenAsWriterWithTimeout(llvm::StringRef name,
     }
 
     errno = 0;
-    int fd = ::open(name.data(), flags);
+    int fd = ::open(name.str().c_str(), flags);
     if (fd == -1) {
       const auto errno_copy = errno;
       // We may get ENXIO if a reader side of the pipe hasn't opened yet.
@@ -270,8 +270,8 @@ Status PipePosix::ReadWithTimeout(void *buf, size_t size,
   while (error.Success()) {
     error = select_helper.Select();
     if (error.Success()) {
-      auto result = ::read(fd, reinterpret_cast<char *>(buf) + bytes_read,
-                           size - bytes_read);
+      auto result =
+          ::read(fd, static_cast<char *>(buf) + bytes_read, size - bytes_read);
       if (result != -1) {
         bytes_read += result;
         if (bytes_read == size || result == 0)
@@ -301,9 +301,8 @@ Status PipePosix::Write(const void *buf, size_t size, size_t &bytes_written) {
   while (error.Success()) {
     error = select_helper.Select();
     if (error.Success()) {
-      auto result =
-          ::write(fd, reinterpret_cast<const char *>(buf) + bytes_written,
-                  size - bytes_written);
+      auto result = ::write(fd, static_cast<const char *>(buf) + bytes_written,
+                            size - bytes_written);
       if (result != -1) {
         bytes_written += result;
         if (bytes_written == size)

@@ -75,6 +75,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/conf.h>
 #include <sys/bio.h>
+#include <sys/abi_compat.h>
 #include <sys/malloc.h>
 #include <sys/uio.h>
 #include <sys/sysctl.h>
@@ -179,16 +180,6 @@ static int mps_user_reg_access(struct mps_softc *sc, mps_reg_access_t *data);
 static int mps_user_btdh(struct mps_softc *sc, mps_btdh_mapping_t *data);
 
 MALLOC_DEFINE(M_MPSUSER, "mps_user", "Buffers for mps(4) ioctls");
-
-/* Macros from compat/freebsd32/freebsd32.h */
-#define	PTRIN(v)	(void *)(uintptr_t)(v)
-#define	PTROUT(v)	(uint32_t)(uintptr_t)(v)
-
-#define	CP(src,dst,fld) do { (dst).fld = (src).fld; } while (0)
-#define	PTRIN_CP(src,dst,fld)				\
-	do { (dst).fld = PTRIN((src).fld); } while (0)
-#define	PTROUT_CP(src,dst,fld) \
-	do { (dst).fld = PTROUT((src).fld); } while (0)
 
 int
 mps_attach_user(struct mps_softc *sc)
@@ -686,7 +677,7 @@ mps_user_command(struct mps_softc *sc, struct mps_usr_command *cmd)
 	mps_dprint(sc, MPS_USER, "%s: req %p %d  rpl %p %d\n", __func__,
 	    cmd->req, cmd->req_len, cmd->rpl, cmd->rpl_len);
 
-	if (cmd->req_len > (int)sc->reqframesz) {
+	if (cmd->req_len > sc->reqframesz) {
 		err = EINVAL;
 		goto RetFreeUnlocked;
 	}
@@ -732,7 +723,7 @@ mps_user_command(struct mps_softc *sc, struct mps_usr_command *cmd)
 		sz = rpl->MsgLength * 4;
 	else
 		sz = 0;
-	
+
 	if (sz > cmd->rpl_len) {
 		mps_printf(sc, "%s: user reply buffer (%d) smaller than "
 		    "returned buffer (%d)\n", __func__, cmd->rpl_len, sz);
@@ -759,9 +750,10 @@ RetFree:
 static int
 mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 {
-	MPI2_REQUEST_HEADER	*hdr, tmphdr;	
+	MPI2_REQUEST_HEADER	*hdr, *tmphdr;
 	MPI2_DEFAULT_REPLY	*rpl = NULL;
 	struct mps_command	*cm = NULL;
+	void			*req = NULL;
 	int			err = 0, dir = 0, sz;
 	uint8_t			function = 0;
 	u_int			sense_len;
@@ -813,22 +805,21 @@ mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 	    data->ReplySize, data->PtrData, data->DataSize,
 	    data->PtrDataOut, data->DataOutSize, data->DataDirection);
 
-	/*
-	 * copy in the header so we know what we're dealing with before we
-	 * commit to allocating a command for it.
-	 */
-	err = copyin(PTRIN(data->PtrRequest), &tmphdr, data->RequestSize);
-	if (err != 0)
-		goto RetFreeUnlocked;
-
-	if (data->RequestSize > (int)sc->reqframesz) {
+	if (data->RequestSize > sc->reqframesz) {
 		err = EINVAL;
 		goto RetFreeUnlocked;
 	}
 
-	function = tmphdr.Function;
+	req = malloc(data->RequestSize, M_MPSUSER, M_WAITOK | M_ZERO);
+	tmphdr = (MPI2_REQUEST_HEADER *)req;
+
+	err = copyin(PTRIN(data->PtrRequest), req, data->RequestSize);
+	if (err != 0)
+		goto RetFreeUnlocked;
+
+	function = tmphdr->Function;
 	mps_dprint(sc, MPS_USER, "%s: Function %02X MsgFlags %02X\n", __func__,
-	    function, tmphdr.MsgFlags);
+	    function, tmphdr->MsgFlags);
 
 	/*
 	 * Handle a passthru TM request.
@@ -845,7 +836,7 @@ mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 
 		/* Copy the header in.  Only a small fixup is needed. */
 		task = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm->cm_req;
-		bcopy(&tmphdr, task, data->RequestSize);
+		memcpy(task, req, data->RequestSize);
 		task->TaskMID = cm->cm_desc.Default.SMID;
 
 		cm->cm_data = NULL;
@@ -875,7 +866,7 @@ mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 		if ((cm != NULL) && (cm->cm_reply != NULL)) {
 			rpl = (MPI2_DEFAULT_REPLY *)cm->cm_reply;
 			sz = rpl->MsgLength * 4;
-	
+
 			if (sz > data->ReplySize) {
 				mps_printf(sc, "%s: user reply buffer (%d) "
 				    "smaller than returned buffer (%d)\n",
@@ -892,7 +883,6 @@ mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 
 	mps_lock(sc);
 	cm = mps_alloc_command(sc);
-
 	if (cm == NULL) {
 		mps_printf(sc, "%s: no mps requests\n", __func__);
 		err = ENOMEM;
@@ -901,7 +891,7 @@ mps_user_pass_thru(struct mps_softc *sc, mps_pass_thru_t *data)
 	mps_unlock(sc);
 
 	hdr = (MPI2_REQUEST_HEADER *)cm->cm_req;
-	bcopy(&tmphdr, hdr, data->RequestSize);
+	memcpy(hdr, req, data->RequestSize);
 
 	/*
 	 * Do some checking to make sure the IOCTL request contains a valid
@@ -1068,6 +1058,7 @@ RetFreeUnlocked:
 Ret:
 	sc->mps_flags &= ~MPS_FLAGS_BUSY;
 	mps_unlock(sc);
+	free(req, M_MPSUSER);
 
 	return (err);
 }
@@ -1355,6 +1346,7 @@ static int
 mps_diag_register(struct mps_softc *sc, mps_fw_diag_register_t *diag_register,
     uint32_t *return_code)
 {
+	bus_dma_template_t		t;
 	mps_fw_diagnostic_buffer_t	*pBuffer;
 	struct mps_busdma_context	*ctx;
 	uint8_t				extended_type, buffer_type, i;
@@ -1417,17 +1409,10 @@ mps_diag_register(struct mps_softc *sc, mps_fw_diag_register_t *diag_register,
 		*return_code = MPS_FW_DIAG_ERROR_NO_BUFFER;
 		return (MPS_DIAG_FAILURE);
 	}
-	if (bus_dma_tag_create( sc->mps_parent_dmat,    /* parent */
-				1, 0,			/* algnmnt, boundary */
-				BUS_SPACE_MAXADDR_32BIT,/* lowaddr */
-				BUS_SPACE_MAXADDR,	/* highaddr */
-				NULL, NULL,		/* filter, filterarg */
-                                buffer_size,		/* maxsize */
-                                1,			/* nsegments */
-                                buffer_size,		/* maxsegsize */
-                                0,			/* flags */
-                                NULL, NULL,		/* lockfunc, lockarg */
-                                &sc->fw_diag_dmat)) {
+	bus_dma_template_init(&t, sc->mps_parent_dmat);
+	BUS_DMA_TEMPLATE_FILL(&t, BD_NSEGMENTS(1), BD_MAXSIZE(buffer_size),
+	    BD_MAXSEGSIZE(buffer_size), BD_LOWADDR(BUS_SPACE_MAXADDR_32BIT));
+	if (bus_dma_template_tag(&t, &sc->fw_diag_dmat)) {
 		mps_dprint(sc, MPS_ERROR,
 		    "Cannot allocate FW diag buffer DMA tag\n");
 		*return_code = MPS_FW_DIAG_ERROR_NO_BUFFER;
@@ -1445,13 +1430,6 @@ mps_diag_register(struct mps_softc *sc, mps_fw_diag_register_t *diag_register,
         bzero(sc->fw_diag_buffer, buffer_size);
 
 	ctx = malloc(sizeof(*ctx), M_MPSUSER, M_WAITOK | M_ZERO);
-	if (ctx == NULL) {
-		device_printf(sc->mps_dev, "%s: context malloc failed\n",
-		    __func__);
-		*return_code = MPS_FW_DIAG_ERROR_NO_BUFFER;
-		status = MPS_DIAG_FAILURE;
-		goto bailout;
-	}
 	ctx->addr = &sc->fw_diag_busaddr;
 	ctx->buffer_dmat = sc->fw_diag_dmat;
 	ctx->buffer_dmamap = sc->fw_diag_map;
@@ -1461,7 +1439,6 @@ mps_diag_register(struct mps_softc *sc, mps_fw_diag_register_t *diag_register,
 	    ctx, 0);
 
 	if (error == EINPROGRESS) {
-
 		/* XXX KDM */
 		device_printf(sc->mps_dev, "%s: Deferred bus_dmamap_load\n",
 		    __func__);
@@ -2151,7 +2128,7 @@ mps_user_btdh(struct mps_softc *sc, mps_btdh_mapping_t *data)
 		if (bus != 0)
 			return (EINVAL);
 
-		if (target > sc->max_devices) {
+		if (target >= sc->max_devices) {
 			mps_dprint(sc, MPS_FAULT, "Target ID is out of range "
 			   "for Bus/Target to DevHandle mapping.");
 			return (EINVAL);

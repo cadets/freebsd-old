@@ -61,6 +61,7 @@
 #include <libproc.h>
 #endif
 #ifdef __FreeBSD__
+#include <locale.h>
 #include <spawn.h>
 #include <dt_prog_link.h>
 #endif
@@ -2295,6 +2296,14 @@ main(int argc, char *argv[])
 
 	rslv = (1 << DT_RSLV_HOSTNAME) | (1 << DT_RSLV_VERSION);
 	len1 = len2 = 0;
+
+#ifdef __FreeBSD__
+	/* For %'d and the like. */
+	(void) setlocale(LC_NUMERIC, "");
+
+	/* For %T. */
+	(void) setlocale(LC_TIME, "");
+#endif
 
 	g_pname = basename(argv[0]);
 

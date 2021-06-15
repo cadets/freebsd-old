@@ -43,7 +43,6 @@
 	    sizeof("::") + sizeof(__XSTRING(DOMAINSET_POLICY_MAX)) +	\
 	    sizeof(__XSTRING(MAXMEMDOM)))
 
-
 #define	DOMAINSET_CLR(n, p)		BIT_CLR(DOMAINSET_SETSIZE, n, p)
 #define	DOMAINSET_COPY(f, t)		BIT_COPY(DOMAINSET_SETSIZE, f, t)
 #define	DOMAINSET_ISSET(n, p)		BIT_ISSET(DOMAINSET_SETSIZE, n, p)
@@ -69,7 +68,7 @@
 	    BIT_COPY_STORE_REL(DOMAINSET_SETSIZE, f, t)
 #define	DOMAINSET_FFS(p)		BIT_FFS(DOMAINSET_SETSIZE, p)
 #define	DOMAINSET_FLS(p)		BIT_FLS(DOMAINSET_SETSIZE, p)
-#define	DOMAINSET_COUNT(p)		BIT_COUNT(DOMAINSET_SETSIZE, p)
+#define	DOMAINSET_COUNT(p)		((int)BIT_COUNT(DOMAINSET_SETSIZE, p))
 #define	DOMAINSET_FSET			BITSET_FSET(_NDOMAINSETWORDS)
 #define	DOMAINSET_T_INITIALIZER		BITSET_T_INITIALIZER
 
@@ -96,6 +95,10 @@ struct domainset {
 	domainid_t	ds_order[MAXMEMDOM];  /* nth domain table. */
 };
 
+extern struct domainset domainset_firsttouch;
+#define	DOMAINSET_FT()		(&domainset_firsttouch)
+extern struct domainset domainset_interleave;
+#define	DOMAINSET_IL()		(&domainset_interleave)
 extern struct domainset domainset_fixed[MAXMEMDOM], domainset_prefer[MAXMEMDOM];
 #define	DOMAINSET_FIXED(domain)	(&domainset_fixed[(domain)])
 #define	DOMAINSET_PREF(domain)	(&domainset_prefer[(domain)])

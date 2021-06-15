@@ -122,15 +122,6 @@ struct g_class {
 	LIST_HEAD(,g_geom)	geom;
 };
 
-/*
- * The g_geom_alias is a list node for aliases for the geom name
- * for device node creation.
- */
-struct g_geom_alias {
-	LIST_ENTRY(g_geom_alias) ga_next;
-	const char		*ga_alias;
-};
-
 #define G_VERSION_00	0x19950323
 #define G_VERSION_01	0x20041207	/* add fflag to g_ioctl_t */
 #define G_VERSION	G_VERSION_01
@@ -163,7 +154,6 @@ struct g_geom {
 #define	G_GEOM_VOLATILE_BIO	0x02
 #define	G_GEOM_IN_ACCESS	0x04
 #define	G_GEOM_ACCESS_WAIT	0x08
-	LIST_HEAD(,g_geom_alias) aliases;
 };
 
 /*
@@ -203,6 +193,15 @@ struct g_consumer {
 };
 
 /*
+ * The g_geom_alias is a list node for aliases for the provider name for device
+ * node creation.
+ */
+struct g_geom_alias {
+	LIST_ENTRY(g_geom_alias) ga_next;
+	const char		*ga_alias;
+};
+
+/*
  * A g_provider is a "logical disk".
  */
 struct g_provider {
@@ -226,6 +225,7 @@ struct g_provider {
 #define	G_PF_ACCEPT_UNMAPPED	0x8
 #define G_PF_DIRECT_SEND	0x10
 #define G_PF_DIRECT_RECEIVE	0x20
+	LIST_HEAD(,g_geom_alias) aliases;
 
 	/* Two fields for the implementing class to use */
 	void			*private;
@@ -280,7 +280,6 @@ void g_destroy_provider(struct g_provider *pp);
 void g_detach(struct g_consumer *cp);
 void g_error_provider(struct g_provider *pp, int error);
 struct g_provider *g_provider_by_name(char const *arg);
-void g_geom_add_alias(struct g_geom *gp, const char *alias);
 int g_getattr__(const char *attr, struct g_consumer *cp, void *var, int len);
 #define g_getattr(a, c, v) g_getattr__((a), (c), (v), sizeof *(v))
 int g_handleattr(struct bio *bp, const char *attribute, const void *val,
@@ -293,6 +292,8 @@ struct g_consumer * g_new_consumer(struct g_geom *gp);
 struct g_geom * g_new_geomf(struct g_class *mp, const char *fmt, ...)
     __printflike(2, 3);
 struct g_provider * g_new_providerf(struct g_geom *gp, const char *fmt, ...)
+    __printflike(2, 3);
+void g_provider_add_alias(struct g_provider *pp, const char *fmt, ...)
     __printflike(2, 3);
 void g_resize_provider(struct g_provider *pp, off_t size);
 int g_retaste(struct g_class *mp);
@@ -333,7 +334,8 @@ void g_io_deliver(struct bio *bp, int error);
 int g_io_getattr(const char *attr, struct g_consumer *cp, int *len, void *ptr);
 int g_io_zonecmd(struct disk_zone_args *zone_args, struct g_consumer *cp);
 int g_io_flush(struct g_consumer *cp);
-int g_io_speedup(size_t shortage, u_int flags, size_t *resid, struct g_consumer *cp);
+int g_io_speedup(off_t shortage, u_int flags, size_t *resid,
+    struct g_consumer *cp);
 void g_io_request(struct bio *bp, struct g_consumer *cp);
 struct bio *g_new_bio(void);
 struct bio *g_alloc_bio(void);
@@ -395,6 +397,8 @@ g_free(void *ptr)
 		sx_xunlock(&topology_lock);			\
 	} while (0)
 
+#define g_topology_locked()	sx_xlocked(&topology_lock)
+
 #define g_topology_assert()					\
 	do {							\
 		sx_assert(&topology_lock, SX_XLOCKED);		\
@@ -416,6 +420,10 @@ g_free(void *ptr)
 
 int g_is_geom_thread(struct thread *td);
 
+#ifndef	_PATH_DEV
+#define	_PATH_DEV	"/dev/"
+#endif
+
 #endif /* _KERNEL */
 
 /* geom_ctl.c */
@@ -427,7 +435,7 @@ void *gctl_get_paraml(struct gctl_req *req, const char *param, int len);
 void *gctl_get_paraml_opt(struct gctl_req *req, const char *param, int len);
 int gctl_error(struct gctl_req *req, const char *fmt, ...) __printflike(2, 3);
 struct g_class *gctl_get_class(struct gctl_req *req, char const *arg);
-struct g_geom *gctl_get_geom(struct gctl_req *req, struct g_class *mpr, char const *arg);
+struct g_geom *gctl_get_geom(struct gctl_req *req, struct g_class *mp, char const *arg);
 struct g_provider *gctl_get_provider(struct gctl_req *req, char const *arg);
 
 #endif /* _GEOM_GEOM_H_ */

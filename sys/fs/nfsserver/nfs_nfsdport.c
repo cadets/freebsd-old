@@ -108,6 +108,8 @@ extern struct nfsdevicehead nfsrv_devidhead;
 
 static int nfsrv_createiovec(int, struct mbuf **, struct mbuf **,
     struct iovec **);
+static int nfsrv_createiovec_extpgs(int, int, struct mbuf **,
+    struct mbuf **, struct iovec **);
 static int nfsrv_createiovecw(int, struct mbuf *, char *, struct iovec **,
     int *);
 static void nfsrv_pnfscreate(struct vnode *, struct vattr *, struct ucred *,
@@ -147,7 +149,8 @@ static int nfsrv_pnfsstatfs(struct statfs *, struct mount *);
 
 int nfs_pnfsio(task_fn_t *, void *);
 
-SYSCTL_NODE(_vfs, OID_AUTO, nfsd, CTLFLAG_RW, 0, "NFS server");
+SYSCTL_NODE(_vfs, OID_AUTO, nfsd, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "NFS server");
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, mirrormnt, CTLFLAG_RW,
     &nfsrv_enable_crossmntpt, 0, "Enable nfsd to cross mount points");
 SYSCTL_INT(_vfs_nfsd, OID_AUTO, commit_blks, CTLFLAG_RW, &nfs_commit_blks,
@@ -204,7 +207,6 @@ static struct nfsheur {
 	int nh_use;		/* use count for selection */
 	int nh_seqcount;	/* heuristic */
 } nfsheur[NUM_HEURISTIC];
-
 
 /*
  * Heuristic to detect sequential operation.
@@ -458,6 +460,7 @@ nfsvno_setattr(struct vnode *vp, struct nfsvattr *nvap, struct ucred *cred,
 {
 	u_quad_t savsize = 0;
 	int error, savedit;
+	time_t savbtime;
 
 	/*
 	 * If this is an exported file system and a pNFS service is running,
@@ -489,9 +492,13 @@ nfsvno_setattr(struct vnode *vp, struct nfsvattr *nvap, struct ucred *cred,
 	    nvap->na_vattr.va_mode != (mode_t)VNOVAL ||
 	    nvap->na_vattr.va_atime.tv_sec != VNOVAL ||
 	    nvap->na_vattr.va_mtime.tv_sec != VNOVAL)) {
+		/* Never modify birthtime on a DS file. */
+		savbtime = nvap->na_vattr.va_birthtime.tv_sec;
+		nvap->na_vattr.va_birthtime.tv_sec = VNOVAL;
 		/* For a pNFS server, set the attributes on the DS file. */
 		error = nfsrv_proxyds(vp, 0, 0, cred, p, NFSPROC_SETATTR,
 		    NULL, NULL, NULL, nvap, NULL, NULL, 0, NULL);
+		nvap->na_vattr.va_birthtime.tv_sec = savbtime;
 		if (error == ENOENT)
 			error = 0;
 	}
@@ -730,8 +737,8 @@ nfsvno_relpathbuf(struct nameidata *ndp)
  * Readlink vnode op into an mbuf list.
  */
 int
-nfsvno_readlink(struct vnode *vp, struct ucred *cred, struct thread *p,
-    struct mbuf **mpp, struct mbuf **mpendp, int *lenp)
+nfsvno_readlink(struct vnode *vp, struct ucred *cred, int maxextsiz,
+    struct thread *p, struct mbuf **mpp, struct mbuf **mpendp, int *lenp)
 {
 	struct iovec *iv;
 	struct uio io, *uiop = &io;
@@ -739,7 +746,11 @@ nfsvno_readlink(struct vnode *vp, struct ucred *cred, struct thread *p,
 	int len, tlen, error = 0;
 
 	len = NFS_MAXPATHLEN;
-	uiop->uio_iovcnt = nfsrv_createiovec(len, &mp3, &mp, &iv);
+	if (maxextsiz > 0)
+		uiop->uio_iovcnt = nfsrv_createiovec_extpgs(len, maxextsiz,
+		    &mp3, &mp, &iv);
+	else
+		uiop->uio_iovcnt = nfsrv_createiovec(len, &mp3, &mp, &iv);
 	uiop->uio_iov = iv;
 	uiop->uio_offset = 0;
 	uiop->uio_resid = len;
@@ -756,7 +767,12 @@ nfsvno_readlink(struct vnode *vp, struct ucred *cred, struct thread *p,
 	if (uiop->uio_resid > 0) {
 		len -= uiop->uio_resid;
 		tlen = NFSM_RNDUP(len);
-		nfsrv_adj(mp3, NFS_MAXPATHLEN - tlen, tlen - len);
+		if (tlen == 0) {
+			m_freem(mp3);
+			mp3 = mp = NULL;
+		} else if (tlen != NFS_MAXPATHLEN || tlen != len)
+			mp = nfsrv_adj(mp3, NFS_MAXPATHLEN - tlen,
+			    tlen - len);
 	}
 	*lenp = len;
 	*mpp = mp3;
@@ -806,7 +822,7 @@ nfsrv_createiovec(int len, struct mbuf **mpp, struct mbuf **mpendp,
 	i = 0;
 	while (left > 0) {
 		if (m == NULL)
-			panic("nfsvno_read iov");
+			panic("nfsrv_createiovec iov");
 		siz = min(M_TRAILINGSPACE(m), left);
 		if (siz > 0) {
 			iv->iov_base = mtod(m, caddr_t) + m->m_len;
@@ -824,11 +840,76 @@ nfsrv_createiovec(int len, struct mbuf **mpp, struct mbuf **mpendp,
 }
 
 /*
+ * Create an mbuf chain and an associated iovec that can be used to Read
+ * or Getextattr of data.
+ * Upon success, return pointers to the first and last mbufs in the chain
+ * plus the malloc'd iovec and its iovlen.
+ * Same as above, but creates ext_pgs mbuf(s).
+ */
+static int
+nfsrv_createiovec_extpgs(int len, int maxextsiz, struct mbuf **mpp,
+    struct mbuf **mpendp, struct iovec **ivp)
+{
+	struct mbuf *m, *m2 = NULL, *m3;
+	struct iovec *iv;
+	int i, left, pgno, siz;
+
+	left = len;
+	m3 = NULL;
+	/*
+	 * Generate the mbuf list with the uio_iov ref. to it.
+	 */
+	i = 0;
+	while (left > 0) {
+		siz = min(left, maxextsiz);
+		m = mb_alloc_ext_plus_pages(siz, M_WAITOK);
+		left -= siz;
+		i += m->m_epg_npgs;
+		if (m3 != NULL)
+			m2->m_next = m;
+		else
+			m3 = m;
+		m2 = m;
+	}
+	*ivp = iv = malloc(i * sizeof (struct iovec), M_TEMP, M_WAITOK);
+	m = m3;
+	left = len;
+	i = 0;
+	pgno = 0;
+	while (left > 0) {
+		if (m == NULL)
+			panic("nfsvno_createiovec_extpgs iov");
+		siz = min(PAGE_SIZE, left);
+		if (siz > 0) {
+			iv->iov_base = (void *)PHYS_TO_DMAP(m->m_epg_pa[pgno]);
+			iv->iov_len = siz;
+			m->m_len += siz;
+			if (pgno == m->m_epg_npgs - 1)
+				m->m_epg_last_len = siz;
+			left -= siz;
+			iv++;
+			i++;
+			pgno++;
+		}
+		if (pgno == m->m_epg_npgs && left > 0) {
+			m = m->m_next;
+			if (m == NULL)
+				panic("nfsvno_createiovec_extpgs iov");
+			pgno = 0;
+		}
+	}
+	*mpp = m3;
+	*mpendp = m2;
+	return (i);
+}
+
+/*
  * Read vnode op call into mbuf list.
  */
 int
 nfsvno_read(struct vnode *vp, off_t off, int cnt, struct ucred *cred,
-    struct thread *p, struct mbuf **mpp, struct mbuf **mpendp)
+    int maxextsiz, struct thread *p, struct mbuf **mpp,
+    struct mbuf **mpendp)
 {
 	struct mbuf *m;
 	struct iovec *iv;
@@ -847,7 +928,11 @@ nfsvno_read(struct vnode *vp, off_t off, int cnt, struct ucred *cred,
 		return (error);
 
 	len = NFSM_RNDUP(cnt);
-	uiop->uio_iovcnt = nfsrv_createiovec(len, &m3, &m, &iv);
+	if (maxextsiz > 0)
+		uiop->uio_iovcnt = nfsrv_createiovec_extpgs(len, maxextsiz,
+		    &m3, &m, &iv);
+	else
+		uiop->uio_iovcnt = nfsrv_createiovec(len, &m3, &m, &iv);
 	uiop->uio_iov = iv;
 	uiop->uio_offset = off;
 	uiop->uio_resid = len;
@@ -871,9 +956,9 @@ nfsvno_read(struct vnode *vp, off_t off, int cnt, struct ucred *cred,
 	tlen = NFSM_RNDUP(cnt);
 	if (tlen == 0) {
 		m_freem(m3);
-		m3 = NULL;
+		m3 = m = NULL;
 	} else if (len != tlen || tlen != cnt)
-		nfsrv_adj(m3, len - tlen, tlen - cnt);
+		m = nfsrv_adj(m3, len - tlen, tlen - cnt);
 	*mpp = m3;
 	*mpendp = m;
 
@@ -902,18 +987,18 @@ nfsrv_createiovecw(int retlen, struct mbuf *m, char *cp, struct iovec **ivpp,
 	cnt = 0;
 	len = retlen;
 	mp = m;
-	i = mtod(mp, caddr_t) + mbuf_len(mp) - cp;
+	i = mtod(mp, caddr_t) + mp->m_len - cp;
 	while (len > 0) {
 		if (i > 0) {
 			len -= i;
 			cnt++;
 		}
-		mp = mbuf_next(mp);
+		mp = mp->m_next;
 		if (!mp) {
 			if (len > 0)
 				return (EBADRPC);
 		} else
-			i = mbuf_len(mp);
+			i = mp->m_len;
 	}
 
 	/* Now, create the iovec. */
@@ -925,7 +1010,7 @@ nfsrv_createiovecw(int retlen, struct mbuf *m, char *cp, struct iovec **ivpp,
 	len = retlen;
 	while (len > 0) {
 		if (mp == NULL)
-			panic("nfsvno_write");
+			panic("nfsrv_createiovecw");
 		if (i > 0) {
 			i = min(i, len);
 			ivp->iov_base = cp;
@@ -964,7 +1049,6 @@ nfsvno_write(struct vnode *vp, off_t off, int retlen, int *stable,
 		*stable = NFSWRITE_FILESYNC;
 		return (error);
 	}
-
 
 	if (*stable == NFSWRITE_UNSTABLE)
 		ioflags = IO_NODELOCKED;
@@ -1021,7 +1105,8 @@ nfsvno_createsub(struct nfsrv_descript *nd, struct nameidata *ndp,
 				nfsrv_pnfscreate(ndp->ni_vp, &nvap->na_vattr,
 				    nd->nd_cred, p);
 			}
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp :
+			    NULL, false);
 			nfsvno_relpathbuf(ndp);
 			if (!error) {
 				if (*exclusive_flagp) {
@@ -1056,7 +1141,8 @@ nfsvno_createsub(struct nfsrv_descript *nd, struct nameidata *ndp,
 			nvap->na_rdev = rdev;
 			error = VOP_MKNOD(ndp->ni_dvp, &ndp->ni_vp,
 			    &ndp->ni_cnd, &nvap->na_vattr);
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp :
+			    NULL, false);
 			nfsvno_relpathbuf(ndp);
 			vrele(ndp->ni_startdir);
 			if (error)
@@ -1137,7 +1223,8 @@ nfsvno_mknod(struct nameidata *ndp, struct nfsvattr *nvap, struct ucred *cred,
 		vrele(ndp->ni_startdir);
 		error = VOP_CREATE(ndp->ni_dvp, &ndp->ni_vp,
 		    &ndp->ni_cnd, &nvap->na_vattr);
-		vput(ndp->ni_dvp);
+		VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL,
+		    false);
 		nfsvno_relpathbuf(ndp);
 	} else {
 		if (nvap->na_type != VFIFO &&
@@ -1149,7 +1236,8 @@ nfsvno_mknod(struct nameidata *ndp, struct nfsvattr *nvap, struct ucred *cred,
 		}
 		error = VOP_MKNOD(ndp->ni_dvp, &ndp->ni_vp,
 		    &ndp->ni_cnd, &nvap->na_vattr);
-		vput(ndp->ni_dvp);
+		VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL,
+		    false);
 		nfsvno_relpathbuf(ndp);
 		vrele(ndp->ni_startdir);
 		/*
@@ -1184,7 +1272,7 @@ nfsvno_mkdir(struct nameidata *ndp, struct nfsvattr *nvap, uid_t saved_uid,
 	}
 	error = VOP_MKDIR(ndp->ni_dvp, &ndp->ni_vp, &ndp->ni_cnd,
 	    &nvap->na_vattr);
-	vput(ndp->ni_dvp);
+	VOP_VPUT_PAIR(ndp->ni_dvp, error == 0 ? &ndp->ni_vp : NULL, false);
 	nfsvno_relpathbuf(ndp);
 
 out:
@@ -1216,17 +1304,15 @@ nfsvno_symlink(struct nameidata *ndp, struct nfsvattr *nvap, char *pathcp,
 
 	error = VOP_SYMLINK(ndp->ni_dvp, &ndp->ni_vp, &ndp->ni_cnd,
 	    &nvap->na_vattr, pathcp);
-	vput(ndp->ni_dvp);
-	vrele(ndp->ni_startdir);
-	nfsvno_relpathbuf(ndp);
 	/*
 	 * Although FreeBSD still had the lookup code in
 	 * it for 7/current, there doesn't seem to be any
 	 * point, since VOP_SYMLINK() returns the ni_vp.
 	 * Just vput it for v2.
 	 */
-	if (!not_v2 && !error)
-		vput(ndp->ni_vp);
+	VOP_VPUT_PAIR(ndp->ni_dvp, &ndp->ni_vp, !not_v2 && error == 0);
+	vrele(ndp->ni_startdir);
+	nfsvno_relpathbuf(ndp);
 
 out:
 	NFSEXITCODE(error);
@@ -1511,11 +1597,13 @@ nfsvno_link(struct nameidata *ndp, struct vnode *vp, struct ucred *cred,
 			error = VOP_LINK(ndp->ni_dvp, vp, &ndp->ni_cnd);
 		else
 			error = EPERM;
-		if (ndp->ni_dvp == vp)
+		if (ndp->ni_dvp == vp) {
 			vrele(ndp->ni_dvp);
-		else
-			vput(ndp->ni_dvp);
-		NFSVOPUNLOCK(vp);
+			NFSVOPUNLOCK(vp);
+		} else {
+			vref(vp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, &vp, true);
+		}
 	} else {
 		if (ndp->ni_dvp == ndp->ni_vp)
 			vrele(ndp->ni_dvp);
@@ -1709,7 +1797,8 @@ nfsvno_open(struct nfsrv_descript *nd, struct nameidata *ndp,
 				nfsrv_pnfscreate(ndp->ni_vp, &nvap->na_vattr,
 				    cred, p);
 			}
-			vput(ndp->ni_dvp);
+			VOP_VPUT_PAIR(ndp->ni_dvp, nd->nd_repstat == 0 ?
+			    &ndp->ni_vp : NULL, false);
 			nfsvno_relpathbuf(ndp);
 			if (!nd->nd_repstat) {
 				if (*exclusive_flagp) {
@@ -2032,6 +2121,17 @@ again:
 	vput(vp);
 
 	/*
+	 * If cnt > MCLBYTES and the reply will not be saved, use
+	 * ext_pgs mbufs for TLS.
+	 * For NFSv4.0, we do not know for sure if the reply will
+	 * be saved, so do not use ext_pgs mbufs for NFSv4.0.
+	 */
+	if (cnt > MCLBYTES && siz > MCLBYTES &&
+	    (nd->nd_flag & (ND_TLS | ND_EXTPG | ND_SAVEREPLY)) == ND_TLS &&
+	    (nd->nd_flag & (ND_NFSV4 | ND_NFSV41)) != ND_NFSV4)
+		nd->nd_flag |= ND_EXTPG;
+
+	/*
 	 * dirlen is the size of the reply, including all XDR and must
 	 * not exceed cnt. For NFSv2, RFC1094 didn't clearly indicate
 	 * if the XDR should be included in "count", but to be safe, we do.
@@ -2135,6 +2235,7 @@ nfsrvd_readdirplus(struct nfsrv_descript *nd, int isdgram,
 	struct mount *mp, *new_mp;
 	uint64_t mounted_on_fileno;
 	struct thread *p = curthread;
+	int bextpg0, bextpg1, bextpgsiz0, bextpgsiz1;
 
 	if (nd->nd_repstat) {
 		nfsrv_postopattr(nd, getret, &at);
@@ -2348,11 +2449,27 @@ again:
 	}
 
 	/*
+	 * If the reply is likely to exceed MCLBYTES and the reply will
+	 * not be saved, use ext_pgs mbufs for TLS.
+	 * It is difficult to predict how large each entry will be and
+	 * how many entries have been read, so just assume the directory
+	 * entries grow by a factor of 4 when attributes are included.
+	 * For NFSv4.0, we do not know for sure if the reply will
+	 * be saved, so do not use ext_pgs mbufs for NFSv4.0.
+	 */
+	if (cnt > MCLBYTES && siz > MCLBYTES / 4 &&
+	    (nd->nd_flag & (ND_TLS | ND_EXTPG | ND_SAVEREPLY)) == ND_TLS &&
+	    (nd->nd_flag & (ND_NFSV4 | ND_NFSV41)) != ND_NFSV4)
+		nd->nd_flag |= ND_EXTPG;
+
+	/*
 	 * Save this position, in case there is an error before one entry
 	 * is created.
 	 */
 	mb0 = nd->nd_mb;
 	bpos0 = nd->nd_bpos;
+	bextpg0 = nd->nd_bextpg;
+	bextpgsiz0 = nd->nd_bextpgsiz;
 
 	/*
 	 * Fill in the first part of the reply.
@@ -2374,6 +2491,8 @@ again:
 	 */
 	mb1 = nd->nd_mb;
 	bpos1 = nd->nd_bpos;
+	bextpg1 = nd->nd_bextpg;
+	bextpgsiz1 = nd->nd_bextpgsiz;
 
 	/* Loop through the records and build reply */
 	entrycnt = 0;
@@ -2390,7 +2509,9 @@ again:
 			 */
 			mb1 = nd->nd_mb;
 			bpos1 = nd->nd_bpos;
-	
+			bextpg1 = nd->nd_bextpg;
+			bextpgsiz1 = nd->nd_bextpgsiz;
+
 			/*
 			 * For readdir_and_lookup get the vnode using
 			 * the file number.
@@ -2615,11 +2736,11 @@ invalid:
 		if (!nd->nd_repstat && entrycnt == 0)
 			nd->nd_repstat = NFSERR_TOOSMALL;
 		if (nd->nd_repstat) {
-			newnfs_trimtrailing(nd, mb0, bpos0);
+			nfsm_trimtrailing(nd, mb0, bpos0, bextpg0, bextpgsiz0);
 			if (nd->nd_flag & ND_NFSV3)
 				nfsrv_postopattr(nd, getret, &at);
 		} else
-			newnfs_trimtrailing(nd, mb1, bpos1);
+			nfsm_trimtrailing(nd, mb1, bpos1, bextpg1, bextpgsiz1);
 		eofflag = 0;
 	} else if (cpos < cend)
 		eofflag = 0;
@@ -2908,8 +3029,7 @@ nfsv4_sattr(struct nfsrv_descript *nd, vnode_t vp, struct nfsvattr *nvap,
 			break;
 		case NFSATTRBIT_TIMECREATE:
 			NFSM_DISSECT(tl, u_int32_t *, NFSX_V4TIME);
-			if (!nd->nd_repstat)
-				nd->nd_repstat = NFSERR_ATTRNOTSUPP;
+			fxdr_nfsv4time(tl, &nvap->na_btime);
 			attrsum += NFSX_V4TIME;
 			break;
 		case NFSATTRBIT_TIMEMODIFYSET:
@@ -2983,9 +3103,9 @@ nfsmout:
  */
 int
 nfsd_excred(struct nfsrv_descript *nd, struct nfsexstuff *exp,
-    struct ucred *credanon)
+    struct ucred *credanon, bool testsec)
 {
-	int error = 0;
+	int error;
 
 	/*
 	 * Check/setup credentials.
@@ -2995,18 +3115,12 @@ nfsd_excred(struct nfsrv_descript *nd, struct nfsexstuff *exp,
 
 	/*
 	 * Check to see if the operation is allowed for this security flavor.
-	 * RFC2623 suggests that the NFSv3 Fsinfo RPC be allowed to
-	 * AUTH_NONE or AUTH_SYS for file systems requiring RPCSEC_GSS.
-	 * Also, allow Secinfo, so that it can acquire the correct flavor(s).
 	 */
-	if (nfsvno_testexp(nd, exp) &&
-	    nd->nd_procnum != NFSV4OP_SECINFO &&
-	    nd->nd_procnum != NFSPROC_FSINFO) {
-		if (nd->nd_flag & ND_NFSV4)
-			error = NFSERR_WRONGSEC;
-		else
-			error = (NFSERR_AUTHERR | AUTH_TOOWEAK);
-		goto out;
+	error = 0;
+	if (testsec) {
+		error = nfsvno_testexp(nd, exp);
+		if (error != 0)
+			goto out;
 	}
 
 	/*
@@ -3055,20 +3169,21 @@ int
 nfsvno_checkexp(struct mount *mp, struct sockaddr *nam, struct nfsexstuff *exp,
     struct ucred **credp)
 {
-	int i, error, *secflavors;
+	int error;
 
 	error = VFS_CHECKEXP(mp, nam, &exp->nes_exflag, credp,
-	    &exp->nes_numsecflavor, &secflavors);
+	    &exp->nes_numsecflavor, exp->nes_secflavors);
 	if (error) {
 		if (nfs_rootfhset) {
 			exp->nes_exflag = 0;
 			exp->nes_numsecflavor = 0;
 			error = 0;
 		}
-	} else {
-		/* Copy the security flavors. */
-		for (i = 0; i < exp->nes_numsecflavor; i++)
-			exp->nes_secflavors[i] = secflavors[i];
+	} else if (exp->nes_numsecflavor < 1 || exp->nes_numsecflavor >
+	    MAXSECFLAVORS) {
+		printf("nfsvno_checkexp: numsecflavors out of range\n");
+		exp->nes_numsecflavor = 0;
+		error = EACCES;
 	}
 	NFSEXITCODE(error);
 	return (error);
@@ -3082,7 +3197,7 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
     int lktype, struct vnode **vpp, struct nfsexstuff *exp,
     struct ucred **credp)
 {
-	int i, error, *secflavors;
+	int error;
 
 	*credp = NULL;
 	exp->nes_numsecflavor = 0;
@@ -3092,7 +3207,7 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 		error = ESTALE;
 	if (nam && !error) {
 		error = VFS_CHECKEXP(mp, nam, &exp->nes_exflag, credp,
-		    &exp->nes_numsecflavor, &secflavors);
+		    &exp->nes_numsecflavor, exp->nes_secflavors);
 		if (error) {
 			if (nfs_rootfhset) {
 				exp->nes_exflag = 0;
@@ -3101,10 +3216,12 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 			} else {
 				vput(*vpp);
 			}
-		} else {
-			/* Copy the security flavors. */
-			for (i = 0; i < exp->nes_numsecflavor; i++)
-				exp->nes_secflavors[i] = secflavors[i];
+		} else if (exp->nes_numsecflavor < 1 || exp->nes_numsecflavor >
+		    MAXSECFLAVORS) {
+			printf("nfsvno_fhtovp: numsecflavors out of range\n");
+			exp->nes_numsecflavor = 0;
+			error = EACCES;
+			vput(*vpp);
 		}
 	}
 	NFSEXITCODE(error);
@@ -3123,30 +3240,37 @@ nfsvno_fhtovp(struct mount *mp, fhandle_t *fhp, struct sockaddr *nam,
 void
 nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
     struct vnode **vpp, struct nfsexstuff *exp,
-    struct mount **mpp, int startwrite)
+    struct mount **mpp, int startwrite, int nextop)
 {
-	struct mount *mp;
+	struct mount *mp, *mpw;
 	struct ucred *credanon;
 	fhandle_t *fhp;
+	int error;
 
-	fhp = (fhandle_t *)nfp->nfsrvfh_data;
-	/*
-	 * Check for the special case of the nfsv4root_fh.
-	 */
-	mp = vfs_busyfs(&fhp->fh_fsid);
 	if (mpp != NULL)
-		*mpp = mp;
+		*mpp = NULL;
+	*vpp = NULL;
+	fhp = (fhandle_t *)nfp->nfsrvfh_data;
+	mp = vfs_busyfs(&fhp->fh_fsid);
 	if (mp == NULL) {
-		*vpp = NULL;
 		nd->nd_repstat = ESTALE;
 		goto out;
 	}
 
 	if (startwrite) {
-		vn_start_write(NULL, mpp, V_WAIT);
+		mpw = mp;
+		error = vn_start_write(NULL, &mpw, V_WAIT);
+		if (error != 0) {
+			mpw = NULL;
+			vfs_unbusy(mp);
+			nd->nd_repstat = ESTALE;
+			goto out;
+		}
 		if (lktype == LK_SHARED && !(MNT_SHARED_WRITES(mp)))
 			lktype = LK_EXCLUSIVE;
-	}
+	} else
+		mpw = NULL;
+
 	nd->nd_repstat = nfsvno_fhtovp(mp, fhp, nd->nd_nam, lktype, vpp, exp,
 	    &credanon);
 	vfs_unbusy(mp);
@@ -3158,6 +3282,7 @@ nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
 	if (!nd->nd_repstat && exp->nes_exflag == 0 &&
 	    !(nd->nd_flag & ND_NFSV4)) {
 		vput(*vpp);
+		*vpp = NULL;
 		nd->nd_repstat = EACCES;
 	}
 
@@ -3198,18 +3323,18 @@ nfsd_fhtovp(struct nfsrv_descript *nd, struct nfsrvfh *nfp, int lktype,
 	 */
 	if (!nd->nd_repstat) {
 		nd->nd_saveduid = nd->nd_cred->cr_uid;
-		nd->nd_repstat = nfsd_excred(nd, exp, credanon);
+		nd->nd_repstat = nfsd_excred(nd, exp, credanon,
+		    nfsrv_checkwrongsec(nd, nextop, (*vpp)->v_type));
 		if (nd->nd_repstat)
 			vput(*vpp);
 	}
 	if (credanon != NULL)
 		crfree(credanon);
 	if (nd->nd_repstat) {
-		if (startwrite)
-			vn_finished_write(mp);
+		vn_finished_write(mpw);
 		*vpp = NULL;
-		if (mpp != NULL)
-			*mpp = NULL;
+	} else if (mpp != NULL) {
+		*mpp = mpw;
 	}
 
 out:
@@ -3403,10 +3528,11 @@ int
 nfsvno_v4rootexport(struct nfsrv_descript *nd)
 {
 	struct ucred *credanon;
-	int exflags, error = 0, numsecflavor, *secflavors, i;
+	int error = 0, numsecflavor, secflavors[MAXSECFLAVORS], i;
+	uint64_t exflags;
 
 	error = vfs_stdcheckexp(&nfsv4root_mnt, nd->nd_nam, &exflags,
-	    &credanon, &numsecflavor, &secflavors);
+	    &credanon, &numsecflavor, secflavors);
 	if (error) {
 		error = NFSERR_PROGUNAVAIL;
 		goto out;
@@ -3422,6 +3548,15 @@ nfsvno_v4rootexport(struct nfsrv_descript *nd)
 			nd->nd_flag |= ND_EXGSSINTEGRITY;
 		else if (secflavors[i] == RPCSEC_GSS_KRB5P)
 			nd->nd_flag |= ND_EXGSSPRIVACY;
+	}
+
+	/* And set ND_EXxx flags for TLS. */
+	if ((exflags & MNT_EXTLS) != 0) {
+		nd->nd_flag |= ND_EXTLS;
+		if ((exflags & MNT_EXTLSCERT) != 0)
+			nd->nd_flag |= ND_EXTLSCERT;
+		if ((exflags & MNT_EXTLSCERTUSER) != 0)
+			nd->nd_flag |= ND_EXTLSCERTUSER;
 	}
 
 out:
@@ -3461,7 +3596,7 @@ nfssvc_nfsd(struct thread *td, struct nfssvc_args *uap)
 		 * careful than too reckless.
 		 */
 		error = fget(td, sockarg.sock,
-		    cap_rights_init(&rights, CAP_SOCK_SERVER), &fp);
+		    cap_rights_init_one(&rights, CAP_SOCK_SERVER), &fp);
 		if (error != 0)
 			goto out;
 		if (fp->f_type != DTYPE_SOCKET) {
@@ -3644,8 +3779,9 @@ static int
 nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 {
 	struct nfsex_args export;
+	struct nfsex_oldargs oexp;
 	struct file *fp = NULL;
-	int stablefd, len;
+	int stablefd, i, len;
 	struct nfsd_clid adminrevoke;
 	struct nfsd_dumplist dumplist;
 	struct nfsd_dumpclients *dumpclients;
@@ -3655,6 +3791,7 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 	vnode_t vp;
 	int error = EINVAL, igotlock;
 	struct proc *procp;
+	gid_t *grps;
 	static int suspend_nfsd = 0;
 
 	if (uap->flag & NFSSVC_PUBLICFH) {
@@ -3664,11 +3801,71 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 		    &nfs_pubfh.nfsrvfh_data, sizeof (fhandle_t));
 		if (!error)
 			nfs_pubfhset = 1;
-	} else if (uap->flag & NFSSVC_V4ROOTEXPORT) {
+	} else if ((uap->flag & (NFSSVC_V4ROOTEXPORT | NFSSVC_NEWSTRUCT)) ==
+	    (NFSSVC_V4ROOTEXPORT | NFSSVC_NEWSTRUCT)) {
 		error = copyin(uap->argp,(caddr_t)&export,
 		    sizeof (struct nfsex_args));
-		if (!error)
-			error = nfsrv_v4rootexport(&export, cred, p);
+		if (!error) {
+			grps = NULL;
+			if (export.export.ex_ngroups > NGROUPS_MAX ||
+			    export.export.ex_ngroups < 0)
+				error = EINVAL;
+			else if (export.export.ex_ngroups > 0) {
+				grps = malloc(export.export.ex_ngroups *
+				    sizeof(gid_t), M_TEMP, M_WAITOK);
+				error = copyin(export.export.ex_groups, grps,
+				    export.export.ex_ngroups * sizeof(gid_t));
+				export.export.ex_groups = grps;
+			} else
+				export.export.ex_groups = NULL;
+			if (!error)
+				error = nfsrv_v4rootexport(&export, cred, p);
+			free(grps, M_TEMP);
+		}
+	} else if ((uap->flag & (NFSSVC_V4ROOTEXPORT | NFSSVC_NEWSTRUCT)) ==
+	    NFSSVC_V4ROOTEXPORT) {
+		error = copyin(uap->argp,(caddr_t)&oexp,
+		    sizeof (struct nfsex_oldargs));
+		if (!error) {
+			memset(&export.export, 0, sizeof(export.export));
+			export.export.ex_flags = (uint64_t)oexp.export.ex_flags;
+			export.export.ex_root = oexp.export.ex_root;
+			export.export.ex_uid = oexp.export.ex_anon.cr_uid;
+			export.export.ex_ngroups =
+			    oexp.export.ex_anon.cr_ngroups;
+			export.export.ex_groups = NULL;
+			if (export.export.ex_ngroups > XU_NGROUPS ||
+			    export.export.ex_ngroups < 0)
+				error = EINVAL;
+			else if (export.export.ex_ngroups > 0) {
+				export.export.ex_groups = malloc(
+				    export.export.ex_ngroups * sizeof(gid_t),
+				    M_TEMP, M_WAITOK);
+				for (i = 0; i < export.export.ex_ngroups; i++)
+					export.export.ex_groups[i] =
+					    oexp.export.ex_anon.cr_groups[i];
+			}
+			export.export.ex_addr = oexp.export.ex_addr;
+			export.export.ex_addrlen = oexp.export.ex_addrlen;
+			export.export.ex_mask = oexp.export.ex_mask;
+			export.export.ex_masklen = oexp.export.ex_masklen;
+			export.export.ex_indexfile = oexp.export.ex_indexfile;
+			export.export.ex_numsecflavors =
+			    oexp.export.ex_numsecflavors;
+			if (export.export.ex_numsecflavors >= MAXSECFLAVORS ||
+			    export.export.ex_numsecflavors < 0)
+				error = EINVAL;
+			else {
+				for (i = 0; i < export.export.ex_numsecflavors;
+				    i++)
+					export.export.ex_secflavors[i] =
+					    oexp.export.ex_secflavors[i];
+			}
+			export.fspec = oexp.fspec;
+			if (error == 0)
+				error = nfsrv_v4rootexport(&export, cred, p);
+			free(export.export.ex_groups, M_TEMP);
+		}
 	} else if (uap->flag & NFSSVC_NOPUBLICFH) {
 		nfs_pubfhset = 0;
 		error = 0;
@@ -3700,8 +3897,7 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 		    len = sizeof (struct nfsd_dumpclients) * dumplist.ndl_size;
 		    dumpclients = malloc(len, M_TEMP, M_WAITOK | M_ZERO);
 		    nfsrv_dumpclients(dumpclients, dumplist.ndl_size);
-		    error = copyout(dumpclients,
-			CAST_USER_ADDR_T(dumplist.ndl_list), len);
+		    error = copyout(dumpclients, dumplist.ndl_list, len);
 		    free(dumpclients, M_TEMP);
 		}
 	} else if (uap->flag & NFSSVC_DUMPLOCKS) {
@@ -3720,8 +3916,8 @@ nfssvc_srvcall(struct thread *p, struct nfssvc_args *uap, struct ucred *cred)
 			nfsrv_dumplocks(nd.ni_vp, dumplocks,
 			    dumplocklist.ndllck_size, p);
 			vput(nd.ni_vp);
-			error = copyout(dumplocks,
-			    CAST_USER_ADDR_T(dumplocklist.ndllck_list), len);
+			error = copyout(dumplocks, dumplocklist.ndllck_list,
+			    len);
 			free(dumplocks, M_TEMP);
 		}
 	} else if (uap->flag & NFSSVC_BACKUPSTABLE) {
@@ -3768,6 +3964,24 @@ nfsvno_testexp(struct nfsrv_descript *nd, struct nfsexstuff *exp)
 	int i;
 
 	/*
+	 * Allow NFSv3 Fsinfo per RFC2623.
+	 */
+	if (((nd->nd_flag & ND_NFSV4) != 0 ||
+	     nd->nd_procnum != NFSPROC_FSINFO) &&
+	    ((NFSVNO_EXTLS(exp) && (nd->nd_flag & ND_TLS) == 0) ||
+	     (NFSVNO_EXTLSCERT(exp) &&
+	      (nd->nd_flag & ND_TLSCERT) == 0) ||
+	     (NFSVNO_EXTLSCERTUSER(exp) &&
+	      (nd->nd_flag & ND_TLSCERTUSER) == 0))) {
+		if ((nd->nd_flag & ND_NFSV4) != 0)
+			return (NFSERR_WRONGSEC);
+		else if ((nd->nd_flag & ND_TLS) == 0)
+			return (NFSERR_AUTHERR | AUTH_NEEDS_TLS);
+		else
+			return (NFSERR_AUTHERR | AUTH_NEEDS_TLS_MUTUAL_HOST);
+	}
+
+	/*
 	 * This seems odd, but allow the case where the security flavor
 	 * list is empty. This happens when NFSv4 is traversing non-exported
 	 * file systems. Exported file systems should always have a non-empty
@@ -3794,7 +4008,9 @@ nfsvno_testexp(struct nfsrv_descript *nd, struct nfsexstuff *exp)
 		    (nd->nd_flag & ND_GSS) == 0)
 			return (0);
 	}
-	return (1);
+	if ((nd->nd_flag & ND_NFSV4) != 0)
+		return (NFSERR_WRONGSEC);
+	return (NFSERR_AUTHERR | AUTH_TOOWEAK);
 }
 
 /*
@@ -3897,7 +4113,8 @@ nfsrv_dscreate(struct vnode *dvp, struct vattr *vap, struct vattr *nvap,
 	error = NFSVOPLOCK(dvp, LK_EXCLUSIVE);
 	if (error == 0) {
 		error = VOP_CREATE(dvp, &nvp, &named.ni_cnd, vap);
-		NFSVOPUNLOCK(dvp);
+		vref(dvp);
+		VOP_VPUT_PAIR(dvp, error == 0 ? &nvp : NULL, false);
 		if (error == 0) {
 			/* Set the ownership of the file. */
 			error = VOP_SETATTR(nvp, nvap, tcred);
@@ -4008,11 +4225,8 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 		if (tds->nfsdev_nmp != NULL) {
 			if (tds->nfsdev_mdsisset == 0 && ds == NULL)
 				ds = tds;
-			else if (tds->nfsdev_mdsisset != 0 &&
-			    mp->mnt_stat.f_fsid.val[0] ==
-			    tds->nfsdev_mdsfsid.val[0] &&
-			    mp->mnt_stat.f_fsid.val[1] ==
-			    tds->nfsdev_mdsfsid.val[1]) {
+			else if (tds->nfsdev_mdsisset != 0 && fsidcmp(
+			    &mp->mnt_stat.f_fsid, &tds->nfsdev_mdsfsid) == 0) {
 				ds = fds = tds;
 				break;
 			}
@@ -4032,10 +4246,8 @@ nfsrv_pnfscreate(struct vnode *vp, struct vattr *vap, struct ucred *cred,
 			if (tds->nfsdev_nmp != NULL &&
 			    ((tds->nfsdev_mdsisset == 0 && fds == NULL) ||
 			     (tds->nfsdev_mdsisset != 0 && fds != NULL &&
-			      mp->mnt_stat.f_fsid.val[0] ==
-			      tds->nfsdev_mdsfsid.val[0] &&
-			      mp->mnt_stat.f_fsid.val[1] ==
-			      tds->nfsdev_mdsfsid.val[1]))) {
+			      fsidcmp(&mp->mnt_stat.f_fsid,
+			      &tds->nfsdev_mdsfsid) == 0))) {
 				dsdir[mirrorcnt] = i;
 				dvp[mirrorcnt] = tds->nfsdev_dsdir[i];
 				mirrorcnt++;
@@ -4767,10 +4979,8 @@ nfsrv_dsgetsockmnt(struct vnode *vp, int lktype, char *buf, int *buflenp,
 					      fndds->nfsdev_mdsisset == 0) ||
 					     (tds->nfsdev_mdsisset != 0 &&
 					      fndds->nfsdev_mdsisset != 0 &&
-					      tds->nfsdev_mdsfsid.val[0] ==
-					      mp->mnt_stat.f_fsid.val[0] &&
-					      tds->nfsdev_mdsfsid.val[1] ==
-					      mp->mnt_stat.f_fsid.val[1]))) {
+					      fsidcmp(&tds->nfsdev_mdsfsid,
+					      &mp->mnt_stat.f_fsid) == 0))) {
 						*newnmpp = tds->nfsdev_nmp;
 						break;
 					}
@@ -4958,7 +5168,7 @@ nfsrv_readdsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 				error = ENOENT;
 				goto nfsmout;
 			}
-	
+
 			/*
 			 * Now, adjust first mbuf so that any XDR before the
 			 * read data is skipped over.
@@ -4968,7 +5178,7 @@ nfsrv_readdsrpc(fhandle_t *fhp, off_t off, int len, struct ucred *cred,
 				m->m_len -= trimlen;
 				NFSM_DATAP(m, trimlen);
 			}
-	
+
 			/*
 			 * Truncate the mbuf chain at retlen bytes of data,
 			 * plus XDR padding that brings the length up to a
@@ -5069,7 +5279,7 @@ nfsrv_writedsdorpc(struct nfsmount *nmp, fhandle_t *fhp, off_t off, int len,
 	while (m->m_next != NULL)
 		m = m->m_next;
 	nd->nd_mb = m;
-	nd->nd_bpos = mtod(m, char *) + m->m_len;
+	nfsm_set(nd, m->m_len);
 	NFSD_DEBUG(4, "nfsrv_writedsdorpc: lastmb len=%d\n", m->m_len);
 
 	/* Do a Getattr for the attributes that change upon writing. */
@@ -5728,7 +5938,7 @@ nfsrv_getattrdsrpc(fhandle_t *fhp, struct ucred *cred, NFSPROC_T *p,
 	struct nfsrv_descript *nd;
 	int error;
 	nfsattrbit_t attrbits;
-	
+
 	NFSD_DEBUG(4, "in nfsrv_getattrdsrpc\n");
 	nd = malloc(sizeof(*nd), M_TEMP, M_WAITOK | M_ZERO);
 	nfscl_reqstart(nd, NFSPROC_GETATTR, nmp, (u_int8_t *)fhp,
@@ -5786,7 +5996,7 @@ nfsrv_seekdsrpc(fhandle_t *fhp, off_t *offp, int content, bool *eofp,
 	struct nfsrv_descript *nd;
 	nfsv4stateid_t st;
 	int error;
-	
+
 	NFSD_DEBUG(4, "in nfsrv_seekdsrpc\n");
 	/*
 	 * Use a stateid where other is an alternating 01010 pattern and
@@ -5957,8 +6167,7 @@ nfsrv_pnfsstatfs(struct statfs *sf, struct mount *mp)
 	/* First, search for matches for same file system. */
 	TAILQ_FOREACH(ds, &nfsrv_devidhead, nfsdev_list) {
 		if (ds->nfsdev_nmp != NULL && ds->nfsdev_mdsisset != 0 &&
-		    ds->nfsdev_mdsfsid.val[0] == mp->mnt_stat.f_fsid.val[0] &&
-		    ds->nfsdev_mdsfsid.val[1] == mp->mnt_stat.f_fsid.val[1]) {
+		    fsidcmp(&ds->nfsdev_mdsfsid, &mp->mnt_stat.f_fsid) == 0) {
 			if (++i > nfsrv_devidcnt)
 				break;
 			*tdvpp++ = ds->nfsdev_dvp;
@@ -6140,8 +6349,8 @@ nfsvno_allocate(struct vnode *vp, off_t off, off_t len, struct ucred *cred,
  */
 int
 nfsvno_getxattr(struct vnode *vp, char *name, uint32_t maxresp,
-    struct ucred *cred, struct thread *p, struct mbuf **mpp,
-    struct mbuf **mpendp, int *lenp)
+    struct ucred *cred, uint64_t flag, int maxextsiz, struct thread *p,
+    struct mbuf **mpp, struct mbuf **mpendp, int *lenp)
 {
 	struct iovec *iv;
 	struct uio io, *uiop = &io;
@@ -6158,8 +6367,28 @@ nfsvno_getxattr(struct vnode *vp, char *name, uint32_t maxresp,
 		return (NFSERR_XATTR2BIG);
 	len = siz;
 	tlen = NFSM_RNDUP(len);
-	uiop->uio_iovcnt = nfsrv_createiovec(tlen, &m, &m2, &iv);
-	uiop->uio_iov = iv;
+	if (tlen > 0) {
+		/*
+		 * If cnt > MCLBYTES and the reply will not be saved, use
+		 * ext_pgs mbufs for TLS.
+		 * For NFSv4.0, we do not know for sure if the reply will
+		 * be saved, so do not use ext_pgs mbufs for NFSv4.0.
+		 * Always use ext_pgs mbufs if ND_EXTPG is set.
+		 */
+		if ((flag & ND_EXTPG) != 0 || (tlen > MCLBYTES &&
+		    (flag & (ND_TLS | ND_SAVEREPLY)) == ND_TLS &&
+		    (flag & (ND_NFSV4 | ND_NFSV41)) != ND_NFSV4))
+			uiop->uio_iovcnt = nfsrv_createiovec_extpgs(tlen,
+			    maxextsiz, &m, &m2, &iv);
+		else
+			uiop->uio_iovcnt = nfsrv_createiovec(tlen, &m, &m2,
+			    &iv);
+		uiop->uio_iov = iv;
+	} else {
+		uiop->uio_iovcnt = 0;
+		uiop->uio_iov = iv = NULL;
+		m = m2 = NULL;
+	}
 	uiop->uio_offset = 0;
 	uiop->uio_resid = tlen;
 	uiop->uio_rw = UIO_READ;
@@ -6172,8 +6401,9 @@ nfsvno_getxattr(struct vnode *vp, char *name, uint32_t maxresp,
 		goto out;
 #endif
 
-	error = VOP_GETEXTATTR(vp, EXTATTR_NAMESPACE_USER, name, uiop, NULL,
-	    cred, p);
+	if (tlen > 0)
+		error = VOP_GETEXTATTR(vp, EXTATTR_NAMESPACE_USER, name, uiop,
+		    NULL, cred, p);
 	if (error != 0)
 		goto out;
 	if (uiop->uio_resid > 0) {
@@ -6182,7 +6412,11 @@ nfsvno_getxattr(struct vnode *vp, char *name, uint32_t maxresp,
 		tlen = NFSM_RNDUP(len);
 		if (alen != tlen)
 			printf("nfsvno_getxattr: weird size read\n");
-		nfsrv_adj(m, alen - tlen, tlen - len);
+		if (tlen == 0) {
+			m_freem(m);
+			m = m2 = NULL;
+		} else if (alen != tlen || tlen != len)
+			m2 = nfsrv_adj(m, alen - tlen, tlen - len);
 	}
 	*lenp = len;
 	*mpp = m;
@@ -6190,7 +6424,8 @@ nfsvno_getxattr(struct vnode *vp, char *name, uint32_t maxresp,
 
 out:
 	if (error != 0) {
-		m_freem(m);
+		if (m != NULL)
+			m_freem(m);
 		*lenp = 0;
 	}
 	free(iv, M_TEMP);
@@ -6222,9 +6457,14 @@ nfsvno_setxattr(struct vnode *vp, char *name, int len, struct mbuf *m,
 	uiop->uio_td = p;
 	uiop->uio_offset = 0;
 	uiop->uio_resid = len;
-	error = nfsrv_createiovecw(len, m, cp, &iv, &cnt);
-	uiop->uio_iov = iv;
-	uiop->uio_iovcnt = cnt;
+	if (len > 0) {
+		error = nfsrv_createiovecw(len, m, cp, &iv, &cnt);
+		uiop->uio_iov = iv;
+		uiop->uio_iovcnt = cnt;
+	} else {
+		uiop->uio_iov = iv = NULL;
+		uiop->uio_iovcnt = 0;
+	}
 	if (error == 0) {
 		error = VOP_SETEXTATTR(vp, EXTATTR_NAMESPACE_USER, name, uiop,
 		    cred, p);
@@ -6332,6 +6572,81 @@ out:
 	}
 	NFSEXITCODE(error);
 	return (error);
+}
+
+/*
+ * Trim trailing data off the mbuf list being built.
+ */
+void
+nfsm_trimtrailing(struct nfsrv_descript *nd, struct mbuf *mb, char *bpos,
+    int bextpg, int bextpgsiz)
+{
+	vm_page_t pg;
+	int fullpgsiz, i;
+
+	if (mb->m_next != NULL) {
+		m_freem(mb->m_next);
+		mb->m_next = NULL;
+	}
+	if ((mb->m_flags & M_EXTPG) != 0) {
+		KASSERT(bextpg >= 0 && bextpg < mb->m_epg_npgs,
+		    ("nfsm_trimtrailing: bextpg out of range"));
+		KASSERT(bpos == (char *)(void *)
+		    PHYS_TO_DMAP(mb->m_epg_pa[bextpg]) + PAGE_SIZE - bextpgsiz,
+		    ("nfsm_trimtrailing: bextpgsiz bad!"));
+
+		/* First, get rid of any pages after this position. */
+		for (i = mb->m_epg_npgs - 1; i > bextpg; i--) {
+			pg = PHYS_TO_VM_PAGE(mb->m_epg_pa[i]);
+			vm_page_unwire_noq(pg);
+			vm_page_free(pg);
+		}
+		mb->m_epg_npgs = bextpg + 1;
+		if (bextpg == 0)
+			fullpgsiz = PAGE_SIZE - mb->m_epg_1st_off;
+		else
+			fullpgsiz = PAGE_SIZE;
+		mb->m_epg_last_len = fullpgsiz - bextpgsiz;
+		mb->m_len = m_epg_pagelen(mb, 0, mb->m_epg_1st_off);
+		for (i = 1; i < mb->m_epg_npgs; i++)
+			mb->m_len += m_epg_pagelen(mb, i, 0);
+		nd->nd_bextpgsiz = bextpgsiz;
+		nd->nd_bextpg = bextpg;
+	} else
+		mb->m_len = bpos - mtod(mb, char *);
+	nd->nd_mb = mb;
+	nd->nd_bpos = bpos;
+}
+
+
+/*
+ * Check to see if a put file handle operation should test for
+ * NFSERR_WRONGSEC, although NFSv3 actually returns NFSERR_AUTHERR.
+ * When Open is the next operation, NFSERR_WRONGSEC cannot be
+ * replied for the Open cases that use a component.  Thia can
+ * be identified by the fact that the file handle's type is VDIR.
+ */
+bool
+nfsrv_checkwrongsec(struct nfsrv_descript *nd, int nextop, enum vtype vtyp)
+{
+
+	if ((nd->nd_flag & ND_NFSV4) == 0) {
+		if (nd->nd_procnum == NFSPROC_FSINFO)
+			return (false);
+		return (true);
+	}
+
+	if ((nd->nd_flag & ND_LASTOP) != 0)
+		return (false);
+
+	if (nextop == NFSV4OP_PUTROOTFH || nextop == NFSV4OP_PUTFH ||
+	    nextop == NFSV4OP_PUTPUBFH || nextop == NFSV4OP_RESTOREFH ||
+	    nextop == NFSV4OP_LOOKUP || nextop == NFSV4OP_LOOKUPP ||
+	    nextop == NFSV4OP_SECINFO || nextop == NFSV4OP_SECINFONONAME)
+		return (false);
+	if (nextop == NFSV4OP_OPEN && vtyp == VDIR)
+		return (false);
+	return (true);
 }
 
 extern int (*nfsd_call_nfsd)(struct thread *, struct nfssvc_args *);
@@ -6442,8 +6757,6 @@ DECLARE_MODULE(nfsd, nfsd_mod, SI_SUB_VFS, SI_ORDER_ANY);
 /* So that loader and kldload(2) can find us, wherever we are.. */
 MODULE_VERSION(nfsd, 1);
 MODULE_DEPEND(nfsd, nfscommon, 1, 1, 1);
-MODULE_DEPEND(nfsd, nfslock, 1, 1, 1);
 MODULE_DEPEND(nfsd, nfslockd, 1, 1, 1);
 MODULE_DEPEND(nfsd, krpc, 1, 1, 1);
 MODULE_DEPEND(nfsd, nfssvc, 1, 1, 1);
-

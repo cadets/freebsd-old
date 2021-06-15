@@ -125,7 +125,7 @@ int kmpc_get_affinity_mask_proc(int proc, void **mask) {
 /* kmp API functions */
 void kmp_set_stacksize(omp_int_t arg) {
   i;
-  __kmps_set_stacksize(arg);
+  __kmps_set_stacksize((size_t)arg);
 }
 void kmp_set_stacksize_s(size_t arg) {
   i;
@@ -147,7 +147,7 @@ void *kmp_malloc(size_t size) {
   i;
   void *res;
 #if KMP_OS_WINDOWS
-  // If succesfull returns a pointer to the memory block, otherwise returns
+  // If successful returns a pointer to the memory block, otherwise returns
   // NULL.
   // Sets errno to ENOMEM or EINVAL if memory allocation failed or parameter
   // validation failed.
@@ -164,7 +164,7 @@ void *kmp_aligned_malloc(size_t sz, size_t a) {
 #if KMP_OS_WINDOWS
   res = _aligned_malloc(sz, a);
 #else
-  if (err = posix_memalign(&res, a, sz)) {
+  if ((err = posix_memalign(&res, a, sz))) {
     errno = err; // can be EINVAL or ENOMEM
     res = NULL;
   }
@@ -250,12 +250,12 @@ int __kmps_get_nested(void) {
 
 static size_t __kmps_stacksize = KMP_DEFAULT_STKSIZE;
 
-void __kmps_set_stacksize(int arg) {
+void __kmps_set_stacksize(size_t arg) {
   i;
   __kmps_stacksize = arg;
 } // __kmps_set_stacksize
 
-int __kmps_get_stacksize(void) {
+size_t __kmps_get_stacksize(void) {
   i;
   return __kmps_stacksize;
 } // __kmps_get_stacksize
@@ -277,7 +277,7 @@ void __kmps_get_schedule(kmp_sched_t *kind, int *modifier) {
 
 kmp_proc_bind_t __kmps_get_proc_bind(void) {
   i;
-  return 0;
+  return proc_bind_false;
 } // __kmps_get_proc_bind
 
 double __kmps_get_wtime(void) {
@@ -365,6 +365,17 @@ omp_memspace_handle_t const omp_low_lat_mem_space =
 void *omp_alloc(size_t size, const omp_allocator_handle_t allocator) {
   i;
   return malloc(size);
+}
+void *omp_calloc(size_t nmemb, size_t size,
+                 const omp_allocator_handle_t allocator) {
+  i;
+  return calloc(nmemb, size);
+}
+void *omp_realloc(void *ptr, size_t size,
+                  const omp_allocator_handle_t allocator,
+                  const omp_allocator_handle_t free_allocator) {
+  i;
+  return realloc(ptr, size);
 }
 void omp_free(void *ptr, const omp_allocator_handle_t allocator) {
   i;

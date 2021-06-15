@@ -160,12 +160,12 @@ static int	ath_init(struct ath_softc *);
 static void	ath_stop(struct ath_softc *);
 static int	ath_reset_vap(struct ieee80211vap *, u_long);
 static int	ath_transmit(struct ieee80211com *, struct mbuf *);
-static int	ath_media_change(struct ifnet *);
 static void	ath_watchdog(void *);
 static void	ath_parent(struct ieee80211com *);
 static void	ath_fatal_proc(void *, int);
 static void	ath_bmiss_vap(struct ieee80211vap *);
 static void	ath_bmiss_proc(void *, int);
+static void	ath_tsfoor_proc(void *, int);
 static void	ath_key_update_begin(struct ieee80211vap *);
 static void	ath_key_update_end(struct ieee80211vap *);
 static void	ath_update_mcast_hw(struct ath_softc *);
@@ -762,6 +762,7 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 
 	TASK_INIT(&sc->sc_rxtask, 0, sc->sc_rx.recv_tasklet, sc);
 	TASK_INIT(&sc->sc_bmisstask, 0, ath_bmiss_proc, sc);
+	TASK_INIT(&sc->sc_tsfoortask, 0, ath_tsfoor_proc, sc);
 	TASK_INIT(&sc->sc_bstucktask,0, ath_bstuck_proc, sc);
 	TASK_INIT(&sc->sc_resettask,0, ath_reset_proc, sc);
 	TASK_INIT(&sc->sc_txqtask, 0, ath_txq_sched_tasklet, sc);
@@ -1082,9 +1083,16 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 
 	/*
 	 * Default the maximum queue to 1/4'th the TX buffers, or
-	 * 64, whichever is smaller.
+	 * 128, whichever is smaller.
+	 *
+	 * Set it to 128 instead of the previous default (64) because
+	 * at 64, two full A-MPDU subframes of 32 frames each is
+	 * enough to treat this node queue as full and all subsequent
+	 * traffic is dropped. Setting it to 128 means there'll
+	 * hopefully be another 64 frames in the software queue
+	 * to begin making A-MPDU frames out of.
 	 */
-	sc->sc_txq_node_maxdepth = MIN(64, ath_txbuf / 4);
+	sc->sc_txq_node_maxdepth = MIN(128, ath_txbuf / 4);
 
 	/* Enable CABQ by default */
 	sc->sc_cabq_enable = 1;
@@ -1220,7 +1228,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 			ic->ic_htcaps |= IEEE80211_HTCAP_LDPC |
 					 IEEE80211_HTC_TXLDPC;
 		}
-
 
 		device_printf(sc->sc_dev,
 		    "[HT] %d RX streams; %d TX streams\n", rxs, txs);
@@ -1767,8 +1774,8 @@ ath_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ], int unit,
 	ATH_UNLOCK(sc);
 
 	/* complete setup */
-	ieee80211_vap_attach(vap, ath_media_change, ieee80211_media_status,
-	    mac);
+	ieee80211_vap_attach(vap, ieee80211_media_change,
+	    ieee80211_media_status, mac);
 	return vap;
 bad2:
 	reclaim_address(sc, mac);
@@ -1801,6 +1808,7 @@ ath_vap_delete(struct ieee80211vap *vap)
 		ath_hal_intrset(ah, 0);		/* disable interrupts */
 		/* XXX Do all frames from all vaps/nodes need draining here? */
 		ath_stoprecv(sc, 1);		/* stop recv side */
+		ath_rx_flush(sc);
 		ath_draintxq(sc, ATH_RESET_DEFAULT);		/* stop hw xmit side */
 	}
 
@@ -2334,13 +2342,18 @@ ath_intr(void *arg)
 			sc->sc_stats.ast_rxorn++;
 		}
 		if (status & HAL_INT_TSFOOR) {
-			/* out of range beacon - wake the chip up,
-			 * but don't modify self-gen frame config */
-			device_printf(sc->sc_dev, "%s: TSFOOR\n", __func__);
-			sc->sc_syncbeacon = 1;
+			/*
+			 * out of range beacon - wake the chip up,
+			 * but don't modify self-gen frame config.
+			 * Do a full reset to clear any potential stuck
+			 * PHY/MAC that generated this condition.
+			 */
+			sc->sc_stats.ast_tsfoor++;
 			ATH_LOCK(sc);
 			ath_power_setpower(sc, HAL_PM_AWAKE, 0);
 			ATH_UNLOCK(sc);
+			taskqueue_enqueue(sc->sc_tq, &sc->sc_tsfoortask);
+			device_printf(sc->sc_dev, "%s: TSFOOR\n", __func__);
 		}
 		if (status & HAL_INT_MCI) {
 			ath_btcoex_mci_intr(sc);
@@ -2379,7 +2392,7 @@ ath_fatal_proc(void *arg, int pending)
 		    "0x%08x 0x%08x 0x%08x, 0x%08x 0x%08x 0x%08x\n", state[0],
 		    state[1] , state[2], state[3], state[4], state[5]);
 	}
-	ath_reset(sc, ATH_RESET_NOLOSS);
+	ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_FORCE_COLD);
 }
 
 static void
@@ -2444,13 +2457,15 @@ ath_bmiss_vap(struct ieee80211vap *vap)
 	ath_power_setpower(sc, HAL_PM_AWAKE, 0);
 	ath_power_restore_power_state(sc);
 	ATH_UNLOCK(sc);
+
 	DPRINTF(sc, ATH_DEBUG_BEACON,
 	    "%s: forced awake; force syncbeacon=1\n", __func__);
-
-	/*
-	 * Attempt to force a beacon resync.
-	 */
-	sc->sc_syncbeacon = 1;
+	if ((vap->iv_flags_ext & IEEE80211_FEXT_SWBMISS) == 0) {
+		/*
+		 * Attempt to force a beacon resync.
+		 */
+		sc->sc_syncbeacon = 1;
+	}
 
 	ATH_VAP(vap)->av_bmiss(vap);
 }
@@ -2484,19 +2499,52 @@ ath_bmiss_proc(void *arg, int pending)
 	ath_beacon_miss(sc);
 
 	/*
-	 * Do a reset upon any becaon miss event.
+	 * Do a reset upon any beacon miss event.
 	 *
 	 * It may be a non-recognised RX clear hang which needs a reset
 	 * to clear.
 	 */
 	if (ath_hal_gethangstate(sc->sc_ah, 0xff, &hangs) && hangs != 0) {
-		ath_reset(sc, ATH_RESET_NOLOSS);
+		ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_BBPANIC);
 		device_printf(sc->sc_dev,
 		    "bb hang detected (0x%x), resetting\n", hangs);
 	} else {
-		ath_reset(sc, ATH_RESET_NOLOSS);
+		ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_FORCE_COLD);
 		ieee80211_beacon_miss(&sc->sc_ic);
 	}
+
+	/* Force a beacon resync, in case they've drifted */
+	sc->sc_syncbeacon = 1;
+
+	ATH_LOCK(sc);
+	ath_power_restore_power_state(sc);
+	ATH_UNLOCK(sc);
+}
+
+/*
+ * Handle a TSF out of range interrupt in STA mode.
+ *
+ * This may be due to a partially deaf looking radio, so
+ * do a full reset just in case it is indeed deaf and
+ * resync the beacon.
+ */
+static void
+ath_tsfoor_proc(void *arg, int pending)
+{
+	struct ath_softc *sc = arg;
+
+	DPRINTF(sc, ATH_DEBUG_ANY, "%s: pending %u\n", __func__, pending);
+
+	ATH_LOCK(sc);
+	ath_power_set_power_state(sc, HAL_PM_AWAKE);
+	ATH_UNLOCK(sc);
+
+	/*
+	 * Do a full reset after any TSFOOR.  It's possible that
+	 * we've gone deaf or partially deaf (eg due to calibration
+	 * failures) and this should clean things up a bit.
+	 */
+	ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_FORCE_COLD);
 
 	/* Force a beacon resync, in case they've drifted */
 	sc->sc_syncbeacon = 1;
@@ -2893,7 +2941,8 @@ ath_reset_grablock(struct ath_softc *sc, int dowait)
  * to reset or reload hardware state.
  */
 int
-ath_reset(struct ath_softc *sc, ATH_RESET_TYPE reset_type)
+ath_reset(struct ath_softc *sc, ATH_RESET_TYPE reset_type,
+    HAL_RESET_TYPE ah_reset_type)
 {
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct ath_hal *ah = sc->sc_ah;
@@ -2961,7 +3010,7 @@ ath_reset(struct ath_softc *sc, ATH_RESET_TYPE reset_type)
 	ath_hal_setchainmasks(sc->sc_ah, sc->sc_cur_txchainmask,
 	    sc->sc_cur_rxchainmask);
 	if (!ath_hal_reset(ah, sc->sc_opmode, ic->ic_curchan, AH_TRUE,
-	    HAL_RESET_NORMAL, &status))
+	    ah_reset_type, &status))
 		device_printf(sc->sc_dev,
 		    "%s: unable to reset hardware; hal status %u\n",
 		    __func__, status);
@@ -3097,7 +3146,7 @@ ath_reset_vap(struct ieee80211vap *vap, u_long cmd)
 		return 0;
 	}
 	/* XXX? Full or NOLOSS? */
-	return ath_reset(sc, ATH_RESET_FULL);
+	return ath_reset(sc, ATH_RESET_FULL, HAL_RESET_NORMAL);
 }
 
 struct ath_buf *
@@ -3538,16 +3587,8 @@ finish:
 	ATH_UNLOCK(sc);
 
 	ATH_KTR(sc, ATH_KTR_TX, 0, "ath_transmit: finished");
-	
-	return (retval);
-}
 
-static int
-ath_media_change(struct ifnet *ifp)
-{
-	int error = ieee80211_media_change(ifp);
-	/* NB: only the fixed rate can change and that doesn't need a reset */
-	return (error == ENETRESET ? 0 : error);
+	return (retval);
 }
 
 /*
@@ -3777,7 +3818,7 @@ ath_reset_proc(void *arg, int pending)
 #if 0
 	device_printf(sc->sc_dev, "%s: resetting\n", __func__);
 #endif
-	ath_reset(sc, ATH_RESET_NOLOSS);
+	ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_FORCE_COLD);
 }
 
 /*
@@ -3804,7 +3845,7 @@ ath_bstuck_proc(void *arg, int pending)
 	 * This assumes that there's no simultaneous channel mode change
 	 * occurring.
 	 */
-	ath_reset(sc, ATH_RESET_NOLOSS);
+	ath_reset(sc, ATH_RESET_NOLOSS, HAL_RESET_FORCE_COLD);
 }
 
 static int
@@ -4183,6 +4224,11 @@ ath_tx_update_stats(struct ath_softc *sc, struct ath_tx_status *ts,
 
 	if (ts->ts_status == 0) {
 		u_int8_t txant = ts->ts_antenna;
+		/*
+		 * Handle weird/corrupted tx antenna field
+		 */
+		if (txant >= ATH_IOCTL_STATS_NUM_TX_ANTENNA)
+			txant = 0;
 		sc->sc_stats.ast_ant_tx[txant]++;
 		sc->sc_ant_tx[txant]++;
 		if (ts->ts_finaltsi != 0)
@@ -4301,7 +4347,7 @@ ath_tx_default_comp(struct ath_softc *sc, struct ath_buf *bf, int fail)
 void
 ath_tx_update_ratectrl(struct ath_softc *sc, struct ieee80211_node *ni,
     struct ath_rc_series *rc, struct ath_tx_status *ts, int frmlen,
-    int nframes, int nbad)
+    int rc_framelen, int nframes, int nbad)
 {
 	struct ath_node *an;
 
@@ -4312,9 +4358,16 @@ ath_tx_update_ratectrl(struct ath_softc *sc, struct ieee80211_node *ni,
 	an = ATH_NODE(ni);
 	ATH_NODE_UNLOCK_ASSERT(an);
 
+	/*
+	 * XXX TODO: teach the rate control about TXERR_FILT and
+	 * see about handling it (eg see how many attempts were
+	 * made before it got filtered and account for that.)
+	 */
+
 	if ((ts->ts_status & HAL_TXERR_FILT) == 0) {
 		ATH_NODE_LOCK(an);
-		ath_rate_tx_complete(sc, an, rc, ts, frmlen, nframes, nbad);
+		ath_rate_tx_complete(sc, an, rc, ts, frmlen, rc_framelen,
+		    nframes, nbad);
 		ATH_NODE_UNLOCK(an);
 	}
 }
@@ -4355,18 +4408,21 @@ ath_tx_process_buf_completion(struct ath_softc *sc, struct ath_txq *txq,
 			/*
 			 * XXX assume this isn't an aggregate
 			 * frame.
+			 *
+			 * XXX TODO: also do this for filtered frames?
+			 * Once rate control knows about them?
 			 */
 			ath_tx_update_ratectrl(sc, ni,
 			     bf->bf_state.bfs_rc, ts,
-			    bf->bf_state.bfs_pktlen, 1,
+			    bf->bf_state.bfs_pktlen,
+			    bf->bf_state.bfs_pktlen,
+			    1,
 			    (ts->ts_status == 0 ? 0 : 1));
 		}
 		ath_tx_default_comp(sc, bf, 0);
 	} else
 		bf->bf_comp(sc, bf, 0);
 }
-
-
 
 /*
  * Process completed xmit descriptors from the specified queue.
@@ -5447,6 +5503,10 @@ ath_calibrate(void *arg)
 		 * infinite NIC restart.  Ideally we'd not restart if we
 		 * failed the first NF cal - that /can/ fail sometimes in
 		 * a noisy environment.
+		 *
+		 * Instead, we should likely temporarily shorten the longCal
+		 * period to happen pretty quickly and if a subsequent one
+		 * fails, do a full reset.
 		 */
 		if (shortCal)
 			sc->sc_lastshortcal = ticks;
@@ -6010,18 +6070,24 @@ ath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * In that case, we may not receive an actual
 			 * beacon to update the beacon timer and thus we
 			 * won't get notified of the missing beacons.
+			 *
+			 * Also, don't do any of this if we're not running
+			 * with hardware beacon support, as that'll interfere
+			 * with an AP VAP.
 			 */
 			if (ostate != IEEE80211_S_RUN &&
 			    ostate != IEEE80211_S_SLEEP) {
-				DPRINTF(sc, ATH_DEBUG_BEACON,
-				    "%s: STA; syncbeacon=1\n", __func__);
-				sc->sc_syncbeacon = 1;
+
+				if ((vap->iv_flags_ext & IEEE80211_FEXT_SWBMISS) == 0) {
+					DPRINTF(sc, ATH_DEBUG_BEACON,
+					    "%s: STA; syncbeacon=1\n", __func__);
+					sc->sc_syncbeacon = 1;
+					if (csa_run_transition)
+						ath_beacon_config(sc, vap);
+				}
 
 				/* Quiet time handling - ensure we resync */
 				memset(&avp->quiet_ie, 0, sizeof(avp->quiet_ie));
-
-				if (csa_run_transition)
-					ath_beacon_config(sc, vap);
 
 			/*
 			 * PR: kern/175227
@@ -6035,7 +6101,9 @@ ath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 			 * timer fires (too often), leading to a STA
 			 * disassociation.
 			 */
-				sc->sc_beacons = 1;
+				if ((vap->iv_flags_ext & IEEE80211_FEXT_SWBMISS) == 0) {
+					sc->sc_beacons = 1;
+				}
 			}
 			break;
 		case IEEE80211_M_MONITOR:
@@ -6085,7 +6153,6 @@ ath_newstate(struct ieee80211vap *vap, enum ieee80211_state nstate, int arg)
 
 		taskqueue_unblock(sc->sc_tq);
 	} else if (nstate == IEEE80211_S_INIT) {
-
 		/* Quiet time handling - ensure we resync */
 		memset(&avp->quiet_ie, 0, sizeof(avp->quiet_ie));
 

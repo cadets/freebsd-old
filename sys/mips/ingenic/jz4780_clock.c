@@ -55,7 +55,7 @@ __FBSDID("$FreeBSD$");
 
 #include "clkdev_if.h"
 
-#include <gnu/dts/include/dt-bindings/clock/jz4780-cgu.h>
+#include <dt-bindings/clock/jz4780-cgu.h>
 
 /**********************************************************************
  *  JZ4780 CGU clock domain
@@ -451,7 +451,6 @@ jz4780_clock_register(struct jz4780_clock_softc *sc)
 		ret = clknode_gate_register(sc->clkdom, &gatedef);
 		if (ret != 0)
 			return (ret);
-
 	}
 
 	return (0);

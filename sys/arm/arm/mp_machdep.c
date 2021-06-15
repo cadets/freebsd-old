@@ -53,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #include <machine/debug_monitor.h>
 #include <machine/smp.h>
 #include <machine/pcb.h>
-#include <machine/physmem.h>
 #include <machine/intr.h>
 #include <machine/vmparam.h>
 #ifdef VFP
@@ -139,7 +138,6 @@ cpu_mp_announce(void)
 
 }
 
-extern vm_paddr_t pmap_pa;
 void
 init_secondary(int cpu)
 {
@@ -164,8 +162,9 @@ init_secondary(int cpu)
 		;
 
 	pcpu_init(pc, cpu, sizeof(struct pcpu));
+	pc->pc_mpidr = cp15_mpidr_get() & 0xFFFFFF;
 	dpcpu_init(dpcpu[cpu - 1], cpu);
-#if __ARM_ARCH >= 6 && defined(DDB)
+#if defined(DDB)
 	dbg_monitor_init_secondary();
 #endif
 	/* Signal our startup to BSP */
@@ -203,8 +202,6 @@ init_secondary(int cpu)
 	}
 
 	mtx_unlock_spin(&ap_boot_mtx);
-
-	enable_interrupts(PSR_I);
 
 	loop_counter = 0;
 	while (smp_started == 0) {

@@ -42,6 +42,7 @@ __FBSDID("$FreeBSD$");
 #if defined(__i386__) || defined(__amd64__)
 #include <machine/cpufunc.h>
 #include <machine/specialreg.h>
+#include <machine/vmparam.h>
 
 /*
  * The code is excerpted from sys/x86/x86/identcpu.c: identify_cpu(),
@@ -89,8 +90,6 @@ running_on_hyperv(void)
 	return (1);
 }
 
-#define KERNEL_PHYSICAL_BASE (2*1024*1024)
-
 static void
 efi_verify_staging_size(unsigned long *nr_pages)
 {
@@ -134,12 +133,11 @@ efi_verify_staging_size(unsigned long *nr_pages)
 		start = p->PhysicalStart;
 		end = start + p->NumberOfPages * EFI_PAGE_SIZE;
 
-		if (KERNEL_PHYSICAL_BASE < start ||
-		    KERNEL_PHYSICAL_BASE >= end)
+		if (KERNLOAD < start || KERNLOAD >= end)
 			continue;
 
 		available_pages = p->NumberOfPages -
-			((KERNEL_PHYSICAL_BASE - start) >> EFI_PAGE_SHIFT);
+			((KERNLOAD - start) >> EFI_PAGE_SHIFT);
 		break;
 	}
 
@@ -176,9 +174,7 @@ out:
 #endif /* __i386__ || __amd64__ */
 
 #ifndef EFI_STAGING_SIZE
-#if defined(__amd64__)
-#define	EFI_STAGING_SIZE	100
-#elif defined(__arm__)
+#if defined(__arm__)
 #define	EFI_STAGING_SIZE	32
 #else
 #define	EFI_STAGING_SIZE	64
@@ -227,7 +223,7 @@ efi_copy_init(void)
 	staging_base = staging;
 	staging_end = staging + nr_pages * EFI_PAGE_SIZE;
 
-#if defined(__aarch64__) || defined(__arm__)
+#if defined(__aarch64__) || defined(__arm__) || defined(__riscv)
 	/*
 	 * Round the kernel load address to a 2MiB value. This is needed
 	 * because the kernel builds a page table based on where it has
@@ -277,7 +273,7 @@ before_staging:
 		return (false);
 	}
 	addr = staging - nr_pages * EFI_PAGE_SIZE;
-#if defined(__aarch64__) || defined(__arm__)
+#if defined(__aarch64__) || defined(__arm__) || defined(__riscv)
 	/* See efi_copy_init for why this is needed */
 	addr = rounddown2(addr, 2 * 1024 * 1024);
 #endif
@@ -290,8 +286,8 @@ before_staging:
 		 * translation still works.
 		 */
 		staging_base = addr;
-		memmove((void *)staging_base, (void *)staging,
-		    staging_end - staging);
+		memmove((void *)(uintptr_t)staging_base,
+		    (void *)(uintptr_t)staging, staging_end - staging);
 		stage_offset -= (staging - staging_base);
 		staging = staging_base;
 		return (true);
@@ -341,14 +337,19 @@ efi_copyout(const vm_offset_t src, void *dest, const size_t len)
 
 
 ssize_t
-efi_readin(const int fd, vm_offset_t dest, const size_t len)
+efi_readin(readin_handle_t fd, vm_offset_t dest, const size_t len)
 {
+
+	if (!stage_offset_set) {
+		stage_offset = (vm_offset_t)staging - dest;
+		stage_offset_set = 1;
+	}
 
 	if (!efi_check_space(dest + stage_offset + len)) {
 		errno = ENOMEM;
 		return (-1);
 	}
-	return (read(fd, (void *)(dest + stage_offset), len));
+	return (VECTX_READ(fd, (void *)(dest + stage_offset), len));
 }
 
 void

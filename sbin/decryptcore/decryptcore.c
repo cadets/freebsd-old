@@ -31,7 +31,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/capsicum.h>
 #include <sys/endian.h>
 #include <sys/kerneldump.h>
-#include <sys/sysctl.h>
 #include <sys/wait.h>
 
 #include <ctype.h>
@@ -170,6 +169,20 @@ decrypt(int ofd, const char *privkeyfile, const char *keyfile,
 		goto failed;
 	}
 
+	/*
+	 * Obsolescent OpenSSL only knows about /dev/random, and needs to
+	 * pre-seed before entering cap mode.  For whatever reason,
+	 * RSA_pub_encrypt uses the internal PRNG.
+	 */
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	{
+		unsigned char c[1];
+		RAND_bytes(c, 1);
+	}
+#endif
+	ERR_load_crypto_strings();
+
+	caph_cache_catpages();
 	if (caph_enter() < 0) {
 		pjdlog_errno(LOG_ERR, "Unable to enter capability mode");
 		goto failed;
@@ -217,6 +230,10 @@ decrypt(int ofd, const char *privkeyfile, const char *keyfile,
 	}
 
 	if (RSA_private_decrypt(kdk->kdk_encryptedkeysize,
+	    kdk->kdk_encryptedkey, key, privkey,
+	    RSA_PKCS1_OAEP_PADDING) != sizeof(key) &&
+	    /* Fallback to deprecated, formerly-used PKCS 1.5 padding. */
+	    RSA_private_decrypt(kdk->kdk_encryptedkeysize,
 	    kdk->kdk_encryptedkey, key, privkey,
 	    RSA_PKCS1_PADDING) != sizeof(key)) {
 		pjdlog_error("Unable to decrypt key: %s",

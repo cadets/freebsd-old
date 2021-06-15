@@ -38,6 +38,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/module.h>
 #include <sys/queue.h>
 #include <sys/stdint.h>
+#include <sys/font.h>
+#include <gfx_fb.h>
 
 #if defined(LOADER_FDT_SUPPORT)
 #include <fdt_platform.h>
@@ -90,7 +92,6 @@ static char *kld_ext_list[] = {
     ".debug",
     NULL
 };
-
 
 /*
  * load an object, either a disk file or code module.
@@ -270,6 +271,8 @@ unload(void)
 	}
 	loadaddr = 0;
 	unsetenv("kernelname");
+	/* Reset tg_kernel_supported to allow next load to check it again. */
+	gfx_state.tg_kernel_supported = false;
 }
 
 COMMAND_SET(unload, "unload", "unload all modules", command_unload);
@@ -616,6 +619,100 @@ file_load_dependencies(struct preloaded_file *base_file)
 	return (error);
 }
 
+vm_offset_t
+build_font_module(vm_offset_t addr)
+{
+	vt_font_bitmap_data_t *bd;
+	struct vt_font *fd;
+	struct preloaded_file *fp;
+	size_t size;
+	uint32_t checksum;
+	int i;
+	struct font_info fi;
+	struct fontlist *fl;
+	uint64_t fontp;
+
+	if (STAILQ_EMPTY(&fonts))
+		return (addr);
+
+	/* We can't load first */
+	if ((file_findfile(NULL, NULL)) == NULL) {
+		printf("Can not load font module: %s\n",
+		    "the kernel is not loaded");
+		return (addr);
+	}
+
+	/* helper pointers */
+	bd = NULL;
+	STAILQ_FOREACH(fl, &fonts, font_next) {
+		if (gfx_state.tg_font.vf_width == fl->font_data->vfbd_width &&
+		    gfx_state.tg_font.vf_height == fl->font_data->vfbd_height) {
+			/*
+			 * Kernel does have better built in font.
+			 */
+			if (fl->font_flags == FONT_BUILTIN)
+				return (addr);
+
+			bd = fl->font_data;
+			break;
+		}
+	}
+	if (bd == NULL)
+		return (addr);
+	fd = bd->vfbd_font;
+
+	fi.fi_width = fd->vf_width;
+	checksum = fi.fi_width;
+	fi.fi_height = fd->vf_height;
+	checksum += fi.fi_height;
+	fi.fi_bitmap_size = bd->vfbd_uncompressed_size;
+	checksum += fi.fi_bitmap_size;
+
+	size = roundup2(sizeof (struct font_info), 8);
+	for (i = 0; i < VFNT_MAPS; i++) {
+		fi.fi_map_count[i] = fd->vf_map_count[i];
+		checksum += fi.fi_map_count[i];
+		size += fd->vf_map_count[i] * sizeof (struct vfnt_map);
+		size += roundup2(size, 8);
+	}
+	size += bd->vfbd_uncompressed_size;
+
+	fi.fi_checksum = -checksum;
+
+	fp = file_findfile(NULL, "elf kernel");
+	if (fp == NULL)
+		fp = file_findfile(NULL, "elf64 kernel");
+	if (fp == NULL)
+		panic("can't find kernel file");
+
+	fontp = addr;
+	addr += archsw.arch_copyin(&fi, addr, sizeof (struct font_info));
+	addr = roundup2(addr, 8);
+
+	/* Copy maps. */
+	for (i = 0; i < VFNT_MAPS; i++) {
+		if (fd->vf_map_count[i] != 0) {
+			addr += archsw.arch_copyin(fd->vf_map[i], addr,
+			    fd->vf_map_count[i] * sizeof (struct vfnt_map));
+			addr = roundup2(addr, 8);
+		}
+	}
+
+	/* Copy the bitmap. */
+	addr += archsw.arch_copyin(fd->vf_bytes, addr, fi.fi_bitmap_size);
+
+	/* Looks OK so far; populate control structure */
+	file_addmetadata(fp, MODINFOMD_FONT, sizeof(fontp), &fontp);
+	return (addr);
+}
+
+#ifdef LOADER_VERIEXEC_VECTX
+#define VECTX_HANDLE(fd) vctx
+#else
+#define VECTX_HANDLE(fd) fd
+#endif
+
+
 /*
  * We've been asked to load (fname) as (type), so just suck it in,
  * no arguments or anything.
@@ -627,6 +724,10 @@ file_loadraw(const char *fname, char *type, int insert)
 	char			*name;
 	int				fd, got;
 	vm_offset_t			laddr;
+#ifdef LOADER_VERIEXEC_VECTX
+	struct vectx		*vctx;
+	int			verror;
+#endif
 
 	/* We can't load first */
 	if ((file_findfile(NULL, NULL)) == NULL) {
@@ -649,13 +750,26 @@ file_loadraw(const char *fname, char *type, int insert)
 		return(NULL);
 	}
 
+#ifdef LOADER_VERIEXEC_VECTX
+	vctx = vectx_open(fd, name, 0L, NULL, &verror, __func__);
+	if (verror) {
+		sprintf(command_errbuf, "can't verify '%s': %s",
+		    name, ve_error_get());
+		free(name);
+		free(vctx);
+		close(fd);
+		return(NULL);
+	}
+#else
 #ifdef LOADER_VERIEXEC
-	if (verify_file(fd, name, 0, VE_MUST) < 0) {
-		sprintf(command_errbuf, "can't verify '%s'", name);
+	if (verify_file(fd, name, 0, VE_MUST, __func__) < 0) {
+		sprintf(command_errbuf, "can't verify '%s': %s",
+		    name, ve_error_get());
 		free(name);
 		close(fd);
 		return(NULL);
 	}
+#endif
 #endif
 
 	if (archsw.arch_loadaddr != NULL)
@@ -666,7 +780,7 @@ file_loadraw(const char *fname, char *type, int insert)
 	laddr = loadaddr;
 	for (;;) {
 		/* read in 4k chunks; size is not really important */
-		got = archsw.arch_readin(fd, laddr, 4096);
+		got = archsw.arch_readin(VECTX_HANDLE(fd), laddr, 4096);
 		if (got == 0)				/* end of file */
 			break;
 		if (got < 0) {				/* error */
@@ -674,12 +788,24 @@ file_loadraw(const char *fname, char *type, int insert)
 			  "error reading '%s': %s", name, strerror(errno));
 			free(name);
 			close(fd);
+#ifdef LOADER_VERIEXEC_VECTX
+			free(vctx);
+#endif
 			return(NULL);
 		}
 		laddr += got;
 	}
 
 	printf("size=%#jx\n", (uintmax_t)(laddr - loadaddr));
+#ifdef LOADER_VERIEXEC_VECTX
+	verror = vectx_close(vctx, VE_MUST, __func__);
+	if (verror) {
+		free(name);
+		close(fd);
+		free(vctx);
+		return(NULL);
+	}
+#endif
 
 	/* Looks OK so far; create & populate control structure */
 	fp = file_alloc();

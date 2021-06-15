@@ -118,17 +118,20 @@ SYSBEGIN(f4)
 SYSCTL_DECL(_net_inet);
 SYSCTL_DECL(_net_inet_ip);
 SYSCTL_DECL(_net_inet_ip_dummynet);
-static SYSCTL_NODE(_net_inet_ip_dummynet, OID_AUTO, 
-	codel, CTLFLAG_RW, 0, "CODEL");
+static SYSCTL_NODE(_net_inet_ip_dummynet, OID_AUTO, codel,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "CODEL");
 
 #ifdef SYSCTL_NODE
 SYSCTL_PROC(_net_inet_ip_dummynet_codel, OID_AUTO, target,
-	CTLTYPE_LONG | CTLFLAG_RW, NULL, 0,codel_sysctl_target_handler, "L",
-	"CoDel target in microsecond");
+    CTLTYPE_LONG | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    NULL, 0,codel_sysctl_target_handler, "L",
+    "CoDel target in microsecond");
 
 SYSCTL_PROC(_net_inet_ip_dummynet_codel, OID_AUTO, interval,
-	CTLTYPE_LONG | CTLFLAG_RW, NULL, 0, codel_sysctl_interval_handler, "L",
-	"CoDel interval in microsecond");
+    CTLTYPE_LONG | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+    NULL, 0, codel_sysctl_interval_handler, "L",
+    "CoDel interval in microsecond");
 #endif
 
 /* This function computes codel_interval/sqrt(count) 
@@ -199,7 +202,7 @@ codel_extract_head(struct dn_queue *q, aqm_time_t *pkt_ts)
 	update_stats(q, -m->m_pkthdr.len, 0);
 
 	if (q->ni.length == 0) /* queue is now idle */
-			q->q_time = dn_cfg.curr_time;
+			q->q_time = V_dn_cfg.curr_time;
 
 	/* extract packet TS*/
 	mtag = m_tag_locate(m, MTAG_ABI_COMPAT, DN_AQM_MTAG_TS, NULL);
@@ -253,10 +256,8 @@ aqm_codel_enqueue(struct dn_queue *q, struct mbuf *m)
 	if (mtag == NULL)
 		mtag = m_tag_alloc(MTAG_ABI_COMPAT, DN_AQM_MTAG_TS,
 			sizeof(aqm_time_t), M_NOWAIT);
-	if (mtag == NULL) {
-		m_freem(m); 
+	if (mtag == NULL)
 		goto drop;
-	}
 
 	*(aqm_time_t *)(mtag + 1) = AQM_UNOW;
 	m_tag_prepend(m, mtag);
@@ -270,7 +271,6 @@ drop:
 	FREE_PKT(m);
 	return (1);
 }
-
 
 /* Dequeue a pcaket from queue q */
 static struct mbuf * 
@@ -361,10 +361,10 @@ aqm_codel_config(struct dn_fsk* fs, struct dn_extra_parms *ep, int len)
 		D("cannot allocate AQM_codel configuration parameters");
 		return ENOMEM; 
 	}
-	
+
 	/* configure codel parameters */
 	ccfg = fs->aqmcfg;
-	
+
 	if (ep->par[0] < 0)
 		ccfg->target = codel_sysctl.target;
 	else
@@ -439,6 +439,5 @@ static struct dn_aqm codel_desc = {
 };
 
 DECLARE_DNAQM_MODULE(dn_aqm_codel, &codel_desc);
-
 
 #endif

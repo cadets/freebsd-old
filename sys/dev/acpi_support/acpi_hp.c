@@ -298,7 +298,6 @@ static struct {
 		.method		= ACPI_HP_METHOD_VERBOSE,
 		.description	= "Verbosity level",
 	},
-
 	{ NULL, 0, NULL, 0 }
 };
 
@@ -593,13 +592,15 @@ acpi_hp_attach(device_t dev)
 		if (acpi_hp_sysctls[i].flag_rdonly != 0) {
 			SYSCTL_ADD_PROC(sc->sysctl_ctx,
 			    SYSCTL_CHILDREN(sc->sysctl_tree), OID_AUTO,
-			    acpi_hp_sysctls[i].name, CTLTYPE_INT | CTLFLAG_RD,
+			    acpi_hp_sysctls[i].name,
+			    CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
 			    sc, i, acpi_hp_sysctl, "I",
 			    acpi_hp_sysctls[i].description);
 		} else {
 			SYSCTL_ADD_PROC(sc->sysctl_ctx,
 			    SYSCTL_CHILDREN(sc->sysctl_tree), OID_AUTO,
-			    acpi_hp_sysctls[i].name, CTLTYPE_INT | CTLFLAG_RW,
+			    acpi_hp_sysctls[i].name,
+			    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
 			    sc, i, acpi_hp_sysctl, "I",
 			    acpi_hp_sysctls[i].description);
 		}
@@ -613,7 +614,7 @@ static int
 acpi_hp_detach(device_t dev)
 {
 	struct acpi_hp_softc *sc;
-	
+
 	ACPI_FUNCTION_TRACE((char *)(uintptr_t) __func__);
 	sc = device_get_softc(dev);
 	if (sc->has_cmi && sc->hpcmi_open_pid != 0)
@@ -645,7 +646,7 @@ acpi_hp_sysctl(SYSCTL_HANDLER_ARGS)
 	int			error = 0;
 	int			function;
 	int			method;
-	
+
 	ACPI_FUNCTION_TRACE((char *)(uintptr_t)__func__);
 
 	sc = (struct acpi_hp_softc *)oidp->oid_arg1;
@@ -896,7 +897,7 @@ acpi_hp_exec_wmi_command(device_t wmi_dev, int command, int is_write,
 	ACPI_BUFFER	in = { sizeof(params), &params };
 	ACPI_BUFFER	out = { ACPI_ALLOCATE_BUFFER, NULL };
 	int res;
-	
+
 	if (ACPI_FAILURE(ACPI_WMI_EVALUATE_CALL(wmi_dev, ACPI_HP_WMI_BIOS_GUID,
 		    0, 0x3, &in, &out))) {
 		acpi_hp_free_buffer(&out);
@@ -933,7 +934,6 @@ acpi_hp_get_string_from_object(ACPI_OBJECT* obj, char* dst, size_t size) {
 	return (dst);
 }
 
-
 /*
  * Read BIOS Setting block in instance "instance".
  * The block returned is ACPI_TYPE_PACKAGE which should contain the following
@@ -960,10 +960,9 @@ acpi_hp_get_cmi_block(device_t wmi_dev, const char* guid, UINT8 instance,
 	ACPI_BUFFER	out = { ACPI_ALLOCATE_BUFFER, NULL };
 	int		i;
 	int		outlen;
-	int		size = 255;
 	int		has_enums = 0;
 	int		valuebase = 0;
-	char		string_buffer[size];
+	char		string_buffer[255];
 	int		enumbase;
 
 	outlen = 0;
@@ -1017,18 +1016,21 @@ acpi_hp_get_cmi_block(device_t wmi_dev, const char* guid, UINT8 instance,
 
 	if (detail & ACPI_HP_CMI_DETAIL_PATHS) {
 		strlcat(outbuf, acpi_hp_get_string_from_object(
-		    &obj->Package.Elements[2], string_buffer, size), outsize);
+		    &obj->Package.Elements[2],
+		    string_buffer, sizeof(string_buffer)), outsize);
 		outlen += 48;
 		while (strlen(outbuf) < outlen)
 			strlcat(outbuf, " ", outsize);
 	}
 	strlcat(outbuf, acpi_hp_get_string_from_object(
-	    &obj->Package.Elements[0], string_buffer, size), outsize);
+	    &obj->Package.Elements[0],
+	    string_buffer, sizeof(string_buffer)), outsize);
 	outlen += 43;
 	while (strlen(outbuf) < outlen)
 		strlcat(outbuf, " ", outsize);
 	strlcat(outbuf, acpi_hp_get_string_from_object(
-	    &obj->Package.Elements[valuebase], string_buffer, size), outsize);
+	    &obj->Package.Elements[valuebase],
+	    string_buffer, sizeof(string_buffer)), outsize);
 	outlen += 21;
 	while (strlen(outbuf) < outlen)
 		strlcat(outbuf, " ", outsize);
@@ -1039,7 +1041,8 @@ acpi_hp_get_cmi_block(device_t wmi_dev, const char* guid, UINT8 instance,
 		for (i = enumbase + 1; i < enumbase + 1 +
 		    obj->Package.Elements[enumbase].Integer.Value; ++i) {
 			acpi_hp_get_string_from_object(
-			    &obj->Package.Elements[i], string_buffer, size);
+			    &obj->Package.Elements[i],
+			    string_buffer, sizeof(string_buffer));
 			if (strlen(string_buffer) > 1 ||
 			    (strlen(string_buffer) == 1 &&
 			    string_buffer[0] != ' ')) {
@@ -1067,8 +1070,6 @@ acpi_hp_get_cmi_block(device_t wmi_dev, const char* guid, UINT8 instance,
 
 	return (0);
 }
-
-
 
 /*
  * Convert given two digit hex string (hexin) to an UINT8 referenced
@@ -1103,7 +1104,6 @@ static __inline int acpi_hp_hex_to_int(const UINT8 *hexin, UINT8 *byteout)
 	return (0);
 }
 
-
 static void
 acpi_hp_hex_decode(char* buffer)
 {
@@ -1134,7 +1134,6 @@ acpi_hp_hex_decode(char* buffer)
 	}
 	buffer[(length+1)/3] = 0;
 }
-
 
 /*
  * open hpcmi device
@@ -1209,13 +1208,12 @@ acpi_hp_hpcmi_read(struct cdev *dev, struct uio *buf, int flag)
 	UINT8			instance;
 	UINT8			maxInstance;
 	UINT32			sequence;
-	int			linesize = 1025;
-	char			line[linesize];
+	char			line[1025];
 
 	if (dev == NULL || dev->si_drv1 == NULL)
 		return (EBADF);
 	sc = dev->si_drv1;
-	
+
 	ACPI_SERIAL_BEGIN(hp);
 	if (sc->hpcmi_open_pid != buf->uio_td->td_proc->p_pid
 	    || sc->hpcmi_bufptr == -1) {
@@ -1235,7 +1233,7 @@ acpi_hp_hpcmi_read(struct cdev *dev, struct uio *buf, int flag)
 				    ++instance) {
 					if (acpi_hp_get_cmi_block(sc->wmi_dev,
 						ACPI_HP_WMI_CMI_GUID, instance,
-						line, linesize, &sequence,
+						line, sizeof(line), &sequence,
 						sc->cmi_detail)) {
 						instance = maxInstance;
 					}
@@ -1268,7 +1266,7 @@ acpi_hp_hpcmi_read(struct cdev *dev, struct uio *buf, int flag)
 			for (i=0; i<sc->cmi_order_size; ++i) {
 				if (!acpi_hp_get_cmi_block(sc->wmi_dev,
 				    ACPI_HP_WMI_CMI_GUID,
-				    sc->cmi_order[i].instance, line, linesize,
+				    sc->cmi_order[i].instance, line, sizeof(line),
 				    &sequence, sc->cmi_detail)) {
 					sbuf_printf(&sc->hpcmi_sbuf, "%s\n", line);
 				}

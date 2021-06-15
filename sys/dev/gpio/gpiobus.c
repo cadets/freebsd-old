@@ -143,6 +143,15 @@ gpio_check_flags(uint32_t caps, uint32_t flags)
 	/* Cannot mix pull-up/pull-down together. */
 	if (flags & GPIO_PIN_PULLUP && flags & GPIO_PIN_PULLDOWN)
 		return (EINVAL);
+	/* Cannot mix output and interrupt flags together */
+	if (flags & GPIO_PIN_OUTPUT && flags & GPIO_INTR_MASK)
+		return (EINVAL);
+	/* Only one interrupt flag can be defined at once */
+	if ((flags & GPIO_INTR_MASK) & ((flags & GPIO_INTR_MASK) - 1))
+		return (EINVAL);
+	/* The interrupt attached flag cannot be set */
+	if (flags & GPIO_INTR_ATTACHED)
+		return (EINVAL);
 
 	return (0);
 }
@@ -421,13 +430,13 @@ gpiobus_release_pin(device_t bus, uint32_t pin)
 	/* Consistency check. */
 	if (pin >= sc->sc_npins) {
 		device_printf(bus,
-		    "gpiobus_acquire_pin: invalid pin %d, max=%d\n",
+		    "invalid pin %d, max=%d\n",
 		    pin, sc->sc_npins - 1);
 		return (-1);
 	}
 
 	if (!sc->sc_pins[pin].mapped) {
-		device_printf(bus, "gpiobus_acquire_pin: pin %d is not mapped\n", pin);
+		device_printf(bus, "pin %d is not mapped\n", pin);
 		return (-1);
 	}
 	sc->sc_pins[pin].mapped = 0;

@@ -195,18 +195,15 @@ sfxge_intr_bus_enable(struct sfxge_softc *sc)
 			    sc->evq[index], &table[index].eih_tag)) != 0) {
 			goto fail;
 		}
-#ifdef SFXGE_HAVE_DESCRIBE_INTR
 		if (intr->n_alloc > 1)
 			bus_describe_intr(sc->dev, table[index].eih_res,
 			    table[index].eih_tag, "%d", index);
-#endif
 #ifdef RSS
 		bus_bind_intr(sc->dev, table[index].eih_res,
 			      rss_getcpu(index));
 #else
 		bus_bind_intr(sc->dev, table[index].eih_res, index);
 #endif
-
 	}
 
 	return (0);

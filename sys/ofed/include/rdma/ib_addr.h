@@ -42,7 +42,6 @@
 #include <linux/in6.h>
 #include <linux/if_arp.h>
 #include <linux/netdevice.h>
-#include <linux/inetdevice.h>
 #include <linux/socket.h>
 #include <linux/if_vlan.h>
 #include <net/ipv6.h>
@@ -50,11 +49,25 @@
 #include <net/ip.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_pack.h>
-#include <net/ipv6.h>
+#include <rdma/ib_addr_freebsd.h>
+
+/* Linux netdevice.h but for working on an ifnet rather than a net_device. */
+#define	dev_hold(d)	if_ref(d)
+#define	dev_put(d)	if_rele(d)
+#define	dev_net(d)	((d)->if_vnet)
+#define	net_eq(a,b)	((a) == (b))
+
 
 struct rdma_addr_client {
 	atomic_t refcount;
 	struct completion comp;
+};
+
+union rdma_sockaddr {
+	struct sockaddr         _sockaddr;
+	struct sockaddr_in      _sockaddr_in;
+	struct sockaddr_in6     _sockaddr_in6;
+	struct sockaddr_storage _sockaddr_ss;
 };
 
 /**

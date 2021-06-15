@@ -194,7 +194,6 @@ static void	iwn_read_eeprom_enhinfo(struct iwn_softc *);
 static struct ieee80211_node *iwn_node_alloc(struct ieee80211vap *,
 		    const uint8_t mac[IEEE80211_ADDR_LEN]);
 static void	iwn_newassoc(struct ieee80211_node *, int);
-static int	iwn_media_change(struct ifnet *);
 static int	iwn_newstate(struct ieee80211vap *, enum ieee80211_state, int);
 static void	iwn_calib_timeout(void *);
 static void	iwn_rx_phy(struct iwn_softc *, struct iwn_rx_desc *);
@@ -1351,11 +1350,13 @@ iwn_vap_create(struct ieee80211com *ic, const char name[IFNAMSIZ], int unit,
 	ivp->iv_newstate = vap->iv_newstate;
 	vap->iv_newstate = iwn_newstate;
 	sc->ivap[IWN_RXON_BSS_CTX] = vap;
+	vap->iv_ampdu_rxmax = IEEE80211_HTCAP_MAXRXAMPDU_64K;
+	vap->iv_ampdu_density = IEEE80211_HTCAP_MPDUDENSITY_4; /* 4uS */
 
 	ieee80211_ratectl_init(vap);
 	/* Complete setup. */
-	ieee80211_vap_attach(vap, iwn_media_change, ieee80211_media_status,
-	    mac);
+	ieee80211_vap_attach(vap, ieee80211_media_change,
+	    ieee80211_media_status, mac);
 	ic->ic_opmode = opmode;
 	return vap;
 }
@@ -1687,13 +1688,13 @@ iwn_read_prom_data(struct iwn_softc *sc, uint32_t addr, void *data, int count)
 	addr += sc->prom_base;
 	for (; count > 0; count -= 2, addr++) {
 		IWN_WRITE(sc, IWN_EEPROM, addr << 2);
-		for (ntries = 0; ntries < 10; ntries++) {
+		for (ntries = 0; ntries < 20; ntries++) {
 			val = IWN_READ(sc, IWN_EEPROM);
 			if (val & IWN_EEPROM_READ_VALID)
 				break;
 			DELAY(5);
 		}
-		if (ntries == 10) {
+		if (ntries == 20) {
 			device_printf(sc->sc_dev,
 			    "timeout reading ROM at 0x%x\n", addr);
 			return ETIMEDOUT;
@@ -2879,16 +2880,6 @@ static void
 iwn_newassoc(struct ieee80211_node *ni, int isnew)
 {
 	/* Doesn't do anything at the moment */
-}
-
-static int
-iwn_media_change(struct ifnet *ifp)
-{
-	int error;
-
-	error = ieee80211_media_change(ifp);
-	/* NB: only the fixed rate can change and that doesn't need a reset */
-	return (error == ENETRESET ? 0 : error);
 }
 
 static int
@@ -4459,7 +4450,7 @@ iwn_check_rate_needs_protection(struct iwn_softc *sc,
 	/*
 	 * 11bg protection not enabled? Then don't use it.
 	 */
-	if ((ic->ic_flags & IEEE80211_F_USEPROT) == 0)
+	if ((vap->iv_flags & IEEE80211_F_USEPROT) == 0)
 		return (0);
 
 	/*
@@ -4945,7 +4936,7 @@ iwn_tx_cmd(struct iwn_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 	data->ni = ni;
 
 	DPRINTF(sc, IWN_DEBUG_XMIT, "%s: qid %d idx %d len %d nsegs %d "
-	    "plcp %d\n",
+	    "plcp 0x%x\n",
 	    __func__, ring->qid, ring->cur, totlen, nsegs, tx->rate);
 
 	/* Fill TX descriptor. */
@@ -6663,18 +6654,18 @@ iwn5000_runtime_calib(struct iwn_softc *sc)
 }
 
 static uint32_t
-iwn_get_rxon_ht_flags(struct iwn_softc *sc, struct ieee80211_channel *c)
+iwn_get_rxon_ht_flags(struct iwn_softc *sc, struct ieee80211vap *vap,
+    struct ieee80211_channel *c)
 {
-	struct ieee80211com *ic = &sc->sc_ic;
 	uint32_t htflags = 0;
 
 	if (! IEEE80211_IS_CHAN_HT(c))
 		return (0);
 
-	htflags |= IWN_RXON_HT_PROTMODE(ic->ic_curhtprotmode);
+	htflags |= IWN_RXON_HT_PROTMODE(vap->iv_curhtprotmode);
 
 	if (IEEE80211_IS_CHAN_HT40(c)) {
-		switch (ic->ic_curhtprotmode) {
+		switch (vap->iv_curhtprotmode) {
 		case IEEE80211_HTINFO_OPMODE_HT20PR:
 			htflags |= IWN_RXON_HT_MODEPURE40;
 			break;
@@ -6921,7 +6912,7 @@ iwn_config(struct iwn_softc *sc)
 	    sc->rxchainmask,
 	    sc->nrxchains);
 
-	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, ic->ic_curchan));
+	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, vap, ic->ic_curchan));
 
 	DPRINTF(sc, IWN_DEBUG_RESET,
 	    "%s: setting configuration; flags=0x%08x\n",
@@ -7294,9 +7285,17 @@ iwn_auth(struct iwn_softc *sc, struct ieee80211vap *vap)
 	sc->rxon->flags = htole32(IWN_RXON_TSF | IWN_RXON_CTS_TO_SELF);
 	if (IEEE80211_IS_CHAN_2GHZ(ni->ni_chan))
 		sc->rxon->flags |= htole32(IWN_RXON_AUTO | IWN_RXON_24GHZ);
-	if (ic->ic_flags & IEEE80211_F_SHSLOT)
+
+	/*
+	 * We always set short slot on 5GHz channels.
+	 * We optionally set it for 2.4GHz channels.
+	 */
+	if (IEEE80211_IS_CHAN_5GHZ(ni->ni_chan))
 		sc->rxon->flags |= htole32(IWN_RXON_SHSLOT);
-	if (ic->ic_flags & IEEE80211_F_SHPREAMBLE)
+	else if (vap->iv_flags & IEEE80211_F_SHSLOT)
+		sc->rxon->flags |= htole32(IWN_RXON_SHSLOT);
+
+	if (vap->iv_flags & IEEE80211_F_SHPREAMBLE)
 		sc->rxon->flags |= htole32(IWN_RXON_SHPREAMBLE);
 	if (IEEE80211_IS_CHAN_A(ni->ni_chan)) {
 		sc->rxon->cck_mask  = 0;
@@ -7311,7 +7310,7 @@ iwn_auth(struct iwn_softc *sc, struct ieee80211vap *vap)
 	}
 
 	/* try HT */
-	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, ic->ic_curchan));
+	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, vap, ic->ic_curchan));
 
 	DPRINTF(sc, IWN_DEBUG_STATE, "rxon chan %d flags %x cck %x ofdm %x\n",
 	    sc->rxon->chan, sc->rxon->flags, sc->rxon->cck_mask,
@@ -7358,9 +7357,14 @@ iwn_run(struct iwn_softc *sc, struct ieee80211vap *vap)
 	sc->rxon->flags = htole32(IWN_RXON_TSF | IWN_RXON_CTS_TO_SELF);
 	if (IEEE80211_IS_CHAN_2GHZ(ni->ni_chan))
 		sc->rxon->flags |= htole32(IWN_RXON_AUTO | IWN_RXON_24GHZ);
-	if (ic->ic_flags & IEEE80211_F_SHSLOT)
+
+	/* As previously - short slot only on 5GHz */
+	if (IEEE80211_IS_CHAN_5GHZ(ni->ni_chan))
 		sc->rxon->flags |= htole32(IWN_RXON_SHSLOT);
-	if (ic->ic_flags & IEEE80211_F_SHPREAMBLE)
+	else if (vap->iv_flags & IEEE80211_F_SHSLOT)
+		sc->rxon->flags |= htole32(IWN_RXON_SHSLOT);
+
+	if (vap->iv_flags & IEEE80211_F_SHPREAMBLE)
 		sc->rxon->flags |= htole32(IWN_RXON_SHPREAMBLE);
 	if (IEEE80211_IS_CHAN_A(ni->ni_chan)) {
 		sc->rxon->cck_mask  = 0;
@@ -7374,10 +7378,10 @@ iwn_run(struct iwn_softc *sc, struct ieee80211vap *vap)
 		sc->rxon->ofdm_mask = 0x15;
 	}
 	/* try HT */
-	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, ni->ni_chan));
+	sc->rxon->flags |= htole32(iwn_get_rxon_ht_flags(sc, vap, ni->ni_chan));
 	sc->rxon->filter |= htole32(IWN_FILTER_BSS);
 	DPRINTF(sc, IWN_DEBUG_STATE, "rxon chan %d flags %x, curhtprotmode=%d\n",
-	    sc->rxon->chan, le32toh(sc->rxon->flags), ic->ic_curhtprotmode);
+	    sc->rxon->chan, le32toh(sc->rxon->flags), vap->iv_curhtprotmode);
 
 	if ((error = iwn_send_rxon(sc, 0, 1)) != 0) {
 		device_printf(sc->sc_dev, "%s: could not send RXON\n",
@@ -7451,7 +7455,6 @@ static int
 iwn_ampdu_rx_start(struct ieee80211_node *ni, struct ieee80211_rx_ampdu *rap,
     int baparamset, int batimeout, int baseqctl)
 {
-#define MS(_v, _f)	(((_v) & _f) >> _f##_S)
 	struct iwn_softc *sc = ni->ni_ic->ic_softc;
 	struct iwn_ops *ops = &sc->ops;
 	struct iwn_node *wn = (void *)ni;
@@ -7462,8 +7465,8 @@ iwn_ampdu_rx_start(struct ieee80211_node *ni, struct ieee80211_rx_ampdu *rap,
 
 	DPRINTF(sc, IWN_DEBUG_TRACE, "->Doing %s\n", __func__);
 
-	tid = MS(le16toh(baparamset), IEEE80211_BAPS_TID);
-	ssn = MS(le16toh(baseqctl), IEEE80211_BASEQ_START);
+	tid = _IEEE80211_MASKSHIFT(le16toh(baparamset), IEEE80211_BAPS_TID);
+	ssn = _IEEE80211_MASKSHIFT(le16toh(baseqctl), IEEE80211_BASEQ_START);
 
 	if (wn->id == IWN_ID_UNDEFINED)
 		return (ENOENT);
@@ -7480,7 +7483,6 @@ iwn_ampdu_rx_start(struct ieee80211_node *ni, struct ieee80211_rx_ampdu *rap,
 	if (error != 0)
 		return error;
 	return sc->sc_ampdu_rx_start(ni, rap, baparamset, batimeout, baseqctl);
-#undef MS
 }
 
 /*

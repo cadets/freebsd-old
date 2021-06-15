@@ -185,9 +185,8 @@ _filemon_wrapper_openat(struct thread *td, const char *upath, int flags,
 			 * than nothing.
 			 */
 			if (getvnode(td, fd,
-			    cap_rights_init(&rights, CAP_LOOKUP), &fp) == 0) {
-				vn_fullpath(td, fp->f_vnode, &atpath,
-				    &freepath);
+			    cap_rights_init_one(&rights, CAP_LOOKUP), &fp) == 0) {
+				vn_fullpath(fp->f_vnode, &atpath, &freepath);
 			}
 		}
 		if (flags & O_RDWR) {

@@ -191,16 +191,14 @@ static void
 gpioiic_setsda(device_t dev, int val)
 {
 	struct gpioiic_softc *sc = device_get_softc(dev);
-	int err;
 
-	/*
-	 * Some controllers cannot set an output value while a pin is in input
-	 * mode; in that case we set the pin again after changing mode.
-	 */
-	err = gpio_pin_set_active(sc->sdapin, val);
-	gpio_pin_setflags(sc->sdapin, GPIO_PIN_OUTPUT | GPIO_PIN_OPENDRAIN);
-	if (err != 0)
-		gpio_pin_set_active(sc->sdapin, val);
+	if (val) {
+		gpio_pin_setflags(sc->sdapin, GPIO_PIN_INPUT);
+	} else {
+		gpio_pin_setflags(sc->sdapin,
+		    GPIO_PIN_OUTPUT | GPIO_PIN_OPENDRAIN);
+		gpio_pin_set_active(sc->sdapin, 0);
+	}
 }
 
 static void
@@ -208,8 +206,13 @@ gpioiic_setscl(device_t dev, int val)
 {
 	struct gpioiic_softc *sc = device_get_softc(dev);
 
-	gpio_pin_setflags(sc->sclpin, GPIO_PIN_OUTPUT | GPIO_PIN_OPENDRAIN);
-	gpio_pin_set_active(sc->sclpin, val);
+	if (val) {
+		gpio_pin_setflags(sc->sclpin, GPIO_PIN_INPUT);
+	} else {
+		gpio_pin_setflags(sc->sclpin,
+		    GPIO_PIN_OUTPUT | GPIO_PIN_OPENDRAIN);
+		gpio_pin_set_active(sc->sclpin, 0);
+	}
 }
 
 static int
@@ -303,10 +306,20 @@ gpioiic_attach(device_t dev)
 		return (ENXIO);
 	}
 
-	/* Say what we came up with for pin config. */
+	/*
+	 * Say what we came up with for pin config.
+	 * NB: in the !FDT case the controller driver might not be set up enough
+	 * for GPIO_GET_BUS() to work.  Also, our parent is the only gpiobus
+	 * that can provide our pins.
+	 */
 	device_printf(dev, "SCL pin: %s:%d, SDA pin: %s:%d\n",
+#ifdef FDT
 	    device_get_nameunit(GPIO_GET_BUS(sc->sclpin->dev)), sc->sclpin->pin,
 	    device_get_nameunit(GPIO_GET_BUS(sc->sdapin->dev)), sc->sdapin->pin);
+#else
+	    device_get_nameunit(device_get_parent(dev)), sc->sclpin->pin,
+	    device_get_nameunit(device_get_parent(dev)), sc->sdapin->pin);
+#endif
 
 	/* Add the bitbang driver as our only child; it will add iicbus. */
 	device_add_child(sc->dev, "iicbb", -1);

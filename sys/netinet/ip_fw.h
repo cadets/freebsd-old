@@ -34,7 +34,7 @@
  * The default rule number.  By the design of ip_fw, the default rule
  * is the last one, so its number can also serve as the highest number
  * allowed for a rule.  The ip_fw code relies on both meanings of this
- * constant. 
+ * constant.
  */
 #define	IPFW_DEFAULT_RULE	65535
 
@@ -239,7 +239,7 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 	O_FORWARD_MAC,		/* fwd mac			*/
 	O_NAT,                  /* nope                         */
 	O_REASS,                /* none                         */
-	
+
 	/*
 	 * More opcodes.
 	 */
@@ -277,7 +277,7 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
 
 	O_SETFIB,		/* arg1=FIB number */
 	O_FIB,			/* arg1=FIB desired fib number */
-	
+
 	O_SOCKARG,		/* socket argument */
 
 	O_CALLRETURN,		/* arg1=called rule number */
@@ -339,7 +339,7 @@ enum ipfw_opcodes {		/* arguments (4 byte each)	*/
  *
  */
 typedef struct	_ipfw_insn {	/* template for instructions */
-	u_int8_t 	opcode;
+	_Alignas(_Alignof(u_int32_t)) u_int8_t 	opcode;
 	u_int8_t	len;	/* number of 32-bit words */
 #define	F_NOT		0x80
 #define	F_OR		0x40
@@ -485,9 +485,9 @@ struct cfg_redir {
 	u_short                 pport_cnt;      /* number of public ports */
 	u_short                 rport_cnt;      /* number of remote ports */
 	int                     proto;          /* protocol: tcp/udp */
-	struct alias_link       **alink;	
+	struct alias_link       **alink;
 	/* num of entry in spool chain */
-	u_int16_t               spool_cnt;      
+	u_int16_t               spool_cnt;
 	/* chain of spool instances */
 	LIST_HEAD(spool_chain, cfg_spool) spool_chain;
 };
@@ -504,9 +504,9 @@ struct cfg_nat {
 	int                     mode;                   /* aliasing mode */
 	struct libalias	        *lib;                   /* libalias instance */
 	/* number of entry in spool chain */
-	int                     redir_cnt;              
+	int                     redir_cnt;
 	/* chain of redir instances */
-	LIST_HEAD(redir_chain, cfg_redir) redir_chain;  
+	LIST_HEAD(redir_chain, cfg_redir) redir_chain;
 };
 #endif
 
@@ -515,7 +515,6 @@ struct cfg_nat {
 #define SOF_SPOOL       sizeof(struct cfg_spool)
 
 #endif	/* ifndef _KERNEL */
-
 
 struct nat44_cfg_spool {
 	struct in_addr	addr;
@@ -537,7 +536,7 @@ struct nat44_cfg_redir {
 	uint16_t	pport_cnt;	/* number of public ports */
 	uint16_t	rport_cnt;	/* number of remote ports */
 	uint16_t	mode;		/* type of redirect mode */
-	uint16_t	spool_cnt;	/* num of entry in spool chain */ 
+	uint16_t	spool_cnt;	/* num of entry in spool chain */
 	uint16_t	spare;
 	uint32_t	proto;		/* protocol: tcp/udp */
 };
@@ -550,12 +549,14 @@ struct nat44_cfg_nat {
 	struct in_addr	ip;		/* nat IPv4 address */
 	uint32_t	mode;		/* aliasing mode */
 	uint32_t	redir_cnt;	/* number of entry in spool chain */
+	u_short		alias_port_lo;	/* low range for port aliasing */
+	u_short		alias_port_hi;	/* high range for port aliasing */
 };
 
 /* Nat command. */
 typedef struct	_ipfw_insn_nat {
  	ipfw_insn	o;
- 	struct cfg_nat *nat;	
+ 	struct cfg_nat *nat;
 } ipfw_insn_nat;
 
 /* Apply ipv6 mask on ipv6 addr */
@@ -579,7 +580,7 @@ typedef struct _ipfw_insn_icmp6 {
        uint32_t d[7]; /* XXX This number si related to the netinet/icmp6.h
                        *     define ICMP6_MAXTYPE
                        *     as follows: n = ICMP6_MAXTYPE/32 + 1
-                        *     Actually is 203 
+                        *     Actually is 203
                        */
 } ipfw_insn_icmp6;
 
@@ -638,7 +639,6 @@ struct ip_fw_bcounter {
 	uint64_t	bcnt;		/* Byte counter			*/
 };
 
-
 #ifndef	_KERNEL
 /*
  * Legacy rule format
@@ -668,7 +668,6 @@ struct ip_fw {
 	(ipfw_insn *)( (u_int32_t *)((rule)->cmd) + ((rule)->act_ofs) )
 
 #define RULESIZE(rule)  (sizeof(*(rule)) + (rule)->cmd_len * 4 - 4)
-
 
 #if 1 // should be moved to in.h
 /*
@@ -900,7 +899,7 @@ typedef struct	_ipfw_obj_tentry {
 		uint32_t		key;		/* uid/gid/port	*/
 		struct in6_addr		addr6;	/* IPv6 address 	*/
 		char	iface[IF_NAMESIZE];	/* interface name	*/
-		struct tflow_entry	flow;	
+		struct tflow_entry	flow;
 	} k;
 	union {
 		ipfw_table_value	value;	/* value data */

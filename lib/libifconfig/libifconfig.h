@@ -28,6 +28,10 @@
 
 #pragma once
 
+#include <sys/types.h>
+
+#include <net/if.h>
+
 #include <netinet/in.h>
 #include <netinet6/in6_var.h>
 
@@ -49,11 +53,22 @@ typedef struct ifconfig_handle ifconfig_handle_t;
 
 struct carpreq;
 struct ifaddrs;
+struct ifbropreq;
+struct ifbreq;
 struct in6_ndireq;
 struct lagg_reqall;
 struct lagg_reqflags;
 struct lagg_reqopts;
 struct lagg_reqport;
+
+/** Stores extra info associated with a bridge(4) interface */
+struct ifconfig_bridge_status {
+	struct ifbropreq *params;	/**< current operational parameters */
+	struct ifbreq *members;		/**< list of bridge members */
+	size_t members_count;		/**< how many member interfaces */
+	uint32_t cache_size;		/**< size of address cache */
+	uint32_t cache_lifetime;	/**< address cache entry lifetime */
+};
 
 struct ifconfig_capabilities {
 	/** Current capabilities (ifconfig prints this as 'options')*/
@@ -187,10 +202,82 @@ int ifconfig_get_ifstatus(ifconfig_handle_t *h, const char *name,
  */
 int ifconfig_media_get_mediareq(ifconfig_handle_t *h, const char *name,
     struct ifmediareq **ifmr);
-const char *ifconfig_media_get_type(int ifmw);
-const char *ifconfig_media_get_subtype(int ifmw);
+
 const char *ifconfig_media_get_status(const struct ifmediareq *ifmr);
-void ifconfig_media_get_options_string(int ifmw, char *buf, size_t buflen);
+
+typedef int ifmedia_t;
+
+#define INVALID_IFMEDIA ((ifmedia_t)-1)
+
+/** Retrieve the name of a media type
+ * @param media	The media to be named
+ * @return	A pointer to the media type name, or NULL on failure
+ */
+const char *ifconfig_media_get_type(ifmedia_t media);
+
+/** Retrieve a media type by its name
+ * @param name	The name of a media type
+ * @return	The media type value, or INVALID_IFMEDIA on failure
+ */
+ifmedia_t ifconfig_media_lookup_type(const char *name);
+
+/** Retrieve the name of a media subtype
+ * @param media	The media subtype to be named
+ * @return	A pointer to the media subtype name, or NULL on failure
+ */
+const char *ifconfig_media_get_subtype(ifmedia_t media);
+
+/** Retrieve a media subtype by its name
+ * @param media	The top level media type whose subtype we want
+ * @param name	The name of a media subtype
+ * @return	The media subtype value, or INVALID_IFMEDIA on failure
+ */
+ifmedia_t ifconfig_media_lookup_subtype(ifmedia_t media, const char *name);
+
+/** Retrieve the name of a media mode
+ * @param media	The media mode to be named
+ * @return	A pointer to the media mode name, or NULL on failure
+ */
+const char *ifconfig_media_get_mode(ifmedia_t media);
+
+/** Retrieve a media mode by its name
+ * @param media	The top level media type whose mode we want
+ * @param name	The name of a media mode
+ * @return	The media mode value, or INVALID_IFMEDIA on failure
+ */
+ifmedia_t ifconfig_media_lookup_mode(ifmedia_t media, const char *name);
+
+/** Retrieve an array of media options
+ * @param media	The media for which to obtain the options
+ * @return	Pointer to an array of pointers to option names,
+ * 		terminated by a NULL pointer, or simply NULL on failure.
+ * 		The caller is responsible for freeing the array but not its
+ * 		contents.
+ */
+const char **ifconfig_media_get_options(ifmedia_t media);
+
+/** Retrieve an array of media options by names
+ * @param media	The top level media type whose options we want
+ * @param opts	Pointer to an array of string pointers naming options
+ * @param nopts Number of elements in the opts array
+ * @return	Pointer to an array of media options, one for each option named
+ * 		in opts.  NULL is returned instead with errno set to ENOMEM if
+ * 		allocating the return array fails or EINVAL if media is not
+ * 		valid.  A media option in the array will be INVALID_IFMEDIA
+ * 		when lookup failed for the option named in that position in
+ * 		opts.  The caller is responsible for freeing the array.
+ */
+ifmedia_t *ifconfig_media_lookup_options(ifmedia_t media, const char **opts,
+    size_t nopts);
+
+/** Retrieve the reason the interface is down
+ * @param h	An open ifconfig state object
+ * @param name	The interface name
+ * @param ifdr	Return argument.
+ * @return	0 on success, nonzero on failure
+ */
+int ifconfig_media_get_downreason(ifconfig_handle_t *h, const char *name,
+    struct ifdownreason *ifdr);
 
 int ifconfig_carp_get_info(ifconfig_handle_t *h, const char *name,
     struct carpreq *carpr, int ncarpr);
@@ -217,6 +304,16 @@ int ifconfig_inet_get_addrinfo(ifconfig_handle_t *h,
 int ifconfig_inet6_get_addrinfo(ifconfig_handle_t *h,
     const char *name, struct ifaddrs *ifa, struct ifconfig_inet6_addr *addr);
 
+/** Retrieve additional information about a bridge(4) interface */
+int ifconfig_bridge_get_bridge_status(ifconfig_handle_t *h,
+    const char *name, struct ifconfig_bridge_status **bridge);
+
+/** Frees the structure returned by ifconfig_bridge_get_bridge_status.  Does
+ * nothing if the argument is NULL
+ * @param bridge	Pointer to the structure to free
+ */
+void ifconfig_bridge_free_bridge_status(struct ifconfig_bridge_status *bridge);
+
 /** Retrieve additional information about a lagg(4) interface */
 int ifconfig_lagg_get_lagg_status(ifconfig_handle_t *h,
     const char *name, struct ifconfig_lagg_status **lagg_status);
@@ -225,8 +322,8 @@ int ifconfig_lagg_get_lagg_status(ifconfig_handle_t *h,
 int ifconfig_lagg_get_laggport_status(ifconfig_handle_t *h,
     const char *name, struct lagg_reqport *rp);
 
-/** Frees the structure returned by ifconfig_lagg_get_status.  Does nothing if
- * the argument is NULL
+/** Frees the structure returned by ifconfig_lagg_get_lagg_status.  Does
+ * nothing if the argument is NULL
  * @param laggstat	Pointer to the structure to free
  */
 void ifconfig_lagg_free_lagg_status(struct ifconfig_lagg_status *laggstat);
@@ -254,3 +351,13 @@ int ifconfig_create_interface_vlan(ifconfig_handle_t *h, const char *name,
 
 int ifconfig_set_vlantag(ifconfig_handle_t *h, const char *name,
     const char *vlandev, const unsigned short vlantag);
+
+/** Gets the names of all interface cloners available on the system
+ * @param bufp	Set to the address of the names buffer on success or NULL
+ *              if an error occurs.  This buffer must be freed when done.
+ * @param lenp	Set to the number of names in the returned buffer or 0
+ * 		if an error occurs.  Each name is contained within an
+ * 		IFNAMSIZ length slice of the buffer, for a total buffer
+ * 		length of *lenp * IFNAMSIZ bytes.
+ */
+int ifconfig_list_cloners(ifconfig_handle_t *h, char **bufp, size_t *lenp);

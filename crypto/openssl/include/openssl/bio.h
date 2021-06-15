@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the OpenSSL license (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -141,6 +141,26 @@ extern "C" {
 
 # define BIO_CTRL_DGRAM_SET_PEEK_MODE      71
 
+/*
+ * internal BIO see include/internal/bio.h:
+ * # define BIO_CTRL_SET_KTLS_SEND                 72
+ * # define BIO_CTRL_SET_KTLS_SEND_CTRL_MSG        74
+ * # define BIO_CTRL_CLEAR_KTLS_CTRL_MSG           75
+ */
+
+# define BIO_CTRL_GET_KTLS_SEND                 73
+# define BIO_CTRL_GET_KTLS_RECV                 76
+
+# ifndef OPENSSL_NO_KTLS
+#  define BIO_get_ktls_send(b)         \
+     BIO_ctrl(b, BIO_CTRL_GET_KTLS_SEND, 0, NULL)
+#  define BIO_get_ktls_recv(b)         \
+     BIO_ctrl(b, BIO_CTRL_GET_KTLS_RECV, 0, NULL)
+# else
+#  define BIO_get_ktls_send(b)  (0)
+#  define BIO_get_ktls_recv(b)  (0)
+# endif
+
 /* modifiers */
 # define BIO_FP_READ             0x02
 # define BIO_FP_WRITE            0x04
@@ -169,6 +189,7 @@ extern "C" {
  */
 # define BIO_FLAGS_MEM_RDONLY    0x200
 # define BIO_FLAGS_NONCLEAR_RST  0x400
+# define BIO_FLAGS_IN_EOF        0x800
 
 typedef union bio_addr_st BIO_ADDR;
 typedef struct bio_addrinfo_st BIO_ADDRINFO;

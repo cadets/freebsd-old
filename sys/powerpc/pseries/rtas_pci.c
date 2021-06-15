@@ -101,7 +101,7 @@ struct rtaspci_softc {
 
 static devclass_t	rtaspci_devclass;
 DEFINE_CLASS_1(pcib, rtaspci_driver, rtaspci_methods,
-    sizeof(struct rtaspci_softc), ofw_pci_driver);
+    sizeof(struct rtaspci_softc), ofw_pcib_driver);
 DRIVER_MODULE(rtaspci, ofwbus, rtaspci_driver, rtaspci_devclass, 0, 0);
 
 static int
@@ -143,7 +143,7 @@ rtaspci_attach(device_t dev)
 	OF_getencprop(ofw_bus_get_node(dev), "ibm,pci-config-space-type",
 	    &sc->sc_extended_config, sizeof(sc->sc_extended_config));
 
-	return (ofw_pci_attach(dev));
+	return (ofw_pcib_attach(dev));
 }
 
 static uint32_t
@@ -156,7 +156,7 @@ rtaspci_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 	int error, pcierror;
 
 	sc = device_get_softc(dev);
-	
+
 	config_addr = ((bus & 0xff) << 16) | ((slot & 0x1f) << 11) |
 	    ((func & 0x7) << 8) | (reg & 0xff);
 	if (sc->sc_extended_config)
@@ -179,7 +179,7 @@ rtaspci_read_config(device_t dev, u_int bus, u_int slot, u_int func, u_int reg,
 		retval = (int32_t)(int16_t)(retval);
 		break;
 	}
-	
+
 	if (error < 0 || pcierror != 0)
 		retval = 0xffffffff;
 
@@ -195,7 +195,7 @@ rtaspci_write_config(device_t dev, u_int bus, u_int slot, u_int func,
 	int pcierror;
 
 	sc = device_get_softc(dev);
-	
+
 	config_addr = ((bus & 0xff) << 16) | ((slot & 0x1f) << 11) |
 	    ((func & 0x7) << 8) | (reg & 0xff);
 	if (sc->sc_extended_config)
@@ -209,4 +209,3 @@ rtaspci_write_config(device_t dev, u_int bus, u_int slot, u_int func,
 		rtas_call_method(sc->write_pci_config, 3, 1, config_addr,
 		    width, val, &pcierror);
 }
-

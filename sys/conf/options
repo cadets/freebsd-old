@@ -55,17 +55,19 @@ DDB_CAPTURE_DEFAULTBUFSIZE	opt_ddb.h
 DDB_CAPTURE_MAXBUFSIZE	opt_ddb.h
 DDB_CTF		opt_ddb.h
 DDB_NUMSYM	opt_ddb.h
+EARLY_PRINTF	opt_global.h
 FULL_BUF_TRACKING	opt_global.h
 GDB
 KDB		opt_global.h
 KDB_TRACE	opt_kdb.h
 KDB_UNATTENDED	opt_kdb.h
 KLD_DEBUG	opt_kld.h
+NUM_CORE_FILES	opt_global.h
+QUEUE_MACRO_DEBUG_TRACE	opt_global.h
+QUEUE_MACRO_DEBUG_TRASH	opt_global.h
 SYSCTL_DEBUG	opt_sysctl.h
-EARLY_PRINTF	opt_global.h
 TEXTDUMP_PREFERRED	opt_ddb.h
 TEXTDUMP_VERBOSE	opt_ddb.h
-NUM_CORE_FILES	opt_global.h
 TSLOG	opt_global.h
 TSLOGSIZE	opt_global.h
 
@@ -123,7 +125,6 @@ GEOM_PART_APM	opt_geom.h
 GEOM_PART_BSD	opt_geom.h
 GEOM_PART_BSD64	opt_geom.h
 GEOM_PART_EBR	opt_geom.h
-GEOM_PART_EBR_COMPAT	opt_geom.h
 GEOM_PART_GPT	opt_geom.h
 GEOM_PART_LDM	opt_geom.h
 GEOM_PART_MBR	opt_geom.h
@@ -179,7 +180,6 @@ NEW_PCIB	opt_global.h
 NO_ADAPTIVE_MUTEXES	opt_adaptive_mutexes.h
 NO_ADAPTIVE_RWLOCKS
 NO_ADAPTIVE_SX
-NO_EVENTTIMERS		opt_timer.h
 NO_OBSOLETE_CODE	opt_global.h
 NO_SYSCTL_DESCR	opt_global.h
 NSWBUF_MIN	opt_param.h
@@ -229,6 +229,7 @@ ZSTDIO		opt_zstdio.h
 
 # Sanitizers
 COVERAGE	opt_global.h
+KASAN		opt_global.h
 KCOV
 KCSAN		opt_global.h
 KUBSAN		opt_global.h
@@ -452,8 +453,9 @@ MROUTING		opt_mrouting.h
 NFSLOCKD
 PCBGROUP		opt_pcbgroup.h
 PF_DEFAULT_TO_DROP	opt_pf.h
-RADIX_MPATH		opt_mpath.h
+ROUTE_MPATH		opt_route.h
 ROUTETABLES		opt_route.h
+FIB_ALGO		opt_route.h
 RSS			opt_rss.h
 SLIP_IFF_OPTS		opt_slip.h
 TCPDEBUG
@@ -467,12 +469,14 @@ TCP_RFC7413_MAX_KEYS	opt_inet.h
 TCP_RFC7413_MAX_PSKS	opt_inet.h
 TCP_SIGNATURE		opt_ipsec.h
 VLAN_ARRAY		opt_vlan.h
+XDR
 XBONEHACK
 
 #
 # SCTP
 #
 SCTP			opt_sctp.h
+SCTP_SUPPORT		opt_sctp.h
 SCTP_DEBUG		opt_sctp.h # Enable debug printfs
 SCTP_LOCK_LOGGING	opt_sctp.h # Log to KTR lock activity
 SCTP_MBUF_LOGGING	opt_sctp.h # Log to KTR general mbuf aloc/free
@@ -567,7 +571,6 @@ TI_JUMBO_HDRSPLIT	opt_ti.h
 # Misc debug flags.  Most of these should probably be replaced with
 # 'DEBUG', and then let people recompile just the interesting modules
 # with 'make CC="cc -DDEBUG"'.
-CLUSTERDEBUG		opt_debug_cluster.h
 DEBUG_1284		opt_ppb_1284.h
 LPT_DEBUG		opt_lpt.h
 PLIP_DEBUG		opt_plip.h
@@ -599,7 +602,7 @@ INVARIANTS		opt_global.h
 KASSERT_PANIC_OPTIONAL	opt_global.h
 MAXCPU			opt_global.h
 MAXMEMDOM		opt_global.h
-MAXPHYS			opt_global.h
+MAXPHYS			opt_maxphys.h
 MCLSHIFT		opt_global.h
 MUTEX_NOINLINE		opt_global.h
 LOCK_PROFILING		opt_global.h
@@ -644,27 +647,6 @@ NFS_DEBUG		opt_nfs.h
 
 # TMPFS options
 TMPFS_PAGES_MINRESERVED		opt_tmpfs.h
-
-# For the Bt848/Bt848A/Bt849/Bt878/Bt879 driver
-OVERRIDE_CARD			opt_bktr.h
-OVERRIDE_TUNER			opt_bktr.h
-OVERRIDE_DBX			opt_bktr.h
-OVERRIDE_MSP			opt_bktr.h
-BROOKTREE_SYSTEM_DEFAULT	opt_bktr.h
-BROOKTREE_ALLOC_PAGES		opt_bktr.h
-BKTR_OVERRIDE_CARD		opt_bktr.h
-BKTR_OVERRIDE_TUNER		opt_bktr.h
-BKTR_OVERRIDE_DBX		opt_bktr.h
-BKTR_OVERRIDE_MSP		opt_bktr.h
-BKTR_SYSTEM_DEFAULT		opt_bktr.h
-BKTR_ALLOC_PAGES		opt_bktr.h
-BKTR_USE_PLL			opt_bktr.h	
-BKTR_GPIO_ACCESS		opt_bktr.h
-BKTR_NO_MSP_RESET		opt_bktr.h
-BKTR_430_FX_MODE		opt_bktr.h
-BKTR_SIS_VIA_MODE		opt_bktr.h
-BKTR_USE_FREEBSD_SMBUS		opt_bktr.h
-BKTR_NEW_MSP34XX_DRIVER		opt_bktr.h
 
 # Options for uart(4)
 UART_PPS_ON_CTS		opt_uart.h
@@ -722,8 +704,11 @@ EPOCH_TRACE		opt_global.h
 ACPI_DEBUG		opt_acpi.h
 ACPI_MAX_TASKS		opt_acpi.h
 ACPI_MAX_THREADS	opt_acpi.h
-ACPI_DMAR		opt_acpi.h
 DEV_ACPI		opt_acpi.h
+ACPI_EARLY_EPYC_WAR	opt_acpi.h
+
+# options for IOMMU support
+IOMMU			opt_iommu.h
 
 # ISA support
 DEV_ISA			opt_isa.h
@@ -751,11 +736,6 @@ BCE_NVRAM_WRITE_SUPPORT	opt_bce.h
 
 SOCKBUF_DEBUG		opt_global.h
 
-
-# options for ubsec driver
-UBSEC_DEBUG		opt_ubsec.h
-UBSEC_RNDTEST		opt_ubsec.h
-UBSEC_NO_RNG		opt_ubsec.h
 
 # options for hifn driver
 HIFN_DEBUG		opt_hifn.h
@@ -796,8 +776,8 @@ SC_PIXEL_MODE		opt_syscons.h
 SC_RENDER_DEBUG		opt_syscons.h
 SC_TWOBUTTON_MOUSE	opt_syscons.h
 VT_ALT_TO_ESC_HACK	opt_syscons.h
-VT_FB_DEFAULT_WIDTH	opt_syscons.h
-VT_FB_DEFAULT_HEIGHT	opt_syscons.h
+VT_FB_MAX_WIDTH		opt_syscons.h
+VT_FB_MAX_HEIGHT	opt_syscons.h
 VT_MAXWINDOWS		opt_syscons.h
 VT_TWOBUTTON_MOUSE	opt_syscons.h
 DEV_SC			opt_syscons.h
@@ -986,6 +966,8 @@ RACCT_DEFAULT_TO_DISABLED	opt_global.h
 RCTL		opt_global.h
 
 # Random number generator(s)
+# Alternative RNG algorithm.
+RANDOM_FENESTRASX	opt_global.h
 # With this, no entropy processor is loaded, but the entropy
 # harvesting infrastructure is present. This means an entropy
 # processor may be loaded as a module.
@@ -1032,3 +1014,10 @@ AMDSBWD_DEBUG	opt_amdsbwd.h
 # gcov support
 GCOV		opt_global.h
 LINDEBUGFS
+
+# options for HID support
+HID_DEBUG	opt_hid.h
+IICHID_DEBUG	opt_hid.h
+IICHID_SAMPLING	opt_hid.h
+HKBD_DFLT_KEYMAP	opt_hkbd.h
+HIDRAW_MAKE_UHID_ALIAS	opt_hid.h

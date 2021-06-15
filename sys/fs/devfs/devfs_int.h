@@ -37,8 +37,6 @@
 
 #include <sys/queue.h>
 
-#ifdef _KERNEL
-
 struct devfs_dirent;
 struct devfs_mount;
 
@@ -76,6 +74,8 @@ struct cdev_priv {
 
 #define	cdev2priv(c)	__containerof(c, struct cdev_priv, cdp_c)
 
+#ifdef _KERNEL
+
 struct cdev	*devfs_alloc(int);
 int	devfs_dev_exists(const char *);
 void	devfs_free(struct cdev *);
@@ -94,6 +94,9 @@ extern struct mtx devfs_de_interlock;
 extern struct sx clone_drain_lock;
 extern struct mtx cdevpriv_mtx;
 extern TAILQ_HEAD(cdev_priv_list, cdev_priv) cdevp_list;
+
+#define	dev_lock_assert_locked()	mtx_assert(&devmtx, MA_OWNED)
+#define	dev_lock_assert_unlocked()	mtx_assert(&devmtx, MA_NOTOWNED)
 
 #endif /* _KERNEL */
 

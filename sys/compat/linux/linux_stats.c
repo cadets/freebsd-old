@@ -59,26 +59,33 @@ __FBSDID("$FreeBSD$");
 #include <compat/linux/linux_util.h>
 #include <compat/linux/linux_file.h>
 
-
 static void
 translate_vnhook_major_minor(struct vnode *vp, struct stat *sb)
 {
 	int major, minor;
 
-	if (vn_isdisk(vp, NULL)) {
+	if (vn_isdisk(vp)) {
 		sb->st_mode &= ~S_IFMT;
 		sb->st_mode |= S_IFBLK;
 	}
 
-	if (vp->v_type == VCHR && vp->v_rdev != NULL &&
-	    linux_driver_get_major_minor(devtoname(vp->v_rdev),
-	    &major, &minor) == 0) {
+	/*
+	 * Return the same st_dev for every devfs instance.  The reason
+	 * for this is to work around an idiosyncrasy of glibc getttynam()
+	 * implementation: it checks whether st_dev returned for fd 0
+	 * is the same as st_dev returned for the target of /proc/self/fd/0
+	 * symlink, and with linux chroots having their own devfs instance,
+	 * the check will fail if you chroot into it.
+	 */
+	if (rootdevmp != NULL && vp->v_mount->mnt_vfc == rootdevmp->mnt_vfc)
+		sb->st_dev = rootdevmp->mnt_stat.f_fsid.val[0];
+
+	if (linux_vn_get_major_minor(vp, &major, &minor) == 0)
 		sb->st_rdev = (major << 8 | minor);
-	}
 }
 
 static int
-linux_kern_statat(struct thread *td, int flag, int fd, char *path,
+linux_kern_statat(struct thread *td, int flag, int fd, const char *path,
     enum uio_seg pathseg, struct stat *sbp)
 {
 
@@ -88,7 +95,7 @@ linux_kern_statat(struct thread *td, int flag, int fd, char *path,
 
 #ifdef LINUX_LEGACY_SYSCALLS
 static int
-linux_kern_stat(struct thread *td, char *path, enum uio_seg pathseg,
+linux_kern_stat(struct thread *td, const char *path, enum uio_seg pathseg,
     struct stat *sbp)
 {
 
@@ -96,7 +103,7 @@ linux_kern_stat(struct thread *td, char *path, enum uio_seg pathseg,
 }
 
 static int
-linux_kern_lstat(struct thread *td, char *path, enum uio_seg pathseg,
+linux_kern_lstat(struct thread *td, const char *path, enum uio_seg pathseg,
     struct stat *sbp)
 {
 
@@ -110,6 +117,7 @@ translate_fd_major_minor(struct thread *td, int fd, struct stat *buf)
 {
 	struct file *fp;
 	struct vnode *vp;
+	struct mount *mp;
 	int major, minor;
 
 	/*
@@ -119,13 +127,17 @@ translate_fd_major_minor(struct thread *td, int fd, struct stat *buf)
 	    fget(td, fd, &cap_no_rights, &fp) != 0)
 		return;
 	vp = fp->f_vnode;
-	if (vp != NULL && vn_isdisk(vp, NULL)) {
+	if (vp != NULL && vn_isdisk(vp)) {
 		buf->st_mode &= ~S_IFMT;
 		buf->st_mode |= S_IFBLK;
 	}
-	if (vp != NULL && vp->v_rdev != NULL &&
-	    linux_driver_get_major_minor(devtoname(vp->v_rdev),
-					 &major, &minor) == 0) {
+	if (vp != NULL && rootdevmp != NULL) {
+		mp = vp->v_mount;
+		__compiler_membar();
+		if (mp != NULL && mp->mnt_vfc == rootdevmp->mnt_vfc)
+			buf->st_dev = rootdevmp->mnt_stat.f_fsid.val[0];
+	}
+	if (linux_vn_get_major_minor(vp, &major, &minor) == 0) {
 		buf->st_rdev = (major << 8 | minor);
 	} else if (fp->f_type == DTYPE_PTS) {
 		struct tty *tp = fp->f_data;
@@ -184,6 +196,40 @@ newstat_copyout(struct stat *buf, void *ubuf)
 	return (copyout(&tbuf, ubuf, sizeof(tbuf)));
 }
 
+static int
+statx_copyout(struct stat *buf, void *ubuf)
+{
+	struct l_statx tbuf;
+
+	bzero(&tbuf, sizeof(tbuf));
+	tbuf.stx_mask = STATX_ALL;
+	tbuf.stx_blksize = buf->st_blksize;
+	tbuf.stx_attributes = 0;
+	tbuf.stx_nlink = buf->st_nlink;
+	tbuf.stx_uid = buf->st_uid;
+	tbuf.stx_gid = buf->st_gid;
+	tbuf.stx_mode = buf->st_mode;
+	tbuf.stx_ino = buf->st_ino;
+	tbuf.stx_size = buf->st_size;
+	tbuf.stx_blocks = buf->st_blocks;
+
+	tbuf.stx_atime.tv_sec = buf->st_atim.tv_sec;
+	tbuf.stx_atime.tv_nsec = buf->st_atim.tv_nsec;
+	tbuf.stx_btime.tv_sec = buf->st_birthtim.tv_sec;
+	tbuf.stx_btime.tv_nsec = buf->st_birthtim.tv_nsec;
+	tbuf.stx_ctime.tv_sec = buf->st_ctim.tv_sec;
+	tbuf.stx_ctime.tv_nsec = buf->st_ctim.tv_nsec;
+	tbuf.stx_mtime.tv_sec = buf->st_mtim.tv_sec;
+	tbuf.stx_mtime.tv_nsec = buf->st_mtim.tv_nsec;
+
+	tbuf.stx_rdev_major = buf->st_rdev >> 8;
+	tbuf.stx_rdev_minor = buf->st_rdev & 0xff;
+	tbuf.stx_dev_major = buf->st_dev >> 8;
+	tbuf.stx_dev_minor = buf->st_dev & 0xff;
+
+	return (copyout(&tbuf, ubuf, sizeof(tbuf)));
+}
+
 #ifdef LINUX_LEGACY_SYSCALLS
 int
 linux_newstat(struct thread *td, struct linux_newstat_args *args)
@@ -192,10 +238,13 @@ linux_newstat(struct thread *td, struct linux_newstat_args *args)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	error = linux_kern_stat(td, path, UIO_SYSSPACE, &buf);
-	LFREEPATH(path);
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_stat(td, args->path, UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		error = linux_kern_stat(td, path, UIO_SYSSPACE, &buf);
+		LFREEPATH(path);
+	}
 	if (error)
 		return (error);
 	return (newstat_copyout(&buf, args->buf));
@@ -208,10 +257,13 @@ linux_newlstat(struct thread *td, struct linux_newlstat_args *args)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	error = linux_kern_lstat(td, path, UIO_SYSSPACE, &sb);
-	LFREEPATH(path);
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_lstat(td, args->path, UIO_USERSPACE, &sb);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		error = linux_kern_lstat(td, path, UIO_SYSSPACE, &sb);
+		LFREEPATH(path);
+	}
 	if (error)
 		return (error);
 	return (newstat_copyout(&sb, args->buf));
@@ -268,14 +320,16 @@ linux_stat(struct thread *td, struct linux_stat_args *args)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	error = linux_kern_stat(td, path, UIO_SYSSPACE, &buf);
-	if (error) {
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_stat(td, args->path, UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		error = linux_kern_stat(td, path, UIO_SYSSPACE, &buf);
 		LFREEPATH(path);
+	}
+	if (error) {
 		return (error);
 	}
-	LFREEPATH(path);
 	return (stat_copyout(&buf, args->up));
 }
 
@@ -286,14 +340,16 @@ linux_lstat(struct thread *td, struct linux_lstat_args *args)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	error = linux_kern_lstat(td, path, UIO_SYSSPACE, &buf);
-	if (error) {
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_lstat(td, args->path, UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		error = linux_kern_lstat(td, path, UIO_SYSSPACE, &buf);
 		LFREEPATH(path);
+	}
+	if (error) {
 		return (error);
 	}
-	LFREEPATH(path);
 	return (stat_copyout(&buf, args->up));
 }
 #endif /* __i386__ || (__amd64__ && COMPAT_LINUX32) */
@@ -395,11 +451,15 @@ linux_statfs(struct thread *td, struct linux_statfs_args *args)
 	char *path;
 	int error;
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
-	error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
-	LFREEPATH(path);
+	if (!LUSECONVPATH(td)) {
+		bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+		error = kern_statfs(td, args->path, UIO_USERSPACE, bsd_statfs);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+		error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
+		LFREEPATH(path);
+	}
 	if (error == 0)
 		error = bsd_to_linux_statfs(bsd_statfs, &linux_statfs);
 	free(bsd_statfs, M_STATFS);
@@ -439,11 +499,15 @@ linux_statfs64(struct thread *td, struct linux_statfs64_args *args)
 	if (args->bufsize != sizeof(struct l_statfs64))
 		return (EINVAL);
 
-	LCONVPATHEXIST(td, args->path, &path);
-
-	bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
-	error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
-	LFREEPATH(path);
+	if (!LUSECONVPATH(td)) {
+		bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+		error = kern_statfs(td, args->path, UIO_USERSPACE, bsd_statfs);
+	} else {
+		LCONVPATHEXIST(td, args->path, &path);
+		bsd_statfs = malloc(sizeof(struct statfs), M_STATFS, M_WAITOK);
+		error = kern_statfs(td, path, UIO_SYSSPACE, bsd_statfs);
+		LFREEPATH(path);
+	}
 	if (error == 0)
 		bsd_to_linux_statfs64(bsd_statfs, &linux_statfs);
 	free(bsd_statfs, M_STATFS);
@@ -550,10 +614,13 @@ linux_stat64(struct thread *td, struct linux_stat64_args *args)
 	char *filename;
 	int error;
 
-	LCONVPATHEXIST(td, args->filename, &filename);
-
-	error = linux_kern_stat(td, filename, UIO_SYSSPACE, &buf);
-	LFREEPATH(filename);
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_stat(td, args->filename, UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST(td, args->filename, &filename);
+		error = linux_kern_stat(td, filename, UIO_SYSSPACE, &buf);
+		LFREEPATH(filename);
+	}
 	if (error)
 		return (error);
 	return (stat64_copyout(&buf, args->statbuf));
@@ -566,10 +633,13 @@ linux_lstat64(struct thread *td, struct linux_lstat64_args *args)
 	char *filename;
 	int error;
 
-	LCONVPATHEXIST(td, args->filename, &filename);
-
-	error = linux_kern_lstat(td, filename, UIO_SYSSPACE, &sb);
-	LFREEPATH(filename);
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_lstat(td, args->filename, UIO_USERSPACE, &sb);
+	} else {
+		LCONVPATHEXIST(td, args->filename, &filename);
+		error = linux_kern_lstat(td, filename, UIO_SYSSPACE, &sb);
+		LFREEPATH(filename);
+	}
 	if (error)
 		return (error);
 	return (stat64_copyout(&sb, args->statbuf));
@@ -596,18 +666,26 @@ linux_fstatat64(struct thread *td, struct linux_fstatat64_args *args)
 	int error, dfd, flag;
 	struct stat buf;
 
-	if (args->flag & ~LINUX_AT_SYMLINK_NOFOLLOW)
+	if (args->flag & ~(LINUX_AT_SYMLINK_NOFOLLOW | LINUX_AT_EMPTY_PATH)) {
+		linux_msg(td, "fstatat64 unsupported flag 0x%x", args->flag);
 		return (EINVAL);
+	}
 	flag = (args->flag & LINUX_AT_SYMLINK_NOFOLLOW) ?
 	    AT_SYMLINK_NOFOLLOW : 0;
+	flag |= (args->flag & LINUX_AT_EMPTY_PATH) ?
+	    AT_EMPTY_PATH : 0;
 
 	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
-	LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);
-
-	error = linux_kern_statat(td, flag, dfd, path, UIO_SYSSPACE, &buf);
-	if (!error)
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_statat(td, flag, dfd, args->pathname,
+		    UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);
+		error = linux_kern_statat(td, flag, dfd, path, UIO_SYSSPACE, &buf);
+		LFREEPATH(path);
+	}
+	if (error == 0)
 		error = stat64_copyout(&buf, args->statbuf);
-	LFREEPATH(path);
 
 	return (error);
 }
@@ -621,18 +699,27 @@ linux_newfstatat(struct thread *td, struct linux_newfstatat_args *args)
 	int error, dfd, flag;
 	struct stat buf;
 
-	if (args->flag & ~LINUX_AT_SYMLINK_NOFOLLOW)
+	if (args->flag & ~(LINUX_AT_SYMLINK_NOFOLLOW | LINUX_AT_EMPTY_PATH)) {
+		linux_msg(td, "fstatat unsupported flag 0x%x", args->flag);
 		return (EINVAL);
+	}
+
 	flag = (args->flag & LINUX_AT_SYMLINK_NOFOLLOW) ?
 	    AT_SYMLINK_NOFOLLOW : 0;
+	flag |= (args->flag & LINUX_AT_EMPTY_PATH) ?
+	    AT_EMPTY_PATH : 0;
 
 	dfd = (args->dfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dfd;
-	LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);
-
-	error = linux_kern_statat(td, flag, dfd, path, UIO_SYSSPACE, &buf);
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_statat(td, flag, dfd, args->pathname,
+		    UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST_AT(td, args->pathname, &path, dfd);
+		error = linux_kern_statat(td, flag, dfd, path, UIO_SYSSPACE, &buf);
+		LFREEPATH(path);
+	}
 	if (error == 0)
 		error = newstat_copyout(&buf, args->statbuf);
-	LFREEPATH(path);
 
 	return (error);
 }
@@ -677,3 +764,36 @@ linux_syncfs(struct thread *td, struct linux_syncfs_args *args)
 	vrele(vp);
 	return (error);
 }
+
+int
+linux_statx(struct thread *td, struct linux_statx_args *args)
+{
+	char *path;
+	int error, dirfd, flags;
+	struct stat buf;
+
+	if (args->flags & ~(LINUX_AT_SYMLINK_NOFOLLOW | LINUX_AT_EMPTY_PATH)) {
+		linux_msg(td, "statx unsupported flags 0x%x", args->flags);
+		return (EINVAL);
+	}
+
+	flags = (args->flags & LINUX_AT_SYMLINK_NOFOLLOW) ?
+	    AT_SYMLINK_NOFOLLOW : 0;
+	flags |= (args->flags & LINUX_AT_EMPTY_PATH) ?
+	    AT_EMPTY_PATH : 0;
+
+	dirfd = (args->dirfd == LINUX_AT_FDCWD) ? AT_FDCWD : args->dirfd;
+	if (!LUSECONVPATH(td)) {
+		error = linux_kern_statat(td, flags, dirfd, args->pathname,
+		    UIO_USERSPACE, &buf);
+	} else {
+		LCONVPATHEXIST_AT(td, args->pathname, &path, dirfd);
+		error = linux_kern_statat(td, flags, dirfd, path, UIO_SYSSPACE, &buf);
+		LFREEPATH(path);
+	}
+	if (error == 0)
+		error = statx_copyout(&buf, args->statxbuf);
+
+	return (error);
+}
+

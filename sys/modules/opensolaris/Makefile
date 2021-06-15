@@ -3,14 +3,16 @@
 SYSDIR?=	${SRCTOP}/sys
 
 .PATH:		${SYSDIR}/cddl/compat/opensolaris/kern
+.PATH:		${SYSDIR}/contrib/openzfs/module/os/freebsd/spl
 
 KMOD=		opensolaris
-SRCS=		opensolaris.c		\
-		opensolaris_cmn_err.c	\
-		opensolaris_kmem.c	\
-		opensolaris_misc.c	\
+SRCS=		vnode_if.h \
+		opensolaris.c		\
 		opensolaris_proc.c	\
-		opensolaris_sunddi.c
+		spl_cmn_err.c	\
+		spl_kmem.c	\
+		spl_misc.c	\
+		spl_sunddi.c
 
 _A=${SYSDIR}/cddl/contrib/opensolaris/common/atomic
 .if exists(${_A}/${MACHINE_CPUARCH}/opensolaris_atomic.S)
@@ -23,9 +25,7 @@ SRCS+=		opensolaris_atomic.S
 SRCS+=		opensolaris_atomic.c
 .endif
 
-CFLAGS+=	-I${SYSDIR}/cddl/compat/opensolaris		\
-		-I${SYSDIR}/cddl/contrib/opensolaris/uts/common	\
-		-I${SYSDIR}
+CFLAGS+= 	${OPENZFS_CFLAGS}
 
 EXPORT_SYMS=	cpu_core
 
@@ -34,3 +34,4 @@ IGNORE_PRAGMA=	1
 .include <bsd.kmod.mk>
 
 CFLAGS+=	-include ${SYSDIR}/cddl/compat/opensolaris/sys/debug_compat.h
+CWARNFLAGS+=	${OPENZFS_CWARNFLAGS}

@@ -64,7 +64,7 @@ enum {
 	UBT_IF_0_BULK_DT_RD,
 	UBT_IF_0_INTR_DT_RD,
 	UBT_IF_0_CTRL_DT_WR,
-	
+
 	/* Interface #1 transfers */
 	UBT_IF_1_ISOC_DT_RD1,
 	UBT_IF_1_ISOC_DT_RD2,
@@ -102,6 +102,10 @@ struct ubt_hci_event_command_compl {
 } __attribute__ ((packed));
 #define	UBT_HCI_EVENT_SIZE(evt) \
 	((evt)->header.length + offsetof(struct ubt_hci_event, data))
+#define	UBT_HCI_EVENT_COMPL_HEAD_SIZE \
+	(offsetof(struct ubt_hci_event_command_compl, data) - \
+	 offsetof(struct ubt_hci_event_command_compl, numpkt))
+
 
 /* USB device softc structure */
 struct ubt_softc {
@@ -165,4 +169,3 @@ extern	devclass_t	ubt_devclass;
 extern	driver_t	ubt_driver;
 
 #endif /* ndef _NG_UBT_VAR_H_ */
-

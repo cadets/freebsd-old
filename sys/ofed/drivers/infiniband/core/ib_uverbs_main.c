@@ -856,8 +856,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 				goto out;
 			}
 
-			if (!access_ok(VERIFY_WRITE,
-				       (void __user *) (unsigned long) ex_hdr.response,
+			if (!access_ok((void __user *) (unsigned long) ex_hdr.response,
 				       (hdr.out_words + ex_hdr.provider_out_words) * 8)) {
 				ret = -EFAULT;
 				goto out;
@@ -1431,5 +1430,5 @@ static void __exit ib_uverbs_cleanup(void)
 	idr_destroy(&ib_uverbs_srq_idr);
 }
 
-module_init_order(ib_uverbs_init, SI_ORDER_THIRD);
-module_exit(ib_uverbs_cleanup);
+module_init_order(ib_uverbs_init, SI_ORDER_FIFTH);
+module_exit_order(ib_uverbs_cleanup, SI_ORDER_FIFTH);

@@ -49,6 +49,8 @@ __FBSDID("$FreeBSD$");
 #include <machine/trap.h>
 
 #include <dev/ofw/openfirm.h>
+#include <dev/ofw/ofw_bus.h>
+#include <dev/ofw/ofw_bus_subr.h>
 #include <machine/ofw_machdep.h>
 #include <powerpc/aim/mmu_oea64.h>
 
@@ -87,7 +89,7 @@ static platform_method_t powernv_methods[] = {
 	PLATFORMMETHOD(platform_mem_regions,	powernv_mem_regions),
 	PLATFORMMETHOD(platform_numa_mem_regions,	powernv_numa_mem_regions),
 	PLATFORMMETHOD(platform_timebase_freq,	powernv_timebase_freq),
-	
+
 	PLATFORMMETHOD(platform_smp_ap_init,	powernv_smp_ap_init),
 	PLATFORMMETHOD(platform_smp_first_cpu,	powernv_smp_first_cpu),
 	PLATFORMMETHOD(platform_smp_next_cpu,	powernv_smp_next_cpu),
@@ -100,7 +102,6 @@ static platform_method_t powernv_methods[] = {
 	PLATFORMMETHOD(platform_node_numa_domain,	powernv_node_numa_domain),
 
 	PLATFORMMETHOD(platform_reset,		powernv_reset),
-
 	{ 0, 0 }
 };
 
@@ -140,6 +141,7 @@ powernv_attach(platform_t plat)
 	phandle_t opal;
 	int res, len, idx;
 	register_t msr;
+	bool has_lp;
 
 	/* Ping OPAL again just to make sure */
 	opal_check();
@@ -172,6 +174,10 @@ powernv_attach(platform_t plat)
 
 	if (cpu_features2 & PPC_FEATURE2_ARCH_3_00)
 		lpcr |= LPCR_HVICE;
+
+#if BYTE_ORDER == LITTLE_ENDIAN
+	lpcr |= LPCR_ILE;
+#endif
 
 	mtspr(SPR_LPCR, lpcr);
 	isync();
@@ -223,6 +229,7 @@ powernv_attach(platform_t plat)
 		    sizeof(arr));
 		len /= 4;
 		idx = 0;
+		has_lp = false;
 		while (len > 0) {
 			shift = arr[idx];
 			slb_encoding = arr[idx + 1];
@@ -233,17 +240,21 @@ powernv_attach(platform_t plat)
 				lp_size = arr[idx];
 				lp_encoding = arr[idx+1];
 				if (slb_encoding == SLBV_L && lp_encoding == 0)
-					break;
+					has_lp = true;
+
+				if (slb_encoding == SLB_PGSZ_4K_4K &&
+				    lp_encoding == LP_4K_16M)
+					moea64_has_lp_4k_16m = true;
 
 				idx += 2;
 				len -= 2;
 				nptlp--;
 			}
-			if (nptlp && slb_encoding == SLBV_L && lp_encoding == 0)
+			if (has_lp && moea64_has_lp_4k_16m)
 				break;
 		}
 
-		if (len == 0)
+		if (!has_lp)
 			panic("Standard large pages (SLB[L] = 1, PTE[LP] = 0) "
 			    "not supported by this system.");
 
@@ -254,7 +265,6 @@ powernv_attach(platform_t plat)
 out:
 	return (0);
 }
-
 
 void
 powernv_mem_regions(platform_t plat, struct mem_region *phys, int *physsz,
@@ -332,6 +342,8 @@ powernv_cpuref_init(void)
 	for (cpu = OF_child(dev); cpu != 0; cpu = OF_peer(cpu)) {
 		res = OF_getprop(cpu, "device_type", buf, sizeof(buf));
 		if (res > 0 && strcmp(buf, "cpu") == 0) {
+			if (!ofw_bus_node_status_okay(cpu))
+				continue;
 			res = OF_getproplen(cpu, "ibm,ppc-interrupt-server#s");
 			if (res > 0) {
 				OF_getencprop(cpu, "ibm,ppc-interrupt-server#s",
@@ -469,21 +481,71 @@ powernv_smp_probe_threads(platform_t plat)
 }
 
 static struct cpu_group *
+cpu_group_init(struct cpu_group *group, struct cpu_group *parent,
+    const cpuset_t *cpus, int children, int level, int flags)
+{
+	struct cpu_group *child;
+
+	child = children != 0 ? smp_topo_alloc(children) : NULL;
+
+	group->cg_parent = parent;
+	group->cg_child = child;
+	CPU_COPY(cpus, &group->cg_mask);
+	group->cg_count = CPU_COUNT(cpus);
+	group->cg_children = children;
+	group->cg_level = level;
+	group->cg_flags = flags;
+
+	return (child);
+}
+
+static struct cpu_group *
 powernv_smp_topo(platform_t plat)
 {
+	struct cpu_group *core, *dom, *root;
+	cpuset_t corecpus, domcpus;
+	int cpuid, i, j, k, ncores;
+
 	if (mp_ncpus % smp_threads_per_core != 0) {
-		printf("WARNING: Irregular SMP topology. Performance may be "
-		     "suboptimal (%d threads, %d on first core)\n",
-		     mp_ncpus, smp_threads_per_core);
+		printf("%s: irregular SMP topology (%d threads, %d per core)\n",
+		    __func__, mp_ncpus, smp_threads_per_core);
 		return (smp_topo_none());
 	}
 
-	/* Don't do anything fancier for non-threaded SMP */
-	if (smp_threads_per_core == 1)
-		return (smp_topo_none());
+	root = smp_topo_alloc(1);
+	dom = cpu_group_init(root, NULL, &all_cpus, vm_ndomains, CG_SHARE_NONE,
+	    0);
 
-	return (smp_topo_1level(CG_SHARE_L1, smp_threads_per_core,
-	    CG_FLAG_SMT));
+	/*
+	 * Redundant layers will be collapsed by the caller so we don't need a
+	 * special case for a single domain.
+	 */
+	for (i = 0; i < vm_ndomains; i++, dom++) {
+		CPU_COPY(&cpuset_domain[i], &domcpus);
+		ncores = CPU_COUNT(&domcpus) / smp_threads_per_core;
+		KASSERT(CPU_COUNT(&domcpus) % smp_threads_per_core == 0,
+		    ("%s: domain %d core count not divisible by thread count",
+		    __func__, i));
+
+		core = cpu_group_init(dom, root, &domcpus, ncores, CG_SHARE_L3,
+		    0);
+		for (j = 0; j < ncores; j++, core++) {
+			/*
+			 * Assume that consecutive CPU IDs correspond to sibling
+			 * threads.
+			 */
+			CPU_ZERO(&corecpus);
+			for (k = 0; k < smp_threads_per_core; k++) {
+				cpuid = CPU_FFS(&domcpus) - 1;
+				CPU_CLR(cpuid, &domcpus);
+				CPU_SET(cpuid, &corecpus);
+			}
+			(void)cpu_group_init(core, dom, &corecpus, 0,
+			    CG_SHARE_L1, CG_FLAG_SMT);
+		}
+	}
+
+	return (root);
 }
 
 #endif
@@ -516,6 +578,14 @@ powernv_node_numa_domain(platform_t platform, phandle_t node)
 	static int numa_max_domain;
 	cell_t associativity[5];
 	int i, res;
+
+#ifndef NUMA
+	return (0);
+#endif
+	i = 0;
+	TUNABLE_INT_FETCH("vm.numa.disabled", &i);
+	if (i)
+		return (0);
 
 	res = OF_getencprop(node, "ibm,associativity",
 		associativity, sizeof(associativity));

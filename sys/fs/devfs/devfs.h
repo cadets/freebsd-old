@@ -124,6 +124,8 @@ struct devfs_rule {
 MALLOC_DECLARE(M_DEVFS);
 #endif
 
+#endif /* _KERNEL */
+
 struct componentname;
 
 TAILQ_HEAD(devfs_dlist_head, devfs_dirent);
@@ -153,7 +155,11 @@ struct devfs_dirent {
 	struct timespec 	de_ctime;
 	struct vnode 		*de_vnode;
 	char 			*de_symlink;
+	int			de_usecount;
 };
+
+#include <sys/_lock.h>
+#include <sys/_sx.h>
 
 struct devfs_mount {
 	u_int			dm_idx;
@@ -166,6 +172,8 @@ struct devfs_mount {
 };
 
 #define DEVFS_ROOTINO 2
+
+#ifdef _KERNEL
 
 extern unsigned devfs_rule_depth;
 
@@ -192,6 +200,7 @@ char	*devfs_fqpn(char *, struct devfs_mount *, struct devfs_dirent *,
 	    struct componentname *);
 void	devfs_delete(struct devfs_mount *, struct devfs_dirent *, int);
 void	devfs_dirent_free(struct devfs_dirent *);
+int	devfs_populate_needed(struct devfs_mount *dm);
 void	devfs_populate(struct devfs_mount *);
 void	devfs_cleanup(struct devfs_mount *);
 void	devfs_unmount_final(struct devfs_mount *);
@@ -201,6 +210,10 @@ struct devfs_dirent	*devfs_vmkdir(struct devfs_mount *, char *, int,
 			    struct devfs_dirent *, u_int);
 struct devfs_dirent	*devfs_find(struct devfs_dirent *, const char *, int,
 			    int);
+
+void	devfs_ctty_ref(struct vnode *);
+void	devfs_ctty_unref(struct vnode *);
+int	devfs_usecount(struct vnode *);
 
 #endif /* _KERNEL */
 

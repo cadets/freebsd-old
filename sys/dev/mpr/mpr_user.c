@@ -74,6 +74,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/bus.h>
 #include <sys/conf.h>
 #include <sys/bio.h>
+#include <sys/abi_compat.h>
 #include <sys/malloc.h>
 #include <sys/uio.h>
 #include <sys/sysctl.h>
@@ -177,16 +178,6 @@ static int mpr_user_reg_access(struct mpr_softc *sc, mpr_reg_access_t *data);
 static int mpr_user_btdh(struct mpr_softc *sc, mpr_btdh_mapping_t *data);
 
 static MALLOC_DEFINE(M_MPRUSER, "mpr_user", "Buffers for mpr(4) ioctls");
-
-/* Macros from compat/freebsd32/freebsd32.h */
-#define	PTRIN(v)	(void *)(uintptr_t)(v)
-#define	PTROUT(v)	(uint32_t)(uintptr_t)(v)
-
-#define	CP(src,dst,fld) do { (dst).fld = (src).fld; } while (0)
-#define	PTRIN_CP(src,dst,fld)				\
-	do { (dst).fld = PTRIN((src).fld); } while (0)
-#define	PTROUT_CP(src,dst,fld) \
-	do { (dst).fld = PTROUT((src).fld); } while (0)
 
 /*
  * MPI functions that support IEEE SGLs for SAS3.
@@ -719,7 +710,7 @@ mpr_user_command(struct mpr_softc *sc, struct mpr_usr_command *cmd)
 		sz = rpl->MsgLength * 4;
 	else
 		sz = 0;
-	
+
 	if (sz > cmd->rpl_len) {
 		mpr_printf(sc, "%s: user reply buffer (%d) smaller than "
 		    "returned buffer (%d)\n", __func__, cmd->rpl_len, sz);
@@ -746,11 +737,12 @@ RetFree:
 static int
 mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 {
-	MPI2_REQUEST_HEADER	*hdr, tmphdr;	
+	MPI2_REQUEST_HEADER	*hdr, *tmphdr;
 	MPI2_DEFAULT_REPLY	*rpl;
 	Mpi26NVMeEncapsulatedErrorReply_t *nvme_error_reply = NULL;
 	Mpi26NVMeEncapsulatedRequest_t *nvme_encap_request = NULL;
 	struct mpr_command	*cm = NULL;
+	void			*req = NULL;
 	int			i, err = 0, dir = 0, sz;
 	uint8_t			tool, function = 0;
 	u_int			sense_len;
@@ -802,22 +794,21 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 	    data->ReplySize, data->PtrData, data->DataSize,
 	    data->PtrDataOut, data->DataOutSize, data->DataDirection);
 
-	/*
-	 * copy in the header so we know what we're dealing with before we
-	 * commit to allocating a command for it.
-	 */
-	err = copyin(PTRIN(data->PtrRequest), &tmphdr, data->RequestSize);
-	if (err != 0)
-		goto RetFreeUnlocked;
-
-	if (data->RequestSize > (int)sc->reqframesz) {
+	if (data->RequestSize > sc->reqframesz) {
 		err = EINVAL;
 		goto RetFreeUnlocked;
 	}
 
-	function = tmphdr.Function;
+	req = malloc(data->RequestSize, M_MPRUSER, M_WAITOK | M_ZERO);
+	tmphdr = (MPI2_REQUEST_HEADER *)req;
+
+	err = copyin(PTRIN(data->PtrRequest), req, data->RequestSize);
+	if (err != 0)
+		goto RetFreeUnlocked;
+
+	function = tmphdr->Function;
 	mpr_dprint(sc, MPR_USER, "%s: Function %02X MsgFlags %02X\n", __func__,
-	    function, tmphdr.MsgFlags);
+	    function, tmphdr->MsgFlags);
 
 	/*
 	 * Handle a passthru TM request.
@@ -834,7 +825,7 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 
 		/* Copy the header in.  Only a small fixup is needed. */
 		task = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm->cm_req;
-		bcopy(&tmphdr, task, data->RequestSize);
+		memcpy(task, req, data->RequestSize);
 		task->TaskMID = cm->cm_desc.Default.SMID;
 
 		cm->cm_data = NULL;
@@ -864,7 +855,7 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 		if ((cm != NULL) && (cm->cm_reply != NULL)) {
 			rpl = (MPI2_DEFAULT_REPLY *)cm->cm_reply;
 			sz = rpl->MsgLength * 4;
-	
+
 			if (sz > data->ReplySize) {
 				mpr_printf(sc, "%s: user reply buffer (%d) "
 				    "smaller than returned buffer (%d)\n",
@@ -881,7 +872,6 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 
 	mpr_lock(sc);
 	cm = mpr_alloc_command(sc);
-
 	if (cm == NULL) {
 		mpr_printf(sc, "%s: no mpr requests\n", __func__);
 		err = ENOMEM;
@@ -890,7 +880,7 @@ mpr_user_pass_thru(struct mpr_softc *sc, mpr_pass_thru_t *data)
 	mpr_unlock(sc);
 
 	hdr = (MPI2_REQUEST_HEADER *)cm->cm_req;
-	bcopy(&tmphdr, hdr, data->RequestSize);
+	memcpy(hdr, req, data->RequestSize);
 
 	/*
 	 * Do some checking to make sure the IOCTL request contains a valid
@@ -1163,6 +1153,7 @@ RetFree:
 Ret:
 	sc->mpr_flags &= ~MPR_FLAGS_BUSY;
 	mpr_unlock(sc);
+	free(req, M_MPRUSER);
 
 	return (err);
 }
@@ -1452,7 +1443,7 @@ static int
 mpr_diag_register(struct mpr_softc *sc, mpr_fw_diag_register_t *diag_register,
     uint32_t *return_code)
 {
-	bus_dma_tag_template_t		t;
+	bus_dma_template_t		t;
 	mpr_fw_diagnostic_buffer_t	*pBuffer;
 	struct mpr_busdma_context	*ctx;
 	uint8_t				extended_type, buffer_type, i;
@@ -1516,9 +1507,9 @@ mpr_diag_register(struct mpr_softc *sc, mpr_fw_diag_register_t *diag_register,
 		return (MPR_DIAG_FAILURE);
 	}
 	bus_dma_template_init(&t, sc->mpr_parent_dmat);
-	t.lowaddr = BUS_SPACE_MAXADDR_32BIT;
-	t.maxsize = t.maxsegsize = buffer_size;
-	t.nsegments = 1;
+	BUS_DMA_TEMPLATE_FILL(&t, BD_LOWADDR(BUS_SPACE_MAXADDR_32BIT),
+	    BD_MAXSIZE(buffer_size), BD_MAXSEGSIZE(buffer_size),
+	    BD_NSEGMENTS(1));
 	if (bus_dma_template_tag(&t, &sc->fw_diag_dmat)) {
 		mpr_dprint(sc, MPR_ERROR,
 		    "Cannot allocate FW diag buffer DMA tag\n");
@@ -1537,13 +1528,6 @@ mpr_diag_register(struct mpr_softc *sc, mpr_fw_diag_register_t *diag_register,
 	bzero(sc->fw_diag_buffer, buffer_size);
 
 	ctx = malloc(sizeof(*ctx), M_MPR, M_WAITOK | M_ZERO);
-	if (ctx == NULL) {
-		device_printf(sc->mpr_dev, "%s: context malloc failed\n",
-		    __func__);
-		*return_code = MPR_FW_DIAG_ERROR_NO_BUFFER;
-		status = MPR_DIAG_FAILURE;
-		goto bailout;
-	}
 	ctx->addr = &sc->fw_diag_busaddr;
 	ctx->buffer_dmat = sc->fw_diag_dmat;
 	ctx->buffer_dmamap = sc->fw_diag_map;
@@ -1552,7 +1536,6 @@ mpr_diag_register(struct mpr_softc *sc, mpr_fw_diag_register_t *diag_register,
 	    sc->fw_diag_buffer, buffer_size, mpr_memaddr_wait_cb,
 	    ctx, 0);
 	if (error == EINPROGRESS) {
-
 		/* XXX KDM */
 		device_printf(sc->mpr_dev, "%s: Deferred bus_dmamap_load\n",
 		    __func__);
@@ -2243,7 +2226,7 @@ mpr_user_btdh(struct mpr_softc *sc, mpr_btdh_mapping_t *data)
 		if (bus != 0)
 			return (EINVAL);
 
-		if (target > sc->max_devices) {
+		if (target >= sc->max_devices) {
 			mpr_dprint(sc, MPR_XINFO, "Target ID is out of range "
 			   "for Bus/Target to DevHandle mapping.");
 			return (EINVAL);

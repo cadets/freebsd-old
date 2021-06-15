@@ -407,7 +407,6 @@ stge_read_eeprom(struct stge_softc *sc, int offset, uint16_t *data)
 	*data = CSR_READ_2(sc, STGE_EepromData);
 }
 
-
 static int
 stge_probe(device_t dev)
 {
@@ -476,13 +475,15 @@ stge_attach(device_t dev)
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
-	    "rxint_nframe", CTLTYPE_INT|CTLFLAG_RW, &sc->sc_rxint_nframe, 0,
-	    sysctl_hw_stge_rxint_nframe, "I", "stge rx interrupt nframe");
+	    "rxint_nframe", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &sc->sc_rxint_nframe, 0, sysctl_hw_stge_rxint_nframe, "I",
+	    "stge rx interrupt nframe");
 
 	SYSCTL_ADD_PROC(device_get_sysctl_ctx(dev),
 	    SYSCTL_CHILDREN(device_get_sysctl_tree(dev)), OID_AUTO,
-	    "rxint_dmawait", CTLTYPE_INT|CTLFLAG_RW, &sc->sc_rxint_dmawait, 0,
-	    sysctl_hw_stge_rxint_dmawait, "I", "stge rx interrupt dmawait");
+	    "rxint_dmawait", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &sc->sc_rxint_dmawait, 0, sysctl_hw_stge_rxint_dmawait, "I",
+	    "stge rx interrupt dmawait");
 
 	/* Pull in device tunables. */
 	sc->sc_rxint_nframe = STGE_RXINT_NFRAME_DEFAULT;
@@ -1813,7 +1814,6 @@ stge_poll(struct ifnet *ifp, enum poll_cmd cmd, int count)
 				}
 			}
 		}
-
 	}
 
 	if (!IFQ_DRV_IS_EMPTY(&ifp->if_snd))

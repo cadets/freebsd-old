@@ -222,7 +222,7 @@ VNET_DEFINE_STATIC(int, current_state_timers_running6);
 
 SYSCTL_DECL(_net_inet6);	/* Note: Not in any common header. */
 
-SYSCTL_NODE(_net_inet6, OID_AUTO, mld, CTLFLAG_RW, 0,
+SYSCTL_NODE(_net_inet6, OID_AUTO, mld, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "IPv6 Multicast Listener Discovery");
 
 /*
@@ -283,6 +283,7 @@ mld_save_context(struct mbuf *m, struct ifnet *ifp)
 #ifdef VIMAGE
 	m->m_pkthdr.PH_loc.ptr = ifp->if_vnet;
 #endif /* VIMAGE */
+	m->m_pkthdr.rcvif = ifp;
 	m->m_pkthdr.flowid = ifp->if_index;
 }
 
@@ -1023,7 +1024,6 @@ mld_v2_process_group_query(struct in6_multi *inm, struct mld_ifsoftc *mli,
 	    m0->m_pkthdr.len, off + sizeof(struct mldv2_query) +
 	    nsrc * sizeof(struct in6_addr), m0));
 
-
 	/*
 	 * Deal with group-specific queries upfront.
 	 * If any group query is already pending, purge any recorded
@@ -1333,7 +1333,7 @@ mld_fasttimo(void)
 	VNET_ITERATOR_DECL(vnet_iter);
 
 	SLIST_INIT(&inmh);
-	
+
 	VNET_LIST_RLOCK_NOSLEEP();
 	VNET_FOREACH(vnet_iter) {
 		CURVNET_SET(vnet_iter);
@@ -1807,7 +1807,7 @@ mld_v1_transmit_report(struct in6_multi *in6m, const int type)
 	NET_EPOCH_ASSERT();
 	IN6_MULTI_LIST_LOCK_ASSERT();
 	MLD_LOCK_ASSERT();
-	
+
 	ifp = in6m->in6m_ifp;
 	/* in process of being freed */
 	if (ifp == NULL)
@@ -3158,6 +3158,7 @@ mld_dispatch_packet(struct mbuf *m)
 	mld = (struct mld_hdr *)(mtod(md, uint8_t *) + off);
 	type = mld->mld_type;
 
+	oifp = NULL;
 	error = ip6_output(m0, &mld_po, NULL, IPV6_UNSPECSRC, &im6o,
 	    &oifp, NULL);
 	if (error) {

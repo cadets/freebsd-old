@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd August 15, 2018
+.Dd April 7, 2021
 .Dt LOADER 8
 .Os
 .Sh NAME
@@ -479,8 +479,14 @@ In that case, the first listed console will become the default console for
 userland output (e.g.\& from
 .Xr init 8 ) .
 .It Va currdev
-Selects the default device.
-Syntax for devices is odd.
+Selects the default device to loader the kernel from.
+The syntax is:
+.Dl Ic loader_device:
+or
+.Dl Ic zfs:dataset:
+Examples:
+.Dl Ic disk0p2:
+.Dl Ic zfs:zroot/ROOT/default:
 .It Va dumpdev
 Sets the device for kernel dumps.
 This can be used to ensure that a device is configured before the corresponding
@@ -646,7 +652,7 @@ Modifies
 .Dv VM_BCACHE_SIZE_MAX .
 .It Va kern.msgbufsize
 Sets the size of the kernel message buffer.
-The default limit of 64KB is usually sufficient unless
+The default limit of 96KB is usually sufficient unless
 large amounts of trace data need to be collected
 between opportunities to examine the buffer or
 dump it to a file.
@@ -981,6 +987,23 @@ See
 for details.
 In order for this to be effective, one should also configure the firmware
 (BIOS or UEFI) to prevent booting from unauthorized devices.
+.Sh MD
+Memory disk (MD) can be used when the
+.Nm
+was compiled with
+.Va MD_IMAGE_SIZE .
+The size of the memory disk is determined by
+.Va MD_IMAGE_SIZE .
+If MD available, a file system can be embedded into the
+.Nm
+with
+.Pa /sys/tools/embed_mfs.sh .
+Then, MD will be probed and be set to
+.Va currdev
+during initialization.
+.Pp
+Currently, MD is only supported in
+.Xr loader.efi 8 .
 .Sh FILES
 .Bl -tag -width /usr/share/examples/bootforth/ -compact
 .It Pa /boot/loader

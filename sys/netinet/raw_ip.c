@@ -38,6 +38,7 @@ __FBSDID("$FreeBSD$");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_ipsec.h"
+#include "opt_route.h"
 
 #include <sys/param.h>
 #include <sys/jail.h>
@@ -63,10 +64,12 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/route.h>
+#include <net/route/route_ctl.h>
 #include <net/vnet.h>
 
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
+#include <netinet/in_fib.h>
 #include <netinet/in_pcb.h>
 #include <netinet/in_var.h>
 #include <netinet/if_ether.h>
@@ -160,7 +163,7 @@ rip_inshash(struct inpcb *inp)
 
 	INP_INFO_WLOCK_ASSERT(pcbinfo);
 	INP_WLOCK_ASSERT(inp);
-	
+
 	if (inp->inp_ip_p != 0 &&
 	    inp->inp_laddr.s_addr != INADDR_ANY &&
 	    inp->inp_faddr.s_addr != INADDR_ANY) {
@@ -484,6 +487,17 @@ rip_output(struct mbuf *m, struct socket *so, ...)
 		ip->ip_len = htons(m->m_pkthdr.len);
 		ip->ip_src = inp->inp_laddr;
 		ip->ip_dst.s_addr = dst;
+#ifdef ROUTE_MPATH
+		if (CALC_FLOWID_OUTBOUND) {
+			uint32_t hash_type, hash_val;
+
+			hash_val = fib4_calc_software_hash(ip->ip_src,
+			    ip->ip_dst, 0, 0, ip->ip_p, &hash_type);
+			m->m_pkthdr.flowid = hash_val;
+			M_HASHTYPE_SET(m, hash_type);
+			flags |= IP_NODEFAULTFLOWID;
+		}
+#endif
 		if (jailed(inp->inp_cred)) {
 			/*
 			 * prison_local_ip4() would be good enough but would
@@ -519,7 +533,17 @@ rip_output(struct mbuf *m, struct socket *so, ...)
 				return (EINVAL);
 			ip = mtod(m, struct ip *);
 		}
+#ifdef ROUTE_MPATH
+		if (CALC_FLOWID_OUTBOUND) {
+			uint32_t hash_type, hash_val;
 
+			hash_val = fib4_calc_software_hash(ip->ip_dst,
+			    ip->ip_src, 0, 0, ip->ip_p, &hash_type);
+			m->m_pkthdr.flowid = hash_val;
+			M_HASHTYPE_SET(m, hash_type);
+			flags |= IP_NODEFAULTFLOWID;
+		}
+#endif
 		INP_RLOCK(inp);
 		/*
 		 * Don't allow both user specified and setsockopt options,
@@ -841,7 +865,8 @@ rip_ctlinput(int cmd, struct sockaddr *sa, void *vip)
 
 		err = ifa_del_loopback_route((struct ifaddr *)ia, sa);
 
-		err = rtinit(&ia->ia_ifa, RTM_ADD, flags);
+		rt_addrmsg(RTM_ADD, &ia->ia_ifa, ia->ia_ifp->if_fib);
+		err = in_handle_ifaddr_route(RTM_ADD, ia);
 		if (err == 0)
 			ia->ia_flags |= IFA_ROUTE;
 
@@ -892,7 +917,7 @@ rip_detach(struct socket *so)
 
 	inp = sotoinpcb(so);
 	KASSERT(inp != NULL, ("rip_detach: inp == NULL"));
-	KASSERT(inp->inp_faddr.s_addr == INADDR_ANY, 
+	KASSERT(inp->inp_faddr.s_addr == INADDR_ANY,
 	    ("rip_detach: not closed"));
 
 	INP_INFO_WLOCK(&V_ripcbinfo);
@@ -971,6 +996,8 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct thread *td)
 	struct inpcb *inp;
 	int error;
 
+	if (nam->sa_family != AF_INET)
+		return (EAFNOSUPPORT);
 	if (nam->sa_len != sizeof(*addr))
 		return (EINVAL);
 
@@ -1045,27 +1072,42 @@ rip_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 {
 	struct inpcb *inp;
 	u_long dst;
+	int error;
 
 	inp = sotoinpcb(so);
 	KASSERT(inp != NULL, ("rip_send: inp == NULL"));
+
+	if (control != NULL) {
+		m_freem(control);
+		control = NULL;
+	}
 
 	/*
 	 * Note: 'dst' reads below are unlocked.
 	 */
 	if (so->so_state & SS_ISCONNECTED) {
 		if (nam) {
-			m_freem(m);
-			return (EISCONN);
+			error = EISCONN;
+			goto release;
 		}
 		dst = inp->inp_faddr.s_addr;	/* Unlocked read. */
 	} else {
-		if (nam == NULL) {
-			m_freem(m);
-			return (ENOTCONN);
-		}
+		error = 0;
+		if (nam == NULL)
+			error = ENOTCONN;
+		else if (nam->sa_family != AF_INET)
+			error = EAFNOSUPPORT;
+		else if (nam->sa_len != sizeof(struct sockaddr_in))
+			error = EINVAL;
+		if (error != 0)
+			goto release;
 		dst = ((struct sockaddr_in *)nam)->sin_addr.s_addr;
 	}
 	return (rip_output(m, so, dst));
+
+release:
+	m_freem(m);
+	return (error);
 }
 #endif /* INET */
 
@@ -1137,8 +1179,9 @@ rip_pcblist(SYSCTL_HANDLER_ARGS)
 }
 
 SYSCTL_PROC(_net_inet_raw, OID_AUTO/*XXX*/, pcblist,
-    CTLTYPE_OPAQUE | CTLFLAG_RD, NULL, 0,
-    rip_pcblist, "S,xinpcb", "List of active raw IP sockets");
+    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, 0,
+    rip_pcblist, "S,xinpcb",
+    "List of active raw IP sockets");
 
 #ifdef INET
 struct pr_usrreqs rip_usrreqs = {

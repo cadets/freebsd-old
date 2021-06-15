@@ -10,7 +10,7 @@ __<${_this:T}>__:
 
 # Yes, the flags are redundant.
 LIBCOMPATWMAKEENV+= \
-		INSTALL="sh ${.CURDIR}/tools/install.sh" \
+		INSTALL="${INSTALL_CMD} -U" \
 		PATH=${TMPPATH} \
 		SYSROOT=${LIBCOMPATTMP} \
 		LIBDIR=/usr/lib${libcompat} \
@@ -39,20 +39,19 @@ LIBCOMPATIMAKE+=	${LIBCOMPATWMAKE:NINSTALL=*:NDESTDIR=*} \
 
 _LC_LIBDIRS.yes=		lib
 _LC_LIBDIRS.yes+=		gnu/lib
-_LC_LIBDIRS.yes+=		usr.bin/lex/lib
 _LC_LIBDIRS.${MK_CDDL:tl}+=	cddl/lib
 _LC_LIBDIRS.${MK_CRYPT:tl}+=	secure/lib
 _LC_LIBDIRS.${MK_KERBEROS:tl}+=	kerberos5/lib
 
 _LC_INCDIRS=	\
 		include \
-		lib/ncurses/ncursesw \
+		lib/ncurses/ncurses \
 		${_LC_LIBDIRS.yes}
 
 .if ${MK_FILE} != "no"
 _libmagic=	lib/libmagic
 .endif
-.if ${MK_PMC} != "no" && ${TARGET_ARCH} == "amd64"
+.if ${MK_PMC} != "no"
 _jevents=	lib/libpmc/pmu-events
 .endif
 
@@ -63,7 +62,7 @@ build${libcompat}: .PHONY
 	@echo "--------------------------------------------------------------"
 	@echo ">>> stage 4.3: building lib${libcompat} shim libraries"
 	@echo "--------------------------------------------------------------"
-.if !defined(NO_CLEAN)
+.if ${MK_CLEAN} == "yes"
 	rm -rf ${LIBCOMPATTMP}
 .else
 	${_+_}@if [ -e "${LIBCOMPATTMP}" ]; then \
@@ -72,7 +71,7 @@ build${libcompat}: .PHONY
 		    DESTDIR=${LIBCOMPATTMP} \
 		    delete-old delete-old-libs >/dev/null; \
 	fi
-.endif	# !defined(NO_CLEAN)
+.endif	# MK_CLEAN == "yes"
 
 	mkdir -p ${LIBCOMPATTMP}/usr/include
 	${WORLDTMP_MTREE} -f ${.CURDIR}/etc/mtree/BSD.usr.dist \
@@ -95,7 +94,7 @@ build${libcompat}: .PHONY
 	    DIRPRFX=${_dir}/ ${_t}
 .endfor
 .endfor
-.for _dir in lib/ncurses/ncurses lib/ncurses/ncursesw ${_libmagic} ${_jevents}
+.for _dir in lib/ncurses/ncurses ${_libmagic} ${_jevents}
 .for _t in ${_obj} build-tools
 	${_+_}cd ${.CURDIR}/${_dir}; \
 	    WORLDTMP=${WORLDTMP} \
@@ -105,7 +104,7 @@ build${libcompat}: .PHONY
 	    OBJROOT='$${OBJTOP}/' \
 	    MAKEOBJDIRPREFIX= \
 	    DIRPRFX=${_dir}/ -DNO_LINT -DNO_CPU_CFLAGS \
-	    MK_CTF=no MK_RETPOLINE=no MK_WARNS=no \
+	    MK_CTF=no MK_RETPOLINE=no MK_WERROR=no \
 	    ${_t}
 .endfor
 .endfor

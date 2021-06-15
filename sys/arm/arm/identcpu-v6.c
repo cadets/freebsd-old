@@ -107,7 +107,6 @@ static struct {
 	    CPU_CLASS_KRAIT},
 };
 
-
 static void
 print_v5_cache(void)
 {
@@ -168,7 +167,6 @@ print_v5_cache(void)
 		}
 	pdcache_size = multiplier << (CPU_CT_xSIZE_SIZE(dsize) + 8);
 
-
 	/* Print cache info. */
 	if (picache_line_size == 0 && pdcache_line_size == 0)
 		return;
@@ -224,7 +222,7 @@ print_v7_cache(void )
 				printf(" WT");
 			if (val & CPUV7_CT_CTYPE_WB)
 				printf(" WB");
-				if (val & CPUV7_CT_CTYPE_RA)
+			if (val & CPUV7_CT_CTYPE_RA)
 				printf(" Read-Alloc");
 			if (val & CPUV7_CT_CTYPE_WA)
 				printf(" Write-Alloc");
@@ -272,7 +270,6 @@ add_cap(char *cap)
 		hw_buf_idx += sprintf(hw_buf + hw_buf_idx, ", ");
 	hw_buf_newline = false;
 
-
 	hw_buf_idx += sprintf(hw_buf + hw_buf_idx, "%s", cap);
 }
 
@@ -298,7 +295,6 @@ identify_arm_cpu(void)
 			printf("CPU: %s\n", cpu_model);
 			break;
 		}
-
 	}
 	if (i >= nitems(cpu_names))
 		printf("unknown CPU (ID = 0x%x)\n", cpuinfo.midr);

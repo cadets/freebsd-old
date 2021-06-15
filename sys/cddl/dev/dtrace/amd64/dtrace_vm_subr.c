@@ -137,7 +137,7 @@ static __inline pml4_entry_t *
 dtrace_pml4e(pmap_t pmap, vm_offset_t va)
 {
 
-	return (&pmap->pm_pml4[dtrace_pml4e_index(va)]);
+	return (&pmap->pm_pmltop[dtrace_pml4e_index(va)]);
 }
 
 static __inline boolean_t

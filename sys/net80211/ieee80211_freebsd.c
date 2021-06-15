@@ -41,12 +41,14 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/mbuf.h>   
 #include <sys/module.h>
+#include <sys/priv.h>
 #include <sys/proc.h>
 #include <sys/sysctl.h>
 
 #include <sys/socket.h>
 
 #include <net/bpf.h>
+#include <net/debugnet.h>
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_dl.h>
@@ -60,7 +62,9 @@ __FBSDID("$FreeBSD$");
 #include <net80211/ieee80211_var.h>
 #include <net80211/ieee80211_input.h>
 
-SYSCTL_NODE(_net, OID_AUTO, wlan, CTLFLAG_RD, 0, "IEEE 80211 parameters");
+DEBUGNET_DEFINE(ieee80211);
+SYSCTL_NODE(_net, OID_AUTO, wlan, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "IEEE 80211 parameters");
 
 #ifdef IEEE80211_DEBUG
 static int	ieee80211_debug = 0;
@@ -71,6 +75,42 @@ SYSCTL_INT(_net_wlan, OID_AUTO, debug, CTLFLAG_RW, &ieee80211_debug,
 static const char wlanname[] = "wlan";
 static struct if_clone *wlan_cloner;
 
+/*
+ * priv(9) NET80211 checks.
+ * Return 0 if operation is allowed, E* (usually EPERM) otherwise.
+ */
+int
+ieee80211_priv_check_vap_getkey(u_long cmd __unused,
+     struct ieee80211vap *vap __unused, struct ifnet *ifp __unused)
+{
+
+	return (priv_check(curthread, PRIV_NET80211_VAP_GETKEY));
+}
+
+int
+ieee80211_priv_check_vap_manage(u_long cmd __unused,
+     struct ieee80211vap *vap __unused, struct ifnet *ifp __unused)
+{
+
+	return (priv_check(curthread, PRIV_NET80211_VAP_MANAGE));
+}
+
+int
+ieee80211_priv_check_vap_setmac(u_long cmd __unused,
+     struct ieee80211vap *vap __unused, struct ifnet *ifp __unused)
+{
+
+	return (priv_check(curthread, PRIV_NET80211_VAP_SETMAC));
+}
+
+int
+ieee80211_priv_check_create_vap(u_long cmd __unused,
+    struct ieee80211vap *vap __unused, struct ifnet *ifp __unused)
+{
+
+	return (priv_check(curthread, PRIV_NET80211_CREATE_VAP));
+}
+
 static int
 wlan_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 {
@@ -78,6 +118,10 @@ wlan_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	struct ieee80211vap *vap;
 	struct ieee80211com *ic;
 	int error;
+
+	error = ieee80211_priv_check_create_vap(0, NULL, NULL);
+	if (error)
+		return error;
 
 	error = copyin(params, &cp, sizeof(cp));
 	if (error)
@@ -110,7 +154,14 @@ wlan_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 			cp.icp_flags & IEEE80211_CLONE_MACADDR ?
 			    cp.icp_macaddr : ic->ic_macaddr);
 
-	return (vap == NULL ? EIO : 0);
+	if (vap == NULL)
+		return (EIO);
+
+#ifdef DEBUGNET
+	if (ic->ic_debugnet_meth != NULL)
+		DEBUGNET_SET(vap->iv_ifp, ieee80211);
+#endif
+	return (0);
 }
 
 static void
@@ -227,10 +278,10 @@ ieee80211_sysctl_vattach(struct ieee80211vap *vap)
 	sysctl_ctx_init(ctx);
 	snprintf(num, sizeof(num), "%u", ifp->if_dunit);
 	oid = SYSCTL_ADD_NODE(ctx, &SYSCTL_NODE_CHILDREN(_net, wlan),
-		OID_AUTO, num, CTLFLAG_RD, NULL, "");
+	    OID_AUTO, num, CTLFLAG_RD | CTLFLAG_MPSAFE, NULL, "");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"%parent", CTLTYPE_STRING | CTLFLAG_RD, vap->iv_ic, 0,
-		ieee80211_sysctl_parent, "A", "parent device");
+	    "%parent", CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_NEEDGIANT,
+	    vap->iv_ic, 0, ieee80211_sysctl_parent, "A", "parent device");
 	SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
 		"driver_caps", CTLFLAG_RW, &vap->iv_caps, 0,
 		"driver capabilities");
@@ -245,21 +296,21 @@ ieee80211_sysctl_vattach(struct ieee80211vap *vap)
 		"consecutive beacon misses before scanning");
 	/* XXX inherit from tunables */
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"inact_run", CTLTYPE_INT | CTLFLAG_RW, &vap->iv_inact_run, 0,
-		ieee80211_sysctl_inact, "I",
-		"station inactivity timeout (sec)");
+	    "inact_run", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &vap->iv_inact_run, 0, ieee80211_sysctl_inact, "I",
+	    "station inactivity timeout (sec)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"inact_probe", CTLTYPE_INT | CTLFLAG_RW, &vap->iv_inact_probe, 0,
-		ieee80211_sysctl_inact, "I",
-		"station inactivity probe timeout (sec)");
+	    "inact_probe", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &vap->iv_inact_probe, 0, ieee80211_sysctl_inact, "I",
+	    "station inactivity probe timeout (sec)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"inact_auth", CTLTYPE_INT | CTLFLAG_RW, &vap->iv_inact_auth, 0,
-		ieee80211_sysctl_inact, "I",
-		"station authentication timeout (sec)");
+	    "inact_auth", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &vap->iv_inact_auth, 0, ieee80211_sysctl_inact, "I",
+	    "station authentication timeout (sec)");
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"inact_init", CTLTYPE_INT | CTLFLAG_RW, &vap->iv_inact_init, 0,
-		ieee80211_sysctl_inact, "I",
-		"station initial state timeout (sec)");
+	    "inact_init", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    &vap->iv_inact_init, 0, ieee80211_sysctl_inact, "I",
+	    "station initial state timeout (sec)");
 	if (vap->iv_htcaps & IEEE80211_HTC_HT) {
 		SYSCTL_ADD_UINT(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
 			"ampdu_mintraffic_bk", CTLFLAG_RW,
@@ -280,14 +331,14 @@ ieee80211_sysctl_vattach(struct ieee80211vap *vap)
 	}
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-		"force_restart", CTLTYPE_INT | CTLFLAG_RW, vap, 0,
-		ieee80211_sysctl_vap_restart, "I",
-		"force a VAP restart");
+	    "force_restart", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+	    vap, 0, ieee80211_sysctl_vap_restart, "I", "force a VAP restart");
 
 	if (vap->iv_caps & IEEE80211_C_DFS) {
 		SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(oid), OID_AUTO,
-			"radar", CTLTYPE_INT | CTLFLAG_RW, vap->iv_ic, 0,
-			ieee80211_sysctl_radar, "I", "simulate radar event");
+		    "radar", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT,
+		    vap->iv_ic, 0, ieee80211_sysctl_radar, "I",
+		    "simulate radar event");
 	}
 	vap->iv_sysctl = ctx;
 	vap->iv_oid = oid;
@@ -304,7 +355,6 @@ ieee80211_sysctl_vdetach(struct ieee80211vap *vap)
 	}
 }
 
-#define	MS(_v, _f)	(((_v) & _f##_M) >> _f##_S)
 int
 ieee80211_com_vincref(struct ieee80211vap *vap)
 {
@@ -317,7 +367,8 @@ ieee80211_com_vincref(struct ieee80211vap *vap)
 		return (ENETDOWN);
 	}
 
-	if (MS(ostate, IEEE80211_COM_REF) == IEEE80211_COM_REF_MAX) {
+	if (_IEEE80211_MASKSHIFT(ostate, IEEE80211_COM_REF) ==
+	    IEEE80211_COM_REF_MAX) {
 		atomic_subtract_32(&vap->iv_com_state, IEEE80211_COM_REF_ADD);
 		return (EOVERFLOW);
 	}
@@ -332,7 +383,7 @@ ieee80211_com_vdecref(struct ieee80211vap *vap)
 
 	ostate = atomic_fetchadd_32(&vap->iv_com_state, -IEEE80211_COM_REF_ADD);
 
-	KASSERT(MS(ostate, IEEE80211_COM_REF) != 0,
+	KASSERT(_IEEE80211_MASKSHIFT(ostate, IEEE80211_COM_REF) != 0,
 	    ("com reference counter underflow"));
 
 	(void) ostate;
@@ -345,10 +396,10 @@ ieee80211_com_vdetach(struct ieee80211vap *vap)
 
 	sleep_time = msecs_to_ticks(250);
 	atomic_set_32(&vap->iv_com_state, IEEE80211_COM_DETACHED);
-	while (MS(atomic_load_32(&vap->iv_com_state), IEEE80211_COM_REF) != 0)
+	while (_IEEE80211_MASKSHIFT(atomic_load_32(&vap->iv_com_state),
+	    IEEE80211_COM_REF) != 0)
 		pause("comref", sleep_time);
 }
-#undef	MS
 
 int
 ieee80211_node_dectestref(struct ieee80211_node *ni)
@@ -614,7 +665,6 @@ ieee80211_get_rx_params_ptr(struct mbuf *m)
 	return (&rx->params);
 }
 
-
 /*
  * Add TOA parameters to the given mbuf.
  */
@@ -699,7 +749,7 @@ ieee80211_vap_xmitpkt(struct ieee80211vap *vap, struct mbuf *m)
 #include <sys/libkern.h>
 
 void
-get_random_bytes(void *p, size_t n)
+net80211_get_random_bytes(void *p, size_t n)
 {
 	uint8_t *dp = p;
 
@@ -788,8 +838,11 @@ ieee80211_notify_replay_failure(struct ieee80211vap *vap,
 	struct ifnet *ifp = vap->iv_ifp;
 
 	IEEE80211_NOTE_MAC(vap, IEEE80211_MSG_CRYPTO, wh->i_addr2,
-	    "%s replay detected tid %d <rsc %ju, csc %ju, keyix %u rxkeyix %u>",
-	    k->wk_cipher->ic_name, tid, (intmax_t) rsc,
+	    "%s replay detected tid %d <rsc %ju (%jx), csc %ju (%jx), keyix %u rxkeyix %u>",
+	    k->wk_cipher->ic_name, tid,
+	    (intmax_t) rsc,
+	    (intmax_t) rsc,
+	    (intmax_t) k->wk_keyrsc[tid],
 	    (intmax_t) k->wk_keyrsc[tid],
 	    k->wk_keyix, k->wk_rxkeyix);
 
@@ -962,6 +1015,19 @@ ieee80211_notify_radio(struct ieee80211com *ic, int state)
 }
 
 void
+ieee80211_notify_ifnet_change(struct ieee80211vap *vap)
+{
+	struct ifnet *ifp = vap->iv_ifp;
+
+	IEEE80211_DPRINTF(vap, IEEE80211_MSG_DEBUG, "%s\n",
+	    "interface state change");
+
+	CURVNET_SET(ifp->if_vnet);
+	rt_ifmsg(ifp);
+	CURVNET_RESTORE();
+}
+
+void
 ieee80211_load_module(const char *modname)
 {
 
@@ -1017,6 +1083,68 @@ wlan_iflladdr(void *arg __unused, struct ifnet *ifp)
 }
 
 /*
+ * Fetch the VAP name.
+ *
+ * This returns a const char pointer suitable for debugging,
+ * but don't expect it to stick around for much longer.
+ */
+const char *
+ieee80211_get_vap_ifname(struct ieee80211vap *vap)
+{
+	if (vap->iv_ifp == NULL)
+		return "(none)";
+	return vap->iv_ifp->if_xname;
+}
+
+#ifdef DEBUGNET
+static void
+ieee80211_debugnet_init(struct ifnet *ifp, int *nrxr, int *ncl, int *clsize)
+{
+	struct ieee80211vap *vap;
+	struct ieee80211com *ic;
+
+	vap = if_getsoftc(ifp);
+	ic = vap->iv_ic;
+
+	IEEE80211_LOCK(ic);
+	ic->ic_debugnet_meth->dn8_init(ic, nrxr, ncl, clsize);
+	IEEE80211_UNLOCK(ic);
+}
+
+static void
+ieee80211_debugnet_event(struct ifnet *ifp, enum debugnet_ev ev)
+{
+	struct ieee80211vap *vap;
+	struct ieee80211com *ic;
+
+	vap = if_getsoftc(ifp);
+	ic = vap->iv_ic;
+
+	IEEE80211_LOCK(ic);
+	ic->ic_debugnet_meth->dn8_event(ic, ev);
+	IEEE80211_UNLOCK(ic);
+}
+
+static int
+ieee80211_debugnet_transmit(struct ifnet *ifp, struct mbuf *m)
+{
+	return (ieee80211_vap_transmit(ifp, m));
+}
+
+static int
+ieee80211_debugnet_poll(struct ifnet *ifp, int count)
+{
+	struct ieee80211vap *vap;
+	struct ieee80211com *ic;
+
+	vap = if_getsoftc(ifp);
+	ic = vap->iv_ic;
+
+	return (ic->ic_debugnet_meth->dn8_poll(ic, count));
+}
+#endif
+
+/*
  * Module glue.
  *
  * NB: the module name is "wlan" for compatibility with NetBSD.
@@ -1055,4 +1183,3 @@ MODULE_DEPEND(wlan, ether, 1, 1, 1);
 #ifdef	IEEE80211_ALQ
 MODULE_DEPEND(wlan, alq, 1, 1, 1);
 #endif	/* IEEE80211_ALQ */
-

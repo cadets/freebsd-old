@@ -155,7 +155,6 @@ amr_find_ident(device_t dev)
     for (id = amr_device_ids; id->vendor != 0; id++) {
 	if ((pci_get_vendor(dev) == id->vendor) &&
 	    (pci_get_device(dev) == id->device)) {
-
 	    /* do we need to test for a signature? */
 	    if (id->flags & AMR_ID_PROBE_SIG) {
 		sig = pci_read_config(dev, AMR_CFG_SIG, 2);
@@ -167,7 +166,7 @@ amr_find_ident(device_t dev)
     }
     return (NULL);
 }
-	
+
 static int
 amr_pci_probe(device_t dev)
 {
@@ -332,7 +331,6 @@ amr_pci_attach(device_t dev)
 	goto out;
     debug(2, "ccb mapped");
 
-
     /*
      * Do bus-independant initialisation, bring controller online.
      */
@@ -341,6 +339,8 @@ amr_pci_attach(device_t dev)
 out:
     if (error)
 	amr_pci_free(sc);
+    else
+	gone_in_dev(dev, 13, "amr(4) driver");
     return(error);
 }
 
@@ -386,7 +386,6 @@ amr_pci_shutdown(device_t dev)
 
     /* mark ourselves as in-shutdown */
     sc->amr_state |= AMR_STATE_SHUTDOWN;
-
 
     /* flush controller */
     device_printf(sc->amr_dev, "flushing cache...");
@@ -704,4 +703,3 @@ amr_ccb_map(struct amr_softc *sc)
 
     return (0);
 }
-

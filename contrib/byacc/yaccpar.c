@@ -2,7 +2,7 @@
  * @Id: skel2c,v 1.4 2016/06/07 00:26:09 tom Exp @
  */
 
-/* @Id: yaccpar.skel,v 1.8 2016/12/02 21:44:42 tom Exp @ */
+/* @Id: yaccpar.skel,v 1.10 2018/05/06 21:28:14 Guy.Harris Exp @ */
 
 #include "defs.h"
 
@@ -67,8 +67,9 @@ const char *const tables[] =
 const char *const global_vars[] =
 {
     "",
+    "#if YYDEBUG",
     "int      yydebug;",
-    "int      yynerrs;",
+    "#endif",
     0
 };
 
@@ -79,6 +80,7 @@ const char *const impure_vars[] =
     "int      yychar;",
     "YYSTYPE  yyval;",
     "YYSTYPE  yylval;",
+    "int      yynerrs;",
     0
 };
 
@@ -124,6 +126,7 @@ const char *const body_vars[] =
     "    int      yychar;",
     "    YYSTYPE  yyval;",
     "    YYSTYPE  yylval;",
+    "    int      yynerrs;",
     "",
     "    /* variables for the parser stack */",
     "    YYSTACKDATA yystack;",
@@ -157,14 +160,14 @@ const char *const body_1[] =
     "",
     "    i = (int) (data->s_mark - data->s_base);",
     "    newss = (YYINT *)realloc(data->s_base, newsize * sizeof(*newss));",
-    "    if (newss == 0)",
+    "    if (newss == NULL)",
     "        return YYENOMEM;",
     "",
     "    data->s_base = newss;",
     "    data->s_mark = newss + i;",
     "",
     "    newvs = (YYSTYPE *)realloc(data->l_base, newsize * sizeof(*newvs));",
-    "    if (newvs == 0)",
+    "    if (newvs == NULL)",
     "        return YYENOMEM;",
     "",
     "    data->l_base = newvs;",
@@ -203,7 +206,7 @@ const char *const body_2[] =
     "#if YYDEBUG",
     "    const char *yys;",
     "",
-    "    if ((yys = getenv(\"YYDEBUG\")) != 0)",
+    "    if ((yys = getenv(\"YYDEBUG\")) != NULL)",
     "    {",
     "        yyn = *yys;",
     "        if (yyn >= '0' && yyn <= '9')",

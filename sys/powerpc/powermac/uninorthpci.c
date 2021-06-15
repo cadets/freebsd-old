@@ -100,7 +100,7 @@ static device_method_t	uninorth_methods[] = {
 static devclass_t	uninorth_devclass;
 
 DEFINE_CLASS_1(pcib, uninorth_driver, uninorth_methods,
-    sizeof(struct uninorth_softc), ofw_pci_driver);
+    sizeof(struct uninorth_softc), ofw_pcib_driver);
 EARLY_DRIVER_MODULE(uninorth, ofwbus, uninorth_driver, uninorth_devclass, 0, 0,
     BUS_PASS_BUS);
 
@@ -128,7 +128,7 @@ uninorth_probe(device_t dev)
 		device_set_desc(dev, "IBM CPC945 PCI Express Root");
 		return (0);
 	}
-	
+
 	return (ENXIO);
 }
 
@@ -176,7 +176,7 @@ uninorth_attach(device_t dev)
 
 	mtx_init(&sc->sc_cfg_mtx, "uninorth pcicfg", NULL, MTX_SPIN);
 
-	return (ofw_pci_attach(dev));
+	return (ofw_pcib_attach(dev));
 }
 
 static u_int32_t
@@ -278,4 +278,3 @@ uninorth_enable_config(struct uninorth_softc *sc, u_int bus, u_int slot,
 
 	return (1);
 }
-

@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd May 13, 2019
+.Dd May 5, 2020
 .Dt CAP_SYSCTL 3
 .Os
 .Sh NAME
@@ -46,7 +46,7 @@
 .Ft void *
 .Fn cap_sysctl_limit_name "void *limit" "const char *name" "int flags"
 .Ft void *
-.Fn cap_sysctl_limit_mib "void *limit" "int *mibp" "u_int miblen" "int flags"
+.Fn cap_sysctl_limit_mib "void *limit" "const int *mibp" "u_int miblen" "int flags"
 .Ft int
 .Fn cap_sysctl_limit "void *limit"
 .Sh DESCRIPTION
@@ -131,8 +131,8 @@ capability to get the value of
 cap_channel_t *capcas, *capsysctl;
 const char *name = "kern.trap_enotcap";
 void *limit;
-int value;
 size_t size;
+bool value;
 
 /* Open capability to Casper. */
 capcas = cap_init();
@@ -160,6 +160,7 @@ if (cap_sysctl_limit(limit) < 0)
 	err(1, "Unable to set limits");
 
 /* Fetch value. */
+size = sizeof(value);
 if (cap_sysctlbyname(capsysctl, name, &value, &size, NULL, 0) < 0)
 	err(1, "Unable to get value of sysctl");
 
@@ -175,6 +176,11 @@ cap_close(capsysctl);
 .Xr sysctlnametomib 3 ,
 .Xr capsicum 4 ,
 .Xr nv 9
+.Sh HISTORY
+The
+.Nm cap_sysctl
+service first appeared in
+.Fx 10.3 .
 .Sh AUTHORS
 The
 .Nm cap_sysctl

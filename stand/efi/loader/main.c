@@ -36,11 +36,18 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/reboot.h>
 #include <sys/boot.h>
+#ifdef EFI_ZFS_BOOT
+#include <sys/zfs_bootenv.h>
+#endif
 #include <paths.h>
+#include <netinet/in.h>
+#include <netinet/in_systm.h>
 #include <stdint.h>
 #include <string.h>
 #include <setjmp.h>
 #include <disk.h>
+#include <dev_net.h>
+#include <net.h>
 
 #include <efi.h>
 #include <efilib.h>
@@ -180,8 +187,17 @@ static void
 set_currdev(const char *devname)
 {
 
-	env_setenv("currdev", EV_VOLATILE, devname, efi_setcurrdev, env_nounset);
-	env_setenv("loaddev", EV_VOLATILE, devname, env_noset, env_nounset);
+	/*
+	 * Don't execute hooks here; we may need to try setting these more than
+	 * once here if we're probing for the ZFS pool we're supposed to boot.
+	 * The currdev hook is intended to just validate user input anyways,
+	 * while the loaddev hook makes it immutable once we've determined what
+	 * the proper currdev is.
+	 */
+	env_setenv("currdev", EV_VOLATILE | EV_NOHOOK, devname, efi_setcurrdev,
+	    env_nounset);
+	env_setenv("loaddev", EV_VOLATILE | EV_NOHOOK, devname, env_noset,
+	    env_nounset);
 }
 
 static void
@@ -251,6 +267,8 @@ probe_zfs_currdev(uint64_t guid)
 {
 	char *devname;
 	struct zfs_devdesc currdev;
+	char *buf = NULL;
+	bool rv;
 
 	currdev.dd.d_dev = &zfs_dev;
 	currdev.dd.d_unit = 0;
@@ -258,9 +276,38 @@ probe_zfs_currdev(uint64_t guid)
 	currdev.root_guid = 0;
 	set_currdev_devdesc((struct devdesc *)&currdev);
 	devname = efi_fmtdev(&currdev);
-	init_zfs_bootenv(devname);
+	init_zfs_boot_options(devname);
 
-	return (sanity_check_currdev());
+	rv = sanity_check_currdev();
+	if (rv) {
+		buf = malloc(VDEV_PAD_SIZE);
+		if (buf != NULL) {
+			if (zfs_get_bootonce(&currdev, OS_BOOTONCE, buf,
+			    VDEV_PAD_SIZE) == 0) {
+				printf("zfs bootonce: %s\n", buf);
+				set_currdev(buf);
+				setenv("zfs-bootonce", buf, 1);
+			}
+			free(buf);
+			(void) zfs_attach_nvstore(&currdev);
+		}
+	}
+	return (rv);
+}
+#endif
+
+#ifdef MD_IMAGE_SIZE
+static bool
+probe_md_currdev(void)
+{
+	extern struct devsw md_dev;
+	bool rv;
+
+	set_currdev_devsw(&md_dev, 0);
+	rv = sanity_check_currdev();
+	if (!rv)
+		printf("MD not present\n");
+	return (rv);
 }
 #endif
 
@@ -324,9 +371,9 @@ match_boot_info(char *boot_info, size_t bisz)
 	CHAR16 *text;
 
 	/*
-	 * FreeBSD encodes it's boot loading path into the boot loader
+	 * FreeBSD encodes its boot loading path into the boot loader
 	 * BootXXXX variable. We look for the last one in the path
-	 * and use that to load the kernel. However, if we only fine
+	 * and use that to load the kernel. However, if we only find
 	 * one DEVICE_PATH, then there's nothing specific and we should
 	 * fall back.
 	 *
@@ -337,8 +384,8 @@ match_boot_info(char *boot_info, size_t bisz)
 	 * boot loader to get to the next boot loader. However, that
 	 * doesn't work. We rarely have the path to the image booted
 	 * (just the device) so we can't count on that. So, we do the
-	 * enxt best thing, we look through the device path(s) passed
-	 * in the BootXXXX varaible. If there's only one, we return
+	 * next best thing: we look through the device path(s) passed
+	 * in the BootXXXX variable. If there's only one, we return
 	 * NOT_SPECIFIC. Otherwise, we look at the last one and try to
 	 * load that. If we can, we return BOOT_INFO_OK. Otherwise we
 	 * return BAD_CHOICE for the caller to sort out.
@@ -537,6 +584,15 @@ find_currdev(bool do_bootmgr, bool is_last,
 	}
 #endif /* EFI_ZFS_BOOT */
 
+#ifdef MD_IMAGE_SIZE
+	/*
+	 * If there is an embedded MD, try to use that.
+	 */
+	printf("Trying MD\n");
+	if (probe_md_currdev())
+		return (0);
+#endif /* MD_IMAGE_SIZE */
+
 	/*
 	 * Try to find the block device by its handle based on the
 	 * image we're booting. If we can't find a sane partition,
@@ -703,6 +759,8 @@ parse_uefi_con_out(void)
 	how = 0;
 	sz = sizeof(buf);
 	rv = efi_global_getenv("ConOut", buf, &sz);
+	if (rv != EFI_SUCCESS)
+		rv = efi_global_getenv("ConOutDev", buf, &sz);
 	if (rv != EFI_SUCCESS) {
 		/* If we don't have any ConOut default to serial */
 		how = RB_SERIAL;
@@ -711,9 +769,14 @@ parse_uefi_con_out(void)
 	ep = buf + sz;
 	node = (EFI_DEVICE_PATH *)buf;
 	while ((char *)node < ep) {
+		if (IsDevicePathEndType(node)) {
+			if (pci_pending && vid_seen == 0)
+				vid_seen = ++seen;
+		}
 		pci_pending = false;
 		if (DevicePathType(node) == ACPI_DEVICE_PATH &&
-		    DevicePathSubType(node) == ACPI_DP) {
+		    (DevicePathSubType(node) == ACPI_DP ||
+		    DevicePathSubType(node) == ACPI_EXTENDED_DP)) {
 			/* Check for Serial node */
 			acpi = (void *)node;
 			if (EISA_ID_TO_NUM(acpi->HID) == 0x501) {
@@ -722,7 +785,7 @@ parse_uefi_con_out(void)
 			}
 		} else if (DevicePathType(node) == MESSAGING_DEVICE_PATH &&
 		    DevicePathSubType(node) == MSG_UART_DP) {
-
+			com_seen = ++seen;
 			uart = (void *)node;
 			setenv_int("efi_com_speed", uart->BaudRate);
 		} else if (DevicePathType(node) == ACPI_DEVICE_PATH &&
@@ -743,8 +806,6 @@ parse_uefi_con_out(void)
 		}
 		node = NextDevicePathNode(node);
 	}
-	if (pci_pending && vid_seen == 0)
-		vid_seen = ++seen;
 
 	/*
 	 * Truth table for RB_MULTIPLE | RB_SERIAL
@@ -843,7 +904,11 @@ read_loader_env(const char *name, char *def_fn, bool once)
 	}
 }
 
-
+caddr_t
+ptov(uintptr_t x)
+{
+	return ((caddr_t)x);
+}
 
 EFI_STATUS
 main(int argc, CHAR16 *argv[])
@@ -884,6 +949,11 @@ main(int argc, CHAR16 *argv[])
 	 * changes to take effect, regardless of where they come from.
 	 */
 	setenv("console", "efi", 1);
+	uhowto = parse_uefi_con_out();
+#if defined(__aarch64__) || defined(__arm__) || defined(__riscv)
+	if ((uhowto & RB_SERIAL) != 0)
+		setenv("console", "comconsole", 1);
+#endif
 	cons_probe();
 
 	/* Init the time source */
@@ -917,7 +987,6 @@ main(int argc, CHAR16 *argv[])
 	if (!has_kbd && (howto & RB_PROBE))
 		howto |= RB_SERIAL | RB_MULTIPLE;
 	howto &= ~RB_PROBE;
-	uhowto = parse_uefi_con_out();
 
 	/*
 	 * Read additional environment variables from the boot device's
@@ -1112,6 +1181,7 @@ main(int argc, CHAR16 *argv[])
 		    !interactive_interrupt("Failed to find bootable partition"))
 			return (EFI_NOT_FOUND);
 
+	autoload_font(false);	/* Set up the font list for console. */
 	efi_init_environment();
 
 #if !defined(__arm__)
@@ -1311,7 +1381,7 @@ command_mode(int argc, char *argv[])
 			printf("couldn't set mode %d\n", mode);
 			return (CMD_ERROR);
 		}
-		(void) efi_cons_update_mode();
+		(void) cons_update_mode(true);
 		return (CMD_OK);
 	}
 
@@ -1447,7 +1517,7 @@ command_chain(int argc, char *argv[])
 	}
 
 #ifdef LOADER_VERIEXEC
-	if (verify_file(fd, name, 0, VE_MUST) < 0) {
+	if (verify_file(fd, name, 0, VE_MUST, __func__) < 0) {
 		sprintf(command_errbuf, "can't verify: %s", name);
 		close(fd);
 		return (CMD_ERROR);
@@ -1555,3 +1625,34 @@ command_chain(int argc, char *argv[])
 }
 
 COMMAND_SET(chain, "chain", "chain load file", command_chain);
+
+extern struct in_addr servip;
+static int
+command_netserver(int argc, char *argv[])
+{
+	char *proto;
+	n_long rootaddr;
+
+	if (argc > 2) {
+		command_errmsg = "wrong number of arguments";
+		return (CMD_ERROR);
+	}
+	if (argc < 2) {
+		proto = netproto == NET_TFTP ? "tftp://" : "nfs://";
+		printf("Netserver URI: %s%s%s\n", proto, intoa(rootip.s_addr),
+		    rootpath);
+		return (CMD_OK);
+	}
+	if (argc == 2) {
+		strncpy(rootpath, argv[1], sizeof(rootpath));
+		rootpath[sizeof(rootpath) -1] = '\0';
+		if ((rootaddr = net_parse_rootpath()) != INADDR_NONE)
+			servip.s_addr = rootip.s_addr = rootaddr;
+		return (CMD_OK);
+	}
+	return (CMD_ERROR);	/* not reached */
+
+}
+
+COMMAND_SET(netserver, "netserver", "change or display netserver URI",
+    command_netserver);

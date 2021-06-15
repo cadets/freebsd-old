@@ -59,7 +59,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 
 #include <machine/bus.h>
- 
+
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_dl.h>
@@ -82,10 +82,6 @@ __FBSDID("$FreeBSD$");
 
 #include <dev/mwl/if_mwlvar.h>
 #include <dev/mwl/mwldiag.h>
-
-/* idiomatic shorthands: MS = mask+shift, SM = shift+mask */
-#define	MS(v,x)	(((v) & x) >> x##_S)
-#define	SM(v,x)	(((v) << x##_S) & x)
 
 static struct ieee80211vap *mwl_vap_create(struct ieee80211com *,
 		    const char [IFNAMSIZ], int, enum ieee80211_opmode, int,
@@ -188,7 +184,8 @@ static int	mwl_getchannels(struct mwl_softc *);
 static void	mwl_sysctlattach(struct mwl_softc *);
 static void	mwl_announce(struct mwl_softc *);
 
-SYSCTL_NODE(_hw, OID_AUTO, mwl, CTLFLAG_RD, 0, "Marvell driver parameters");
+SYSCTL_NODE(_hw, OID_AUTO, mwl, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "Marvell driver parameters");
 
 static	int mwl_rxdesc = MWL_RXDESC;		/* # rx desc's to allocate */
 SYSCTL_INT(_hw_mwl, OID_AUTO, rxdesc, CTLFLAG_RW, &mwl_rxdesc,
@@ -360,7 +357,7 @@ mwl_attach(uint16_t devid, struct mwl_softc *sc)
 	taskqueue_start_threads(&sc->sc_tq, 1, PI_NET,
 		"%s taskq", device_get_nameunit(sc->sc_dev));
 
-	TASK_INIT(&sc->sc_rxtask, 0, mwl_rx_proc, sc);
+	NET_TASK_INIT(&sc->sc_rxtask, 0, mwl_rx_proc, sc);
 	TASK_INIT(&sc->sc_radartask, 0, mwl_radar_proc, sc);
 	TASK_INIT(&sc->sc_chanswitchtask, 0, mwl_chanswitch_proc, sc);
 	TASK_INIT(&sc->sc_bawatchdogtask, 0, mwl_bawatchdog_proc, sc);
@@ -1230,8 +1227,8 @@ mwl_reset_vap(struct ieee80211vap *vap, int state)
 	     vap->iv_opmode == IEEE80211_M_MBSS ||
 	     vap->iv_opmode == IEEE80211_M_IBSS)) {
 		mwl_setapmode(vap, vap->iv_bss->ni_chan);
-		mwl_hal_setnprotmode(hvap,
-		    MS(ic->ic_curhtprotmode, IEEE80211_HTINFO_OPMODE));
+		mwl_hal_setnprotmode(hvap, _IEEE80211_MASKSHIFT(
+		    ic->ic_curhtprotmode, IEEE80211_HTINFO_OPMODE));
 		return mwl_beacon_setup(vap);
 	}
 	return 0;
@@ -1470,16 +1467,17 @@ mwl_raw_xmit(struct ieee80211_node *ni, struct mbuf *m,
 static int
 mwl_media_change(struct ifnet *ifp)
 {
-	struct ieee80211vap *vap = ifp->if_softc;
+	struct ieee80211vap *vap;
 	int error;
 
-	error = ieee80211_media_change(ifp);
 	/* NB: only the fixed rate can change and that doesn't need a reset */
-	if (error == ENETRESET) {
-		mwl_setrates(vap);
-		error = 0;
-	}
-	return error;
+	error = ieee80211_media_change(ifp);
+	if (error != 0)
+		return (error);
+
+	vap = ifp->if_softc;
+	mwl_setrates(vap);
+	return (0);
 }
 
 #ifdef MWL_DEBUG
@@ -1861,8 +1859,8 @@ mwl_beacon_update(struct ieee80211vap *vap, int item)
 		mwl_updateslot(ic);
 		break;
 	case IEEE80211_BEACON_HTINFO:
-		mwl_hal_setnprotmode(hvap,
-		    MS(ic->ic_curhtprotmode, IEEE80211_HTINFO_OPMODE));
+		mwl_hal_setnprotmode(hvap, _IEEE80211_MASKSHIFT(
+		    ic->ic_curhtprotmode, IEEE80211_HTINFO_OPMODE));
 		break;
 	case IEEE80211_BEACON_CAPS:
 	case IEEE80211_BEACON_WME:
@@ -3043,13 +3041,13 @@ mwl_calcformat(uint8_t rate, const struct ieee80211_node *ni)
 {
 	uint16_t fmt;
 
-	fmt = SM(3, EAGLE_TXD_ANTENNA)
+	fmt = _IEEE80211_SHIFTMASK(3, EAGLE_TXD_ANTENNA)
 	    | (IEEE80211_IS_CHAN_HT40D(ni->ni_chan) ?
 		EAGLE_TXD_EXTCHAN_LO : EAGLE_TXD_EXTCHAN_HI);
 	if (rate & IEEE80211_RATE_MCS) {	/* HT MCS */
 		fmt |= EAGLE_TXD_FORMAT_HT
 		    /* NB: 0x80 implicitly stripped from ucastrate */
-		    | SM(rate, EAGLE_TXD_RATE);
+		    | _IEEE80211_SHIFTMASK(rate, EAGLE_TXD_RATE);
 		/* XXX short/long GI may be wrong; re-check */
 		if (IEEE80211_IS_CHAN_HT40(ni->ni_chan)) {
 			fmt |= EAGLE_TXD_CHW_40
@@ -3062,7 +3060,8 @@ mwl_calcformat(uint8_t rate, const struct ieee80211_node *ni)
 		}
 	} else {			/* legacy rate */
 		fmt |= EAGLE_TXD_FORMAT_LEGACY
-		    | SM(mwl_cvtlegacyrate(rate), EAGLE_TXD_RATE)
+		    | _IEEE80211_SHIFTMASK(mwl_cvtlegacyrate(rate),
+			EAGLE_TXD_RATE)
 		    | EAGLE_TXD_CHW_20
 		    /* XXX iv_flags & IEEE80211_F_SHPREAMBLE? */
 		    | (ni->ni_capinfo & IEEE80211_CAPINFO_SHORT_PREAMBLE ?
@@ -3363,7 +3362,8 @@ mwl_tx_processq(struct mwl_softc *sc, struct mwl_txq *txq)
 			status = le32toh(ds->Status);
 			if (status & EAGLE_TXD_STATUS_OK) {
 				uint16_t Format = le16toh(ds->Format);
-				uint8_t txant = MS(Format, EAGLE_TXD_ANTENNA);
+				uint8_t txant = _IEEE80211_MASKSHIFT(Format,
+				    EAGLE_TXD_ANTENNA);
 
 				sc->sc_stats.mst_ant_tx[txant]++;
 				if (status & EAGLE_TXD_STATUS_OK_RETRY)
@@ -3372,7 +3372,8 @@ mwl_tx_processq(struct mwl_softc *sc, struct mwl_txq *txq)
 					sc->sc_stats.mst_tx_mretries++;
 				if (txq->qnum >= MWL_WME_AC_VO)
 					ic->ic_wme.wme_hipri_traffic++;
-				ni->ni_txrate = MS(Format, EAGLE_TXD_RATE);
+				ni->ni_txrate = _IEEE80211_MASKSHIFT(Format,
+				    EAGLE_TXD_RATE);
 				if ((Format & EAGLE_TXD_FORMAT_HT) == 0) {
 					ni->ni_txrate = mwl_cvtlegacyrix(
 					    ni->ni_txrate);
@@ -3555,7 +3556,8 @@ mwl_recv_action(struct ieee80211_node *ni, const struct ieee80211_frame *wh,
 
 		mwl_hal_setmimops(sc->sc_mh, ni->ni_macaddr,
 		    mps->am_control & IEEE80211_A_HT_MIMOPWRSAVE_ENA,
-		    MS(mps->am_control, IEEE80211_A_HT_MIMOPWRSAVE_MODE));
+		    _IEEE80211_MASKSHIFT(mps->am_control,
+			IEEE80211_A_HT_MIMOPWRSAVE_MODE));
 		return 0;
 	} else
 		return sc->sc_recv_action(ni, wh, frm, efrm);
@@ -3658,7 +3660,7 @@ mwl_addba_response(struct ieee80211_node *ni, struct ieee80211_tx_ampdu *tap,
 		 * we know resources are available because we
 		 * pre-allocated one before forming the request.
 		 */
-		bufsiz = MS(baparamset, IEEE80211_BAPS_BUFSIZ);
+		bufsiz = _IEEE80211_MASKSHIFT(baparamset, IEEE80211_BAPS_BUFSIZ);
 		if (bufsiz == 0)
 			bufsiz = IEEE80211_AGGR_BAWMAX;
 		error = mwl_hal_bastream_create(MWL_VAP(vap)->mv_hvap,
@@ -4787,9 +4789,9 @@ mwl_sysctlattach(struct mwl_softc *sc)
 	struct sysctl_oid *tree = device_get_sysctl_tree(sc->sc_dev);
 
 	sc->sc_debug = mwl_debug;
-	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-		"debug", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
-		mwl_sysctl_debug, "I", "control debugging printfs");
+	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO, "debug",
+	    CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    mwl_sysctl_debug, "I", "control debugging printfs");
 #endif
 }
 

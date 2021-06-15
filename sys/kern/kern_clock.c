@@ -205,8 +205,9 @@ deadlres_td_on_lock(struct proc *p, struct thread *td, int blkticks)
 		 * Accordingly with provided thresholds, this thread is stuck
 		 * for too long on a turnstile.
 		 */
-		panic("%s: possible deadlock detected for %p, "
-		    "blocked for %d ticks\n", __func__, td, tticks);
+		panic("%s: possible deadlock detected for %p (%s), "
+		    "blocked for %d ticks\n", __func__,
+		    td, sched_tdname(td), tticks);
 }
 
 static void
@@ -228,7 +229,6 @@ deadlres_td_sleep_q(struct proc *p, struct thread *td, int slpticks)
 	slptype = sleepq_type(wchan);
 	if ((slptype == SLEEPQ_SX || slptype == SLEEPQ_LK) &&
 	    tticks > slpticks) {
-
 		/*
 		 * Accordingly with provided thresholds, this thread is stuck
 		 * for too long on a sleepqueue.
@@ -239,8 +239,9 @@ deadlres_td_sleep_q(struct proc *p, struct thread *td, int slpticks)
 			if (!strcmp(blessed[i], td->td_wmesg))
 				return;
 
-		panic("%s: possible deadlock detected for %p, "
-		    "blocked for %d ticks\n", __func__, td, tticks);
+		panic("%s: possible deadlock detected for %p (%s), "
+		    "blocked for %d ticks\n", __func__,
+		    td, sched_tdname(td), tticks);
 	}
 }
 
@@ -304,7 +305,7 @@ static struct kthread_desc deadlkres_kd = {
 
 SYSINIT(deadlkres, SI_SUB_CLOCKS, SI_ORDER_ANY, kthread_start, &deadlkres_kd);
 
-static SYSCTL_NODE(_debug, OID_AUTO, deadlkres, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_debug, OID_AUTO, deadlkres, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "Deadlock resolver");
 SYSCTL_INT(_debug_deadlkres, OID_AUTO, slptime_threshold, CTLFLAG_RW,
     &slptime_threshold, 0,
@@ -506,6 +507,7 @@ hardclock(int cnt, int usermode)
 			if (i > 0 && i <= newticks)
 				watchdog_fire();
 		}
+		intr_event_handle(clk_intr_event, NULL);
 	}
 	if (curcpu == CPU_FIRST())
 		cpu_tick_calibration();

@@ -344,7 +344,7 @@ in6_gif_input(struct mbuf *m, int off, int proto, void *arg)
 	gifp = GIF2IFP(sc);
 	if ((gifp->if_flags & IFF_UP) != 0) {
 		ip6 = mtod(m, struct ip6_hdr *);
-		ecn = (ntohl(ip6->ip6_flow) >> 20) & 0xff;
+		ecn = IPV6_TRAFFIC_CLASS(ip6);
 		m_adj(m, off);
 		gif_input(m, gifp, proto, ecn);
 	} else {
@@ -402,13 +402,9 @@ done:
 		return (0);
 	/* ingress filters on outer source */
 	if ((GIF2IFP(sc)->if_flags & IFF_LINK2) == 0) {
-		struct nhop6_basic nh6;
-
-		if (fib6_lookup_nh_basic(sc->gif_fibnum, &ip6->ip6_src,
-		    ntohs(in6_getscope(&ip6->ip6_src)), 0, 0, &nh6) != 0)
-			return (0);
-
-		if (nh6.nh_ifp != m->m_pkthdr.rcvif)
+		if (fib6_check_urpf(sc->gif_fibnum, &ip6->ip6_src,
+		    ntohs(in6_getscope(&ip6->ip6_src)), NHR_NONE,
+		    m->m_pkthdr.rcvif) == 0)
 			return (0);
 	}
 	*arg = sc;

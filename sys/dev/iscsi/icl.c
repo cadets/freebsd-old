@@ -2,7 +2,6 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2012 The FreeBSD Foundation
- * All rights reserved.
  *
  * This software was developed by Edward Tomasz Napierala under sponsorship
  * from the FreeBSD Foundation.
@@ -75,7 +74,8 @@ static int sysctl_kern_icl_offloads(SYSCTL_HANDLER_ARGS);
 static MALLOC_DEFINE(M_ICL, "icl", "iSCSI Common Layer");
 static struct icl_softc	*sc;
 
-SYSCTL_NODE(_kern, OID_AUTO, icl, CTLFLAG_RD, 0, "iSCSI Common Layer");
+SYSCTL_NODE(_kern, OID_AUTO, icl, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "iSCSI Common Layer");
 int icl_debug = 1;
 SYSCTL_INT(_kern_icl, OID_AUTO, debug, CTLFLAG_RWTUN,
     &icl_debug, 0, "Enable debug messages");

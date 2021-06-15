@@ -800,11 +800,16 @@ pte_lookup:
 	beq	1f			/* fail quickly if pmap is invalid */
 
 #ifdef __powerpc64__
-	rldicl  %r21, %r31, (64 - PP2D_L_L), (64 - PP2D_L_NUM) /* pp2d offset */
-	rldicl  %r25, %r31, (64 - PP2D_H_L), (64 - PP2D_H_NUM)
-	rldimi  %r21, %r25, PP2D_L_NUM, (64 - (PP2D_L_NUM + PP2D_H_NUM))
-	slwi    %r21, %r21, PP2D_ENTRY_SHIFT	/* multiply by pp2d entry size */
-	ld	%r25, PM_PP2D(%r26)		/* pmap pm_pp2d[] address */
+	rldicl  %r21, %r31, (64 - PG_ROOT_L), (64 - PG_ROOT_NUM) /* pp2d offset */
+	slwi    %r21, %r21, PG_ROOT_ENTRY_SHIFT	/* multiply by pp2d entry size */
+	ld	%r25, PM_ROOT(%r26)		/* pmap pm_pp2d[] address */
+	ldx	%r25, %r25, %r21		/* get pdir address, i.e.  pmap->pm_pp2d[pp2d_idx] * */
+
+	cmpdi   %r25, 0
+	beq 2f
+
+	rldicl  %r21, %r31, (64 - PDIR_L1_L), (64 - PDIR_L1_NUM) /* pp2d offset */
+	slwi    %r21, %r21, PDIR_L1_ENTRY_SHIFT	/* multiply by pp2d entry size */
 	ldx	%r25, %r25, %r21		/* get pdir address, i.e.  pmap->pm_pp2d[pp2d_idx] * */
 
 	cmpdi   %r25, 0
@@ -1092,6 +1097,7 @@ dbtrap:
 dbleave:
 	FRAME_LEAVE(SPR_SRR0, SPR_SRR1)
 	rfi
+ASEND(breakpoint)
 #endif /* KDB */
 
 #ifdef SMP
@@ -1106,6 +1112,7 @@ ENTRY(tlb_lock)
 	isync
 	msync
 	blr
+END(tlb_lock)
 
 ENTRY(tlb_unlock)
 	isync
@@ -1115,6 +1122,7 @@ ENTRY(tlb_unlock)
 	isync
 	msync
 	blr
+END(tlb_unlock)
 
 /*
  * TLB miss spin locks. For each CPU we have a reservation granule (32 bytes);

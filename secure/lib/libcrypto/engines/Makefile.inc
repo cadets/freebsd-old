@@ -1,6 +1,6 @@
 # $FreeBSD$
 
-SHLIBDIR?= /usr/lib/engines
+SHLIBDIR=	${LIBDIR}/engines
 
 LCRYPTO_SRC=	${SRCTOP}/crypto/openssl
 
@@ -18,3 +18,5 @@ CFLAGS+=	-DB_ENDIAN
 CFLAGS+=	-DNDEBUG
 
 .PATH: ${LCRYPTO_SRC}/engines
+
+WARNS?=		0

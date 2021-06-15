@@ -4,8 +4,8 @@
 __<${_this:T}>__:
 
 .if defined(_LIBCOMPAT)
-COMPAT_ARCH=	${TARGET_ARCH}
-COMPAT_CPUTYPE=	${TARGET_CPUTYPE}
+COMPAT_ARCH?=	${TARGET_ARCH}
+COMPAT_CPUTYPE?= ${CPUTYPE_${_LIBCOMPAT}}
 .if (defined(WANT_COMPILER_TYPE) && ${WANT_COMPILER_TYPE} == gcc) || \
     (defined(X_COMPILER_TYPE) && ${X_COMPILER_TYPE} == gcc)
 COMPAT_COMPILER_TYPE=	gcc
@@ -30,7 +30,7 @@ LIB32CPUFLAGS=	-march=${COMPAT_CPUTYPE}
 .endif
 .if ${COMPAT_COMPILER_TYPE} == gcc
 .else
-LIB32CPUFLAGS+=	-target x86_64-unknown-freebsd13.0
+LIB32CPUFLAGS+=	-target x86_64-unknown-freebsd14.0
 .endif
 LIB32CPUFLAGS+=	-m32
 LIB32_MACHINE=	i386
@@ -38,7 +38,7 @@ LIB32_MACHINE_ARCH=	i386
 LIB32WMAKEENV=	MACHINE_CPU="i686 mmx sse sse2"
 LIB32WMAKEFLAGS=	\
 		AS="${XAS} --32" \
-		LD="${XLD} -m elf_i386_fbsd -L${LIBCOMPATTMP}/usr/lib32"
+		LD="${XLD} -m elf_i386_fbsd"
 
 .elif ${COMPAT_ARCH} == "powerpc64"
 HAS_COMPAT=32
@@ -51,16 +51,13 @@ LIB32CPUFLAGS=	-mcpu=${COMPAT_CPUTYPE}
 .if ${COMPAT_COMPILER_TYPE} == "gcc"
 LIB32CPUFLAGS+=	-m32
 .else
-LIB32CPUFLAGS+=	-target powerpc-unknown-freebsd13.0
-
-# Use BFD to workaround ld.lld issues on PowerPC 32 bit 
-LIB32CPUFLAGS+= -fuse-ld=${LD_BFD}
+LIB32CPUFLAGS+=	-target powerpc-unknown-freebsd14.0
 .endif
 
 LIB32_MACHINE=	powerpc
 LIB32_MACHINE_ARCH=	powerpc
 LIB32WMAKEFLAGS=	\
-		LD="${LD_BFD} -m elf32ppc_fbsd"
+		LD="${XLD} -m elf32ppc_fbsd"
 
 .elif ${COMPAT_ARCH:Mmips64*} != ""
 HAS_COMPAT=32
@@ -72,9 +69,9 @@ LIB32CPUFLAGS=	-march=${COMPAT_CPUTYPE}
 .endif
 .else
 .if ${COMPAT_ARCH:Mmips64el*} != ""
-LIB32CPUFLAGS=  -target mipsel-unknown-freebsd13.0
+LIB32CPUFLAGS=  -target mipsel-unknown-freebsd14.0
 .else
-LIB32CPUFLAGS=  -target mips-unknown-freebsd13.0
+LIB32CPUFLAGS=  -target mips-unknown-freebsd14.0
 .endif
 .endif
 LIB32CPUFLAGS+= -mabi=32
@@ -149,9 +146,10 @@ LIBCOMPAT_OBJTOP?=	${OBJTOP}/obj-lib${libcompat}
 LIBCOMPATTMP?=		${LIBCOMPAT_OBJTOP}/tmp
 
 LIBCOMPATCFLAGS+=	${LIBCOMPATCPUFLAGS} \
-			-L${LIBCOMPATTMP}/usr/lib${libcompat} \
 			--sysroot=${LIBCOMPATTMP} \
 			${BFLAGS}
+
+LIBCOMPATLDFLAGS+=	-L${LIBCOMPATTMP}/usr/lib${libcompat}
 
 LIBCOMPATWMAKEENV+=	MACHINE=${LIBCOMPAT_MACHINE}
 LIBCOMPATWMAKEENV+=	MACHINE_ARCH=${LIBCOMPAT_MACHINE_ARCH}
@@ -163,6 +161,7 @@ LIBCOMPATCFLAGS+=	-B${LIBCOMPATTMP}/usr/lib${libcompat}
 .if defined(WANT_COMPAT)
 LIBDIR_BASE:=	/usr/lib${libcompat}
 _LIB_OBJTOP=	${LIBCOMPAT_OBJTOP}
+LIBDESTDIR:=	${LIBCOMPATTMP}
 CFLAGS+=	${LIBCOMPATCFLAGS}
 LDFLAGS+=	${CFLAGS} ${LIBCOMPATLDFLAGS}
 MACHINE=	${LIBCOMPAT_MACHINE}

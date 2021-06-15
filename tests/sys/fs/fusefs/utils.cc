@@ -59,17 +59,14 @@ using namespace testing;
  */
 const uint32_t libfuse_max_write = 32 * getpagesize() + 0x1000 - 4096;
 
-/* 
- * Set the default max_write to a distinct value from MAXPHYS to catch bugs
- * that confuse the two.
- */
-const uint32_t default_max_write = MIN(libfuse_max_write, MAXPHYS / 2);
-
-
 /* Check that fusefs(4) is accessible and the current user can mount(2) */
 void check_environment()
 {
 	const char *devnode = "/dev/fuse";
+	const char *bsdextended_node = "security.mac.bsdextended.enabled";
+	int bsdextended_val = 0;
+	size_t bsdextended_size = sizeof(bsdextended_val);
+	int bsdextended_found;
 	const char *usermount_node = "vfs.usermount";
 	int usermount_val = 0;
 	size_t usermount_size = sizeof(usermount_val);
@@ -83,11 +80,36 @@ void check_environment()
 			GTEST_SKIP() << strerror(errno);
 		}
 	}
+	// mac_bsdextended(4), when enabled, generates many more GETATTR
+	// operations. The fusefs tests' expectations don't account for those,
+	// and adding extra code to handle them obfuscates the real purpose of
+	// the tests.  Better just to skip the fusefs tests if mac_bsdextended
+	// is enabled.
+	bsdextended_found = sysctlbyname(bsdextended_node, &bsdextended_val,
+					 &bsdextended_size, NULL, 0);
+	if (bsdextended_found == 0 && bsdextended_val != 0)
+		GTEST_SKIP() <<
+		    "The fusefs tests are incompatible with mac_bsdextended.";
 	ASSERT_EQ(sysctlbyname(usermount_node, &usermount_val, &usermount_size,
 			       NULL, 0),
-		  0);;
+		  0);
 	if (geteuid() != 0 && !usermount_val)
 		GTEST_SKIP() << "current user is not allowed to mount";
+}
+
+const char *cache_mode_to_s(enum cache_mode cm) {
+	switch (cm) {
+	case Uncached:
+		return "Uncached";
+	case Writethrough:
+		return "Writethrough";
+	case Writeback:
+		return "Writeback";
+	case WritebackAsync:
+		return "WritebackAsync";
+	default:
+		return "Unknown";
+	}
 }
 
 bool is_unsafe_aio_enabled(void) {
@@ -127,6 +149,12 @@ void FuseTest::SetUp() {
 	ASSERT_EQ(0, sysctlbyname(maxphys_node, &val, &size, NULL, 0))
 		<< strerror(errno);
 	m_maxphys = val;
+	/*
+	 * Set the default max_write to a distinct value from MAXPHYS to catch
+	 * bugs that confuse the two.
+	 */
+	if (m_maxwrite == 0)
+		m_maxwrite = MIN(libfuse_max_write, (uint32_t)m_maxphys / 2);
 
 	try {
 		m_mock = new MockFS(m_maxreadahead, m_allow_other,
@@ -244,6 +272,20 @@ void FuseTest::expect_getattr(uint64_t ino, uint64_t size)
 	})));
 }
 
+void FuseTest::expect_getxattr(uint64_t ino, const char *attr, ProcessMockerT r)
+{
+	EXPECT_CALL(*m_mock, process(
+		ResultOf([=](auto in) {
+			const char *a = (const char*)in.body.bytes +
+				sizeof(fuse_getxattr_in);
+			return (in.header.opcode == FUSE_GETXATTR &&
+				in.header.nodeid == ino &&
+				0 == strcmp(attr, a));
+		}, Eq(true)),
+		_)
+	).WillOnce(Invoke(r));
+}
+
 void FuseTest::expect_lookup(const char *relpath, uint64_t ino, mode_t mode,
 	uint64_t size, int times, uint64_t attr_valid, uid_t uid, gid_t gid)
 {
@@ -334,10 +376,10 @@ void FuseTest::expect_read(uint64_t ino, uint64_t offset, uint64_t isize,
 				in.body.read.fh == FH &&
 				in.body.read.offset == offset &&
 				in.body.read.size == isize &&
-				flags == -1 ?
+				(flags == -1 ?
 					(in.body.read.flags == O_RDONLY ||
 					 in.body.read.flags == O_RDWR)
-				: in.body.read.flags == (uint32_t)flags);
+				: in.body.read.flags == (uint32_t)flags));
 		}, Eq(true)),
 		_)
 	).WillOnce(Invoke(ReturnImmediate([=](auto in __unused, auto& out) {

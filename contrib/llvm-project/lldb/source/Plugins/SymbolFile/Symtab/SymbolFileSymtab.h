@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_SymbolFileSymtab_h_
-#define liblldb_SymbolFileSymtab_h_
+#ifndef LLDB_SOURCE_PLUGINS_SYMBOLFILE_SYMTAB_SYMBOLFILESYMTAB_H
+#define LLDB_SOURCE_PLUGINS_SYMBOLFILE_SYMTAB_SYMBOLFILESYMTAB_H
 
 #include <map>
 #include <vector>
@@ -16,11 +16,20 @@
 #include "lldb/Symbol/Symtab.h"
 
 class SymbolFileSymtab : public lldb_private::SymbolFile {
-public:
-  // Constructors and Destructors
-  SymbolFileSymtab(lldb_private::ObjectFile *obj_file);
+  /// LLVM RTTI support.
+  static char ID;
 
-  ~SymbolFileSymtab() override;
+public:
+  /// LLVM RTTI support.
+  /// \{
+  bool isA(const void *ClassID) const override {
+    return ClassID == &ID || SymbolFile::isA(ClassID);
+  }
+  static bool classof(const SymbolFile *obj) { return obj->isA(&ID); }
+  /// \}
+
+  // Constructors and Destructors
+  SymbolFileSymtab(lldb::ObjectFileSP objfile_sp);
 
   // Static Functions
   static void Initialize();
@@ -32,15 +41,11 @@ public:
   static const char *GetPluginDescriptionStatic();
 
   static lldb_private::SymbolFile *
-  CreateInstance(lldb_private::ObjectFile *obj_file);
+  CreateInstance(lldb::ObjectFileSP objfile_sp);
 
   uint32_t CalculateAbilities() override;
 
   // Compile Unit function calls
-  uint32_t GetNumCompileUnits() override;
-
-  lldb::CompUnitSP ParseCompileUnitAtIndex(uint32_t index) override;
-
   lldb::LanguageType
   ParseLanguage(lldb_private::CompileUnit &comp_unit) override;
 
@@ -75,9 +80,9 @@ public:
                                 lldb::SymbolContextItem resolve_scope,
                                 lldb_private::SymbolContext &sc) override;
 
-  size_t GetTypes(lldb_private::SymbolContextScope *sc_scope,
-                  lldb::TypeClass type_mask,
-                  lldb_private::TypeList &type_list) override;
+  void GetTypes(lldb_private::SymbolContextScope *sc_scope,
+                lldb::TypeClass type_mask,
+                lldb_private::TypeList &type_list) override;
 
   // PluginInterface protocol
   lldb_private::ConstString GetPluginName() override;
@@ -85,6 +90,10 @@ public:
   uint32_t GetPluginVersion() override;
 
 protected:
+  uint32_t CalculateNumCompileUnits() override;
+
+  lldb::CompUnitSP ParseCompileUnitAtIndex(uint32_t index) override;
+
   typedef std::map<lldb_private::ConstString, lldb::TypeSP> TypeMap;
 
   lldb_private::Symtab::IndexCollection m_source_indexes;
@@ -93,9 +102,6 @@ protected:
   lldb_private::Symtab::IndexCollection m_data_indexes;
   lldb_private::Symtab::NameToIndexMap m_objc_class_name_to_index;
   TypeMap m_objc_class_types;
-
-private:
-  DISALLOW_COPY_AND_ASSIGN(SymbolFileSymtab);
 };
 
-#endif // liblldb_SymbolFileSymtab_h_
+#endif // LLDB_SOURCE_PLUGINS_SYMBOLFILE_SYMTAB_SYMBOLFILESYMTAB_H

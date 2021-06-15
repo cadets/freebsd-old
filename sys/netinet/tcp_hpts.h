@@ -51,7 +51,6 @@ TAILQ_HEAD(hptsh, inpcb);
 #define HPTS_MSEC_IN_SEC 1000
 #define HPTS_USEC_IN_MSEC 1000
 
-
 struct hpts_diag {
 	uint32_t p_hpts_active; 	/* bbr->flex7 x */
 	uint32_t p_nxt_slot;		/* bbr->flex1 x */
@@ -102,7 +101,7 @@ struct tcp_hpts_entry {
 	uint32_t p_lasttick;	/* Last tick before the current one */
 	uint8_t p_direct_wake :1, /* boolean */
 		p_on_min_sleep:1, /* boolean */
-		p_avail:6; 
+		p_avail:6;
 	uint8_t p_fill[3];	  /* Fill to 32 bits */
 	/* Cache line 0x40 */
 	void *p_inp;

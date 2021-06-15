@@ -262,6 +262,7 @@ ps3cdrom_attach(device_t dev)
 		goto fail_unregister_xpt_bus;
 	}
 
+	memset(&csa, 0, sizeof(csa));
 	xpt_setup_ccb(&csa.ccb_h, sc->sc_path, 5);
 	csa.ccb_h.func_code = XPT_SASYNC_CB;
 	csa.event_enable = AC_LOST_DEVICE;
@@ -506,7 +507,6 @@ ps3cdrom_intr(void *arg)
 
 			if (!ps3cdrom_decode_lv1_status(status, &sense_key,
 			    &asc, &ascq)) {
-
 				CAM_DEBUG(ccb->ccb_h.path, CAM_DEBUG_TRACE,
 				   ("sense key 0x%02x asc 0x%02x ascq 0x%02x\n",
 				    sense_key, asc, ascq));
@@ -640,7 +640,7 @@ ps3cdrom_transfer(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 		    LV1_STORAGE_SEND_ATAPI_COMMAND, vtophys(&atapi_cmd),
 		    sizeof(atapi_cmd), atapi_cmd.buf, atapi_cmd.arglen,
 		    &xp->x_tag);
-	
+
 		break;
 		}
 	}

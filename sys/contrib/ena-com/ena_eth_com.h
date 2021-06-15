@@ -1,7 +1,7 @@
 /*-
- * BSD LICENSE
+ * SPDX-License-Identifier: BSD-3-Clause
  *
- * Copyright (c) 2015-2019 Amazon.com, Inc. or its affiliates.
+ * Copyright (c) 2015-2020 Amazon.com, Inc. or its affiliates.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,6 +77,7 @@ struct ena_com_rx_ctx {
 	u32 hash;
 	u16 descs;
 	int max_bufs;
+	u8 pkt_offset;
 };
 
 int ena_com_prepare_tx(struct ena_com_io_sq *io_sq,
@@ -99,7 +100,7 @@ static inline void ena_com_unmask_intr(struct ena_com_io_cq *io_cq,
 	ENA_REG_WRITE32(io_cq->bus, intr_reg->intr_control, io_cq->unmask_reg);
 }
 
-static inline int ena_com_free_desc(struct ena_com_io_sq *io_sq)
+static inline int ena_com_free_q_entries(struct ena_com_io_sq *io_sq)
 {
 	u16 tail, next_to_comp, cnt;
 
@@ -117,7 +118,7 @@ static inline bool ena_com_sq_have_enough_space(struct ena_com_io_sq *io_sq,
 	int temp;
 
 	if (io_sq->mem_queue_type == ENA_ADMIN_PLACEMENT_POLICY_HOST)
-		return ena_com_free_desc(io_sq) >= required_buffers;
+		return ena_com_free_q_entries(io_sq) >= required_buffers;
 
 	/* This calculation doesn't need to be 100% accurate. So to reduce
 	 * the calculation overhead just Subtract 2 lines from the free descs
@@ -126,7 +127,7 @@ static inline bool ena_com_sq_have_enough_space(struct ena_com_io_sq *io_sq,
 	 */
 	temp = required_buffers / io_sq->llq_info.descs_per_entry + 2;
 
-	return ena_com_free_desc(io_sq) > temp;
+	return ena_com_free_q_entries(io_sq) > temp;
 }
 
 static inline bool ena_com_meta_desc_changed(struct ena_com_io_sq *io_sq,
@@ -160,7 +161,8 @@ static inline bool ena_com_is_doorbell_needed(struct ena_com_io_sq *io_sq,
 	llq_info = &io_sq->llq_info;
 	num_descs = ena_tx_ctx->num_bufs;
 
-	if (unlikely(ena_com_meta_desc_changed(io_sq, ena_tx_ctx)))
+	if (llq_info->disable_meta_caching ||
+	    unlikely(ena_com_meta_desc_changed(io_sq, ena_tx_ctx)))
 		++num_descs;
 
 	if (num_descs > llq_info->descs_num_before_header) {
@@ -169,7 +171,8 @@ static inline bool ena_com_is_doorbell_needed(struct ena_com_io_sq *io_sq,
 						   llq_info->descs_per_entry);
 	}
 
-	ena_trc_dbg("queue: %d num_descs: %d num_entries_needed: %d\n",
+	ena_trc_dbg(ena_com_io_sq_to_ena_dev(io_sq),
+		    "Queue: %d num_descs: %d num_entries_needed: %d\n",
 		    io_sq->qid, num_descs, num_entries_needed);
 
 	return num_entries_needed > io_sq->entries_in_tx_burst_left;
@@ -177,17 +180,19 @@ static inline bool ena_com_is_doorbell_needed(struct ena_com_io_sq *io_sq,
 
 static inline int ena_com_write_sq_doorbell(struct ena_com_io_sq *io_sq)
 {
-	u16 tail = io_sq->tail;
 	u16 max_entries_in_tx_burst = io_sq->llq_info.max_entries_in_tx_burst;
+	u16 tail = io_sq->tail;
 
-	ena_trc_dbg("write submission queue doorbell for queue: %d tail: %d\n",
+	ena_trc_dbg(ena_com_io_sq_to_ena_dev(io_sq),
+		    "Write submission queue doorbell for queue: %d tail: %d\n",
 		    io_sq->qid, tail);
 
 	ENA_REG_WRITE32(io_sq->bus, tail, io_sq->db_addr);
 
 	if (is_llq_max_tx_burst_exists(io_sq)) {
-		ena_trc_dbg("reset available entries in tx burst for queue %d to %d\n",
-			     io_sq->qid, max_entries_in_tx_burst);
+		ena_trc_dbg(ena_com_io_sq_to_ena_dev(io_sq),
+			    "Reset available entries in tx burst for queue %d to %d\n",
+			    io_sq->qid, max_entries_in_tx_burst);
 		io_sq->entries_in_tx_burst_left = max_entries_in_tx_burst;
 	}
 
@@ -199,15 +204,18 @@ static inline int ena_com_update_dev_comp_head(struct ena_com_io_cq *io_cq)
 	u16 unreported_comp, head;
 	bool need_update;
 
-	head = io_cq->head;
-	unreported_comp = head - io_cq->last_head_update;
-	need_update = unreported_comp > (io_cq->q_depth / ENA_COMP_HEAD_THRESH);
+	if (unlikely(io_cq->cq_head_db_reg)) {
+		head = io_cq->head;
+		unreported_comp = head - io_cq->last_head_update;
+		need_update = unreported_comp > (io_cq->q_depth / ENA_COMP_HEAD_THRESH);
 
-	if (io_cq->cq_head_db_reg && need_update) {
-		ena_trc_dbg("Write completion queue doorbell for queue %d: head: %d\n",
-			    io_cq->qid, head);
-		ENA_REG_WRITE32(io_cq->bus, head, io_cq->cq_head_db_reg);
-		io_cq->last_head_update = head;
+		if (unlikely(need_update)) {
+			ena_trc_dbg(ena_com_io_cq_to_ena_dev(io_cq),
+				    "Write completion queue doorbell for queue %d: head: %d\n",
+				    io_cq->qid, head);
+			ENA_REG_WRITE32(io_cq->bus, head, io_cq->cq_head_db_reg);
+			io_cq->last_head_update = head;
+		}
 	}
 
 	return 0;
@@ -267,7 +275,8 @@ static inline int ena_com_tx_comp_req_id_get(struct ena_com_io_cq *io_cq,
 
 	*req_id = READ_ONCE16(cdesc->req_id);
 	if (unlikely(*req_id >= io_cq->q_depth)) {
-		ena_trc_err("Invalid req id %d\n", cdesc->req_id);
+		ena_trc_err(ena_com_io_cq_to_ena_dev(io_cq),
+			    "Invalid req id %d\n", cdesc->req_id);
 		return ENA_COM_INVAL;
 	}
 

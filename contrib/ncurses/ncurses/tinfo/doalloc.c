@@ -1,5 +1,6 @@
 /****************************************************************************
- * Copyright (c) 1998-2000,2012 Free Software Foundation, Inc.              *
+ * Copyright 2020 Thomas E. Dickey                                          *
+ * Copyright 1998-2002,2012 Free Software Foundation, Inc.                  *
  *                                                                          *
  * Permission is hereby granted, free of charge, to any person obtaining a  *
  * copy of this software and associated documentation files (the            *
@@ -39,9 +40,9 @@
 
 #include <curses.priv.h>
 
-MODULE_ID("$Id: doalloc.c,v 1.11 2012/11/03 19:27:41 tom Exp $")
+MODULE_ID("$Id: doalloc.c,v 1.13 2020/08/30 00:27:15 tom Exp $")
 
-NCURSES_EXPORT(void *)
+void *
 _nc_doalloc(void *oldp, size_t amount)
 {
     void *newp;

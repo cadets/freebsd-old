@@ -46,7 +46,6 @@ __FBSDID("$FreeBSD$");
 #include <sys/taskqueue.h>
 #include <sys/queue.h>
 #include <sys/uuid.h>
-#include <sys/dtrace.h>
 #include <sys/vnode.h>
 #include <sys/sema.h>
 #include <sys/conf.h>
@@ -187,8 +186,6 @@ static uint32_t debug = 0;
 SYSCTL_U32(_dev_vtdtr, OID_AUTO, debug, CTLFLAG_RWTUN, &debug, 0,
     "Enable debugging of virtio-dtrace");
 
-static int vstate = 0;
-
 static int vtdtr_modevent(module_t, int, void *);
 static void vtdtr_cleanup(void);
 
@@ -198,7 +195,6 @@ static int vtdtr_detach(device_t);
 static int vtdtr_config_change(device_t);
 static void vtdtr_negotiate_features(struct vtdtr_softc *);
 static void vtdtr_setup_features(struct vtdtr_softc *);
-static void vtdtr_alloc_probelist(struct vtdtr_softc *);
 static int vtdtr_alloc_virtqueues(struct vtdtr_softc *);
 static void vtdtr_stop(struct vtdtr_softc *);
 static void vtdtr_drain_virtqueues(struct vtdtr_softc *);
@@ -407,11 +403,10 @@ again:
 	error = vtdtr_notify_ready(sc);
 	if (error)
 		goto again;
-	
+
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 	    0, 0, NULL, "vtdtr_communicator");
 
-	/*dtrace_vtdtr_enable((void *)sc);*/
 fail:
 	if (error)
 		vtdtr_detach(dev);
@@ -616,7 +611,7 @@ vtdtr_queue_new_ctrl(struct virtio_dtrace_queue *q)
 	int error;
 
 	sc = q->vtdq_sc;
-	
+
 	ctrl = malloc(sizeof(struct virtio_dtrace_control),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
 
@@ -876,7 +871,7 @@ vtdtr_send_eof(struct virtio_dtrace_queue *q)
 	if (ctrl == NULL) {
 		return (-1);
 	}
-	
+
 	ctrl->vd_event = VIRTIO_DTRACE_EOF;
 	vtdtr_fill_desc(q, ctrl);
 
@@ -1339,10 +1334,6 @@ virtio_dtrace_enqueue(dtt_entry_t *e)
 	struct virtio_dtrace_queue *q;
 	struct vtdtr_ctrl_entry *ctrl_entry;
 	struct virtio_dtrace_control *ctrl;
-	char *elf;
-	size_t len, totallen;
-	int hasmore;
-	uint32_t identifier;
 	device_t dev;
 
 	/*
@@ -1352,7 +1343,7 @@ virtio_dtrace_enqueue(dtt_entry_t *e)
 
 	if (sc == NULL)
 		return (ENXIO);
-	
+
 	dev = sc->vtdtr_dev;
 	q = &sc->vtdtr_txq;
 

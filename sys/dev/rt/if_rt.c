@@ -38,6 +38,8 @@ __FBSDID("$FreeBSD$");
 #include "if_rtvar.h"
 #include "if_rtreg.h"
 
+#include <sys/kenv.h>
+
 #include <net/if.h>
 #include <net/if_var.h>
 #include <net/if_arp.h>
@@ -101,6 +103,7 @@ __FBSDID("$FreeBSD$");
 
 #define RT_CHIPID_RT2880 0x2880
 #define RT_CHIPID_RT3050 0x3050
+#define RT_CHIPID_RT3883 0x3883
 #define RT_CHIPID_RT5350 0x5350
 #define RT_CHIPID_MT7620 0x7620
 #define RT_CHIPID_MT7621 0x7621
@@ -111,7 +114,7 @@ static const struct ofw_compat_data rt_compat_data[] = {
 	{ "ralink,rt2880-eth",		RT_CHIPID_RT2880 },
 	{ "ralink,rt3050-eth",		RT_CHIPID_RT3050 },
 	{ "ralink,rt3352-eth",		RT_CHIPID_RT3050 },
-	{ "ralink,rt3883-eth",		RT_CHIPID_RT3050 },
+	{ "ralink,rt3883-eth",		RT_CHIPID_RT3883 },
 	{ "ralink,rt5350-eth",		RT_CHIPID_RT5350 },
 	{ "ralink,mt7620a-eth",		RT_CHIPID_MT7620 },
 	{ "mediatek,mt7620-eth",	RT_CHIPID_MT7620 },
@@ -184,7 +187,8 @@ static int	rt_miibus_writereg(device_t, int, int, int);
 static int	rt_ifmedia_upd(struct ifnet *);
 static void	rt_ifmedia_sts(struct ifnet *, struct ifmediareq *);
 
-static SYSCTL_NODE(_hw, OID_AUTO, rt, CTLFLAG_RD, 0, "RT driver parameters");
+static SYSCTL_NODE(_hw, OID_AUTO, rt, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "RT driver parameters");
 #ifdef IF_RT_DEBUG
 static int rt_debug = 0;
 SYSCTL_INT(_hw_rt, OID_AUTO, debug, CTLFLAG_RWTUN, &rt_debug, 0,
@@ -293,7 +297,6 @@ ether_request_mac(device_t dev, uint8_t *mac)
 #if defined(RT305X_UBOOT) ||  defined(__REDBOOT__) || defined(__ROUTERBOOT__)
 	if ((var = kern_getenv("ethaddr")) != NULL ||
 	    (var = kern_getenv("kmac")) != NULL ) {
-
 		if(!macaddr_atoi(var, mac)) {
 			printf("%s: use %s macaddr from KENV\n",
 			    device_get_nameunit(dev), var);
@@ -310,7 +313,6 @@ ether_request_mac(device_t dev, uint8_t *mac)
 	 */
 	if (!resource_string_value(device_get_name(dev),
 	    device_get_unit(dev), "macaddr", (const char **)&var)) {
-
 		if(!macaddr_atoi(var, mac)) {
 			printf("%s: use %s macaddr from hints\n",
 			    device_get_nameunit(dev), var);
@@ -354,9 +356,17 @@ rt_attach(device_t dev)
 	struct rt_softc *sc;
 	struct ifnet *ifp;
 	int error, i;
+#ifdef FDT
+	phandle_t node;
+	char fdtval[32];
+#endif
 
 	sc = device_get_softc(dev);
 	sc->dev = dev;
+
+#ifdef FDT
+	node = ofw_bus_get_node(sc->dev);
+#endif
 
 	mtx_init(&sc->lock, device_get_nameunit(dev), MTX_NETWORK_LOCK,
 	    MTX_DEF | MTX_RECURSE);
@@ -393,7 +403,6 @@ rt_attach(device_t dev)
 
 	/* Reset hardware */
 	reset_freng(sc);
-
 
 	if (sc->rt_chipid == RT_CHIPID_MT7620) {
 		sc->csum_fail_ip = MT7620_RXD_SRC_IP_CSUM_FAIL;
@@ -479,8 +488,16 @@ rt_attach(device_t dev)
 		GDM_DST_PORT_CPU << GDM_OFRC_P_SHIFT   /* fwd Other to CPU */
 		));
 
-	if (sc->rt_chipid == RT_CHIPID_RT2880)
-		RT_WRITE(sc, MDIO_CFG, MDIO_2880_100T_INIT);
+#ifdef FDT
+	if (sc->rt_chipid == RT_CHIPID_RT2880 ||
+	    sc->rt_chipid == RT_CHIPID_RT3883) {
+		if (OF_getprop(node, "port-mode", fdtval, sizeof(fdtval)) > 0 &&
+		    strcmp(fdtval, "gigasw") == 0)
+			RT_WRITE(sc, MDIO_CFG, MDIO_2880_GIGA_INIT);
+		else
+			RT_WRITE(sc, MDIO_CFG, MDIO_2880_100T_INIT);
+	}
+#endif
 
 	/* allocate Tx and Rx rings */
 	for (i = 0; i < RT_SOFTC_TX_RING_COUNT; i++) {
@@ -552,7 +569,7 @@ rt_attach(device_t dev)
 	ifp->if_capenable |= IFCAP_RXCSUM|IFCAP_TXCSUM;
 
 	/* init task queue */
-	TASK_INIT(&sc->rx_done_task, 0, rt_rx_done_task, sc);
+	NET_TASK_INIT(&sc->rx_done_task, 0, rt_rx_done_task, sc);
 	TASK_INIT(&sc->tx_done_task, 0, rt_tx_done_task, sc);
 	TASK_INIT(&sc->periodic_task, 0, rt_periodic_task, sc);
 
@@ -982,7 +999,7 @@ rt_stop_locked(void *priv)
 
 	/* disable interrupts */
 	RT_WRITE(sc, sc->fe_int_enable, 0);
-	
+
 	if(sc->rt_chipid != RT_CHIPID_RT5350 &&
 	   sc->rt_chipid != RT_CHIPID_MT7620 &&
 	   sc->rt_chipid != RT_CHIPID_MT7621) {
@@ -1092,7 +1109,6 @@ rt_tx_data(struct rt_softc *sc, struct mbuf *m, int qid)
 
 	/* set up Tx descs */
 	for (i = 0; i < ndmasegs; i += 2) {
-
 		/* TODO: this needs to be refined as MT7620 for example has
 		 * a different word3 layout than RT305x and RT5350 (the last
 		 * one doesn't use word3 at all). And so does MT7621...
@@ -1527,25 +1543,25 @@ rt_rt5350_intr(void *arg)
 	struct rt_softc *sc;
 	struct ifnet *ifp;
 	uint32_t status;
-	
+
 	sc = arg;
 	ifp = sc->ifp;
-	
+
 	/* acknowledge interrupts */
 	status = RT_READ(sc, sc->fe_int_status);
 	RT_WRITE(sc, sc->fe_int_status, status);
-	
+
 	RT_DPRINTF(sc, RT_DEBUG_INTR, "interrupt: status=0x%08x\n", status);
-	
+
 	if (status == 0xffffffff ||     /* device likely went away */
 		status == 0)            /* not for us */
 		return;
-	
+
 	sc->interrupts++;
-	
+
 	if (!(ifp->if_drv_flags & IFF_DRV_RUNNING))
 	        return;
-	
+
 	if (status & RT5350_INT_TX_COHERENT)
 		rt_tx_coherent_intr(sc);
 	if (status & RT5350_INT_RX_COHERENT)
@@ -2581,7 +2597,7 @@ rt_sysctl_attach(struct rt_softc *sc)
 
 	/* statistic counters */
 	stats = SYSCTL_ADD_NODE(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-	    "stats", CTLFLAG_RD, 0, "statistic");
+	    "stats", CTLFLAG_RD | CTLFLAG_MPSAFE, 0, "statistic");
 
 	SYSCTL_ADD_ULONG(ctx, SYSCTL_CHILDREN(stats), OID_AUTO,
 	    "interrupts", CTLFLAG_RD, &sc->interrupts,
@@ -2911,7 +2927,7 @@ rtmdio_probe(device_t dev)
 	if (!ofw_bus_is_compatible(dev, "ralink,rt2880-mdio"))
 		return (ENXIO);
 
-	device_set_desc(dev, "FV built-in ethernet interface, MDIO controller");
+	device_set_desc(dev, "RT built-in ethernet interface, MDIO controller");
 	return(0);
 }
 

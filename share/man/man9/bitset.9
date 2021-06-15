@@ -24,7 +24,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd December 12, 2019
+.Dd December 31, 2020
 .Dt BITSET 9
 .Os
 .Sh NAME
@@ -43,6 +43,7 @@
 .Nm BIT_EMPTY ,
 .Nm BIT_ISFULLSET ,
 .Nm BIT_FFS ,
+.Nm BIT_FFS_AT ,
 .Nm BIT_FLS ,
 .Nm BIT_COUNT ,
 .Nm BIT_SUBSET ,
@@ -59,6 +60,8 @@
 .Nm BIT_CLR_ATOMIC ,
 .Nm BIT_SET_ATOMIC ,
 .Nm BIT_SET_ATOMIC_ACQ ,
+.Nm BIT_TEST_SET_ATOMIC ,
+.Nm BIT_TEST_CLR_ATOMIC ,
 .Nm BIT_AND_ATOMIC ,
 .Nm BIT_OR_ATOMIC ,
 .Nm BIT_COPY_STORE_REL
@@ -83,11 +86,13 @@
 .Fn BIT_EMPTY "const SETSIZE" "struct STRUCTNAME *bitset"
 .Ft bool
 .Fn BIT_ISFULLSET "const SETSIZE" "struct STRUCTNAME *bitset"
-.Ft int
+.Ft long
 .Fn BIT_FFS "const SETSIZE" "struct STRUCTNAME *bitset"
-.Ft int
+.Ft long
+.Fn BIT_FFS_AT "const SETSIZE" "struct STRUCTNAME *bitset" "long start"
+.Ft long
 .Fn BIT_FLS "const SETSIZE" "struct STRUCTNAME *bitset"
-.Ft int
+.Ft long
 .Fn BIT_COUNT "const SETSIZE" "struct STRUCTNAME *bitset"
 .\"
 .Ft bool
@@ -134,6 +139,10 @@
 .Fn BIT_CLR_ATOMIC "const SETSIZE" "size_t bit" "struct STRUCTNAME *bitset"
 .Fn BIT_SET_ATOMIC "const SETSIZE" "size_t bit" "struct STRUCTNAME *bitset"
 .Fn BIT_SET_ATOMIC_ACQ "const SETSIZE" "size_t bit" "struct STRUCTNAME *bitset"
+.Ft bool
+.Fn BIT_TEST_SET_ATOMIC "const SETSIZE" "size_t bit" "struct STRUCTNAME *bitset"
+.Ft bool
+.Fn BIT_TEST_CLR_ATOMIC "const SETSIZE" "size_t bit" "struct STRUCTNAME *bitset"
 .\"
 .Fo BIT_AND_ATOMIC
 .Fa "const SETSIZE" "struct STRUCTNAME *dst" "struct STRUCTNAME *src"
@@ -202,6 +211,9 @@ in the bitset pointed to by
 The
 .Fn BIT_CLR_ATOMIC
 macro is identical, but the bit is cleared atomically.
+The
+.Fn BIT_TEST_CLR_ATOMIC
+macro atomically clears the bit and returns whether it was set.
 .Pp
 The
 .Fn BIT_COPY
@@ -233,6 +245,9 @@ macro is identical, but the bit is set atomically.
 The
 .Fn BIT_SET_ATOMIC_ACQ
 macro sets the bit with acquire semantics.
+The
+.Fn BIT_TEST_SET_ATOMIC
+macro atomically sets the bit and returns whether it was set.
 .Pp
 The
 .Fn BIT_ZERO
@@ -283,6 +298,18 @@ as a
 index parameter to any other
 .Nm
 macro, you must subtract one from the result.
+.Pp
+The
+.Fn BIT_FFS_AT
+macro returns the 1-index of the first (lowest) set bit in
+.Fa bitset ,
+which is greater than the given 1-indexed
+.Fa start ,
+or zero if no bits in
+.Fa bitset
+greater than
+.Fa start
+are set.
 .Pp
 The
 .Fn BIT_FLS
@@ -518,7 +545,8 @@ argument to all of these macros must match the value given to
 .Fn BITSET_DEFINE .
 .Pp
 Unlike every other reference to individual set members, which are zero-indexed,
-.Fn BIT_FFS
+.Fn BIT_FFS ,
+.Fn BIT_FFS_AT
 and
 .Fn BIT_FLS
 return a one-indexed result (or zero if the set is empty).

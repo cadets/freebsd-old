@@ -175,7 +175,6 @@ ng_parse_getDefault(const struct ng_parse_type *type, u_char *buf, int *buflen)
 	return (*func)(type, buf, buf, buflen);
 }
 
-
 /************************************************************************
 			STRUCTURE TYPE
  ************************************************************************/
@@ -961,9 +960,11 @@ ng_ipaddr_parse(const struct ng_parse_type *type,
 		if ((error = ng_int8_parse(&ng_parse_int8_type,
 		    s, off, start, buf + i, buflen)) != 0)
 			return (error);
-		if (i < 3 && s[*off] != '.')
-			return (EINVAL);
-		(*off)++;
+		if (i < 3) {
+			if (s[*off] != '.')
+				return (EINVAL);
+			(*off)++;
+		}
 	}
 	*buflen = 4;
 	return (0);
@@ -1899,4 +1900,3 @@ ng_get_getAlign_method(const struct ng_parse_type *t)
 		t = t->supertype;
 	return (t ? t->getAlign : NULL);
 }
-

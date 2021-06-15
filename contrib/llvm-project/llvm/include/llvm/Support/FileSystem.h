@@ -34,6 +34,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/FileSystem/UniqueID.h"
 #include "llvm/Support/MD5.h"
 #include <cassert>
 #include <cstdint>
@@ -42,7 +43,6 @@
 #include <stack>
 #include <string>
 #include <system_error>
-#include <tuple>
 #include <vector>
 
 #ifdef HAVE_SYS_STAT_H
@@ -130,26 +130,6 @@ inline perms operator~(perms x) {
   return static_cast<perms>(
       static_cast<unsigned short>(~static_cast<unsigned short>(x)));
 }
-
-class UniqueID {
-  uint64_t Device;
-  uint64_t File;
-
-public:
-  UniqueID() = default;
-  UniqueID(uint64_t Device, uint64_t File) : Device(Device), File(File) {}
-
-  bool operator==(const UniqueID &Other) const {
-    return Device == Other.Device && File == Other.File;
-  }
-  bool operator!=(const UniqueID &Other) const { return !(*this == Other); }
-  bool operator<(const UniqueID &Other) const {
-    return std::tie(Device, File) < std::tie(Other.Device, Other.File);
-  }
-
-  uint64_t getDevice() const { return Device; }
-  uint64_t getFile() const { return File; }
-};
 
 /// Represents the result of a call to directory_iterator::status(). This is a
 /// subset of the information returned by a regular sys::fs::status() call, and
@@ -991,29 +971,27 @@ file_t getStdoutHandle();
 /// Returns kInvalidFile when the stream is closed.
 file_t getStderrHandle();
 
-/// Reads \p Buf.size() bytes from \p FileHandle into \p Buf. The number of
-/// bytes actually read is returned in \p BytesRead. On Unix, this is equivalent
-/// to `*BytesRead = ::read(FD, Buf.data(), Buf.size())`, with error reporting.
-/// BytesRead will contain zero when reaching EOF.
+/// Reads \p Buf.size() bytes from \p FileHandle into \p Buf. Returns the number
+/// of bytes actually read. On Unix, this is equivalent to `return ::read(FD,
+/// Buf.data(), Buf.size())`, with error reporting. Returns 0 when reaching EOF.
 ///
 /// @param FileHandle File to read from.
 /// @param Buf Buffer to read into.
-/// @param BytesRead Output parameter of the number of bytes read.
-/// @returns The error, if any, or errc::success.
-std::error_code readNativeFile(file_t FileHandle, MutableArrayRef<char> Buf,
-                               size_t *BytesRead);
+/// @returns The number of bytes read, or error.
+Expected<size_t> readNativeFile(file_t FileHandle, MutableArrayRef<char> Buf);
 
 /// Reads \p Buf.size() bytes from \p FileHandle at offset \p Offset into \p
 /// Buf. If 'pread' is available, this will use that, otherwise it will use
-/// 'lseek'. Bytes requested beyond the end of the file will be zero
-/// initialized.
+/// 'lseek'. Returns the number of bytes actually read. Returns 0 when reaching
+/// EOF.
 ///
 /// @param FileHandle File to read from.
 /// @param Buf Buffer to read into.
 /// @param Offset Offset into the file at which the read should occur.
-/// @returns The error, if any, or errc::success.
-std::error_code readNativeFileSlice(file_t FileHandle,
-                                    MutableArrayRef<char> Buf, size_t Offset);
+/// @returns The number of bytes read, or error.
+Expected<size_t> readNativeFileSlice(file_t FileHandle,
+                                     MutableArrayRef<char> Buf,
+                                     uint64_t Offset);
 
 /// @brief Opens the file with the given name in a write-only or read-write
 /// mode, returning its open file descriptor. If the file does not exist, it
@@ -1133,6 +1111,43 @@ Expected<file_t>
 openNativeFileForRead(const Twine &Name, OpenFlags Flags = OF_None,
                       SmallVectorImpl<char> *RealPath = nullptr);
 
+/// Try to locks the file during the specified time.
+///
+/// This function implements advisory locking on entire file. If it returns
+/// <em>errc::success</em>, the file is locked by the calling process. Until the
+/// process unlocks the file by calling \a unlockFile, all attempts to lock the
+/// same file will fail/block. The process that locked the file may assume that
+/// none of other processes read or write this file, provided that all processes
+/// lock the file prior to accessing its content.
+///
+/// @param FD      The descriptor representing the file to lock.
+/// @param Timeout Time in milliseconds that the process should wait before
+///                reporting lock failure. Zero value means try to get lock only
+///                once.
+/// @returns errc::success if lock is successfully obtained,
+/// errc::no_lock_available if the file cannot be locked, or platform-specific
+/// error_code otherwise.
+///
+/// @note Care should be taken when using this function in a multithreaded
+/// context, as it may not prevent other threads in the same process from
+/// obtaining a lock on the same file, even if they are using a different file
+/// descriptor.
+std::error_code
+tryLockFile(int FD,
+            std::chrono::milliseconds Timeout = std::chrono::milliseconds(0));
+
+/// Lock the file.
+///
+/// This function acts as @ref tryLockFile but it waits infinitely.
+std::error_code lockFile(int FD);
+
+/// Unlock the file.
+///
+/// @param FD The descriptor representing the file to unlock.
+/// @returns errc::success if lock is successfully released or platform-specific
+/// error_code otherwise.
+std::error_code unlockFile(int FD);
+
 /// @brief Close the file object.  This should be used instead of ::close for
 /// portability. On error, the caller should assume the file is closed, as is
 /// the case for Process::SafelyCloseFileDescriptor
@@ -1143,6 +1158,35 @@ openNativeFileForRead(const Twine &Name, OpenFlags Flags = OF_None,
 /// @returns An error code if closing the file failed. Typically, an error here
 /// means that the filesystem may have failed to perform some buffered writes.
 std::error_code closeFile(file_t &F);
+
+/// RAII class that facilitates file locking.
+class FileLocker {
+  int FD; ///< Locked file handle.
+  FileLocker(int FD) : FD(FD) {}
+  friend class llvm::raw_fd_ostream;
+
+public:
+  FileLocker(const FileLocker &L) = delete;
+  FileLocker(FileLocker &&L) : FD(L.FD) { L.FD = -1; }
+  ~FileLocker() {
+    if (FD != -1)
+      unlockFile(FD);
+  }
+  FileLocker &operator=(FileLocker &&L) {
+    FD = L.FD;
+    L.FD = -1;
+    return *this;
+  }
+  FileLocker &operator=(const FileLocker &L) = delete;
+  std::error_code unlock() {
+    if (FD != -1) {
+      std::error_code Result = unlockFile(FD);
+      FD = -1;
+      return Result;
+    }
+    return std::error_code();
+  }
+};
 
 std::error_code getUniqueID(const Twine Path, UniqueID &Result);
 
@@ -1217,9 +1261,9 @@ class directory_entry {
   // that whole structure, callers end up paying for a stat().
   // std::filesystem::directory_entry may be a better model.
   std::string Path;
-  file_type Type;           // Most platforms can provide this.
-  bool FollowSymlinks;      // Affects the behavior of status().
-  basic_file_status Status; // If available.
+  file_type Type = file_type::type_unknown; // Most platforms can provide this.
+  bool FollowSymlinks = true;               // Affects the behavior of status().
+  basic_file_status Status;                 // If available.
 
 public:
   explicit directory_entry(const Twine &Path, bool FollowSymlinks = true,

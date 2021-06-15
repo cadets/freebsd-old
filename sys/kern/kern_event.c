@@ -161,6 +161,7 @@ static void	filt_procdetach(struct knote *kn);
 static int	filt_proc(struct knote *kn, long hint);
 static int	filt_fileattach(struct knote *kn);
 static void	filt_timerexpire(void *knx);
+static void	filt_timerexpire_l(struct knote *kn, bool proc_locked);
 static int	filt_timerattach(struct knote *kn);
 static void	filt_timerdetach(struct knote *kn);
 static void	filt_timerstart(struct knote *kn, sbintime_t to);
@@ -205,7 +206,7 @@ static struct filterops user_filtops = {
 };
 
 static uma_zone_t	knote_zone;
-static unsigned int	kq_ncallouts = 0;
+static unsigned int __exclusive_cache_line	kq_ncallouts;
 static unsigned int 	kq_calloutmax = 4 * 1024;
 SYSCTL_UINT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
     &kq_calloutmax, 0, "Maximum number of callouts allocated for kqueue");
@@ -221,7 +222,7 @@ SYSCTL_UINT(_kern, OID_AUTO, kq_calloutmax, CTLFLAG_RW,
 		knote_enqueue((kn));					\
 	if (!(islock))							\
 		KQ_UNLOCK((kn)->kn_kq);					\
-} while(0)
+} while (0)
 #define KQ_LOCK(kq) do {						\
 	mtx_lock(&(kq)->kq_lock);					\
 } while (0)
@@ -305,13 +306,13 @@ kn_leave_flux(struct knote *kn)
 } while (0)
 #ifdef INVARIANTS
 #define	KNL_ASSERT_LOCKED(knl) do {					\
-	knl->kl_assert_locked((knl)->kl_lockarg);			\
+	knl->kl_assert_lock((knl)->kl_lockarg, LA_LOCKED);		\
 } while (0)
 #define	KNL_ASSERT_UNLOCKED(knl) do {					\
-	knl->kl_assert_unlocked((knl)->kl_lockarg);			\
+	knl->kl_assert_lock((knl)->kl_lockarg, LA_UNLOCKED);		\
 } while (0)
 #else /* !INVARIANTS */
-#define	KNL_ASSERT_LOCKED(knl) do {} while(0)
+#define	KNL_ASSERT_LOCKED(knl) do {} while (0)
 #define	KNL_ASSERT_UNLOCKED(knl) do {} while (0)
 #endif /* INVARIANTS */
 
@@ -619,7 +620,7 @@ knote_fork(struct knlist *list, int pid)
     (NOTE_SECONDS | NOTE_MSECONDS | NOTE_USECONDS | NOTE_NSECONDS)
 
 static sbintime_t
-timer2sbintime(intptr_t data, int flags)
+timer2sbintime(int64_t data, int flags)
 {
 	int64_t secs;
 
@@ -665,7 +666,7 @@ timer2sbintime(intptr_t data, int flags)
 			if (secs > (SBT_MAX / SBT_1S))
 				return (SBT_MAX);
 #endif
-			return (secs << 32 | US_TO_SBT(data % 1000000000));
+			return (secs << 32 | NS_TO_SBT(data % 1000000000));
 		}
 		return (NS_TO_SBT(data));
 	default:
@@ -676,28 +677,104 @@ timer2sbintime(intptr_t data, int flags)
 
 struct kq_timer_cb_data {
 	struct callout c;
+	struct proc *p;
+	struct knote *kn;
+	int cpuid;
+	int flags;
+	TAILQ_ENTRY(kq_timer_cb_data) link;
 	sbintime_t next;	/* next timer event fires at */
 	sbintime_t to;		/* precalculated timer period, 0 for abs */
 };
 
+#define	KQ_TIMER_CB_ENQUEUED	0x01
+
+static void
+kqtimer_sched_callout(struct kq_timer_cb_data *kc)
+{
+	callout_reset_sbt_on(&kc->c, kc->next, 0, filt_timerexpire, kc->kn,
+	    kc->cpuid, C_ABSOLUTE);
+}
+
+void
+kqtimer_proc_continue(struct proc *p)
+{
+	struct kq_timer_cb_data *kc, *kc1;
+	struct bintime bt;
+	sbintime_t now;
+
+	PROC_LOCK_ASSERT(p, MA_OWNED);
+
+	getboottimebin(&bt);
+	now = bttosbt(bt);
+
+	TAILQ_FOREACH_SAFE(kc, &p->p_kqtim_stop, link, kc1) {
+		TAILQ_REMOVE(&p->p_kqtim_stop, kc, link);
+		kc->flags &= ~KQ_TIMER_CB_ENQUEUED;
+		if (kc->next <= now)
+			filt_timerexpire_l(kc->kn, true);
+		else
+			kqtimer_sched_callout(kc);
+	}
+}
+
+static void
+filt_timerexpire_l(struct knote *kn, bool proc_locked)
+{
+	struct kq_timer_cb_data *kc;
+	struct proc *p;
+	uint64_t delta;
+	sbintime_t now;
+
+	kc = kn->kn_ptr.p_v;
+
+	if ((kn->kn_flags & EV_ONESHOT) != 0 || kc->to == 0) {
+		kn->kn_data++;
+		KNOTE_ACTIVATE(kn, 0);
+		return;
+	}
+
+	now = sbinuptime();
+	if (now >= kc->next) {
+		delta = (now - kc->next) / kc->to;
+		if (delta == 0)
+			delta = 1;
+		kn->kn_data += delta;
+		kc->next += (delta + 1) * kc->to;
+		if (now >= kc->next)	/* overflow */
+			kc->next = now + kc->to;
+		KNOTE_ACTIVATE(kn, 0);	/* XXX - handle locking */
+	}
+
+	/*
+	 * Initial check for stopped kc->p is racy.  It is fine to
+	 * miss the set of the stop flags, at worst we would schedule
+	 * one more callout.  On the other hand, it is not fine to not
+	 * schedule when we we missed clearing of the flags, we
+	 * recheck them under the lock and observe consistent state.
+	 */
+	p = kc->p;
+	if (P_SHOULDSTOP(p) || P_KILLED(p)) {
+		if (!proc_locked)
+			PROC_LOCK(p);
+		if (P_SHOULDSTOP(p) || P_KILLED(p)) {
+			if ((kc->flags & KQ_TIMER_CB_ENQUEUED) == 0) {
+				kc->flags |= KQ_TIMER_CB_ENQUEUED;
+				TAILQ_INSERT_TAIL(&p->p_kqtim_stop, kc, link);
+			}
+			if (!proc_locked)
+				PROC_UNLOCK(p);
+			return;
+		}
+		if (!proc_locked)
+			PROC_UNLOCK(p);
+	}
+	kqtimer_sched_callout(kc);
+}
+
 static void
 filt_timerexpire(void *knx)
 {
-	struct knote *kn;
-	struct kq_timer_cb_data *kc;
-
-	kn = knx;
-	kn->kn_data++;
-	KNOTE_ACTIVATE(kn, 0);	/* XXX - handle locking */
-
-	if ((kn->kn_flags & EV_ONESHOT) != 0)
-		return;
-	kc = kn->kn_ptr.p_v;
-	if (kc->to == 0)
-		return;
-	kc->next += kc->to;
-	callout_reset_sbt_on(&kc->c, kc->next, 0, filt_timerexpire, kn,
-	    PCPU_GET(cpuid), C_ABSOLUTE);
+	filt_timerexpire_l(knx, false);
 }
 
 /*
@@ -736,23 +813,25 @@ filt_timerattach(struct knote *kn)
 {
 	struct kq_timer_cb_data *kc;
 	sbintime_t to;
-	unsigned int ncallouts;
 	int error;
 
 	error = filt_timervalidate(kn, &to);
 	if (error != 0)
 		return (error);
 
-	do {
-		ncallouts = kq_ncallouts;
-		if (ncallouts >= kq_calloutmax)
-			return (ENOMEM);
-	} while (!atomic_cmpset_int(&kq_ncallouts, ncallouts, ncallouts + 1));
+	if (atomic_fetchadd_int(&kq_ncallouts, 1) + 1 > kq_calloutmax) {
+		atomic_subtract_int(&kq_ncallouts, 1);
+		return (ENOMEM);
+	}
 
 	if ((kn->kn_sfflags & NOTE_ABSTIME) == 0)
 		kn->kn_flags |= EV_CLEAR;	/* automatically set */
 	kn->kn_status &= ~KN_DETACHED;		/* knlist_add clears it */
 	kn->kn_ptr.p_v = kc = malloc(sizeof(*kc), M_KQUEUE, M_WAITOK);
+	kc->kn = kn;
+	kc->p = curproc;
+	kc->cpuid = PCPU_GET(cpuid);
+	kc->flags = 0;
 	callout_init(&kc->c, 1);
 	filt_timerstart(kn, to);
 
@@ -772,8 +851,7 @@ filt_timerstart(struct knote *kn, sbintime_t to)
 		kc->next = to + sbinuptime();
 		kc->to = to;
 	}
-	callout_reset_sbt_on(&kc->c, kc->next, 0, filt_timerexpire, kn,
-	    PCPU_GET(cpuid), C_ABSOLUTE);
+	kqtimer_sched_callout(kc);
 }
 
 static void
@@ -784,6 +862,11 @@ filt_timerdetach(struct knote *kn)
 
 	kc = kn->kn_ptr.p_v;
 	callout_drain(&kc->c);
+	if ((kc->flags & KQ_TIMER_CB_ENQUEUED) != 0) {
+		PROC_LOCK(kc->p);
+		TAILQ_REMOVE(&kc->p->p_kqtim_stop, kc, link);
+		PROC_UNLOCK(kc->p);
+	}
 	free(kc, M_KQUEUE);
 	old = atomic_fetchadd_int(&kq_ncallouts, -1);
 	KASSERT(old > 0, ("Number of callouts cannot become negative"));
@@ -1195,11 +1278,11 @@ kern_kevent(struct thread *td, int fd, int nchanges, int nevents,
 	struct file *fp;
 	int error;
 
-	cap_rights_init(&rights);
+	cap_rights_init_zero(&rights);
 	if (nchanges > 0)
-		cap_rights_set(&rights, CAP_KQUEUE_CHANGE);
+		cap_rights_set_one(&rights, CAP_KQUEUE_CHANGE);
 	if (nevents > 0)
-		cap_rights_set(&rights, CAP_KQUEUE_EVENT);
+		cap_rights_set_one(&rights, CAP_KQUEUE_EVENT);
 	error = fget(td, fd, &rights, &fp);
 	if (error != 0)
 		return (error);
@@ -1217,6 +1300,9 @@ kqueue_kevent(struct kqueue *kq, struct thread *td, int nchanges, int nevents,
 	struct kevent keva[KQ_NEVENTS];
 	struct kevent *kevp, *changes;
 	int i, n, nerrors, error;
+
+	if (nchanges < 0)
+		return (EINVAL);
 
 	nerrors = 0;
 	while (nchanges > 0) {
@@ -1568,7 +1654,7 @@ findkn:
 			goto done;
 		}
 	}
-	
+
 	if (kev->flags & EV_DELETE) {
 		kn_enter_flux(kn);
 		KQ_UNLOCK(kq);
@@ -1810,6 +1896,10 @@ kqueue_scan(struct kqueue *kq, int maxevents, struct kevent_copyops *k_ops,
 
 	if (maxevents == 0)
 		goto done_nl;
+	if (maxevents < 0) {
+		error = EINVAL;
+		goto done_nl;
+	}
 
 	rsbt = 0;
 	if (tsp != NULL) {
@@ -2383,17 +2473,13 @@ knlist_mtx_unlock(void *arg)
 }
 
 static void
-knlist_mtx_assert_locked(void *arg)
+knlist_mtx_assert_lock(void *arg, int what)
 {
 
-	mtx_assert((struct mtx *)arg, MA_OWNED);
-}
-
-static void
-knlist_mtx_assert_unlocked(void *arg)
-{
-
-	mtx_assert((struct mtx *)arg, MA_NOTOWNED);
+	if (what == LA_LOCKED)
+		mtx_assert((struct mtx *)arg, MA_OWNED);
+	else
+		mtx_assert((struct mtx *)arg, MA_NOTOWNED);
 }
 
 static void
@@ -2411,23 +2497,19 @@ knlist_rw_runlock(void *arg)
 }
 
 static void
-knlist_rw_assert_locked(void *arg)
+knlist_rw_assert_lock(void *arg, int what)
 {
 
-	rw_assert((struct rwlock *)arg, RA_LOCKED);
-}
-
-static void
-knlist_rw_assert_unlocked(void *arg)
-{
-
-	rw_assert((struct rwlock *)arg, RA_UNLOCKED);
+	if (what == LA_LOCKED)
+		rw_assert((struct rwlock *)arg, RA_LOCKED);
+	else
+		rw_assert((struct rwlock *)arg, RA_UNLOCKED);
 }
 
 void
 knlist_init(struct knlist *knl, void *lock, void (*kl_lock)(void *),
     void (*kl_unlock)(void *),
-    void (*kl_assert_locked)(void *), void (*kl_assert_unlocked)(void *))
+    void (*kl_assert_lock)(void *, int))
 {
 
 	if (lock == NULL)
@@ -2443,14 +2525,10 @@ knlist_init(struct knlist *knl, void *lock, void (*kl_lock)(void *),
 		knl->kl_unlock = knlist_mtx_unlock;
 	else
 		knl->kl_unlock = kl_unlock;
-	if (kl_assert_locked == NULL)
-		knl->kl_assert_locked = knlist_mtx_assert_locked;
+	if (kl_assert_lock == NULL)
+		knl->kl_assert_lock = knlist_mtx_assert_lock;
 	else
-		knl->kl_assert_locked = kl_assert_locked;
-	if (kl_assert_unlocked == NULL)
-		knl->kl_assert_unlocked = knlist_mtx_assert_unlocked;
-	else
-		knl->kl_assert_unlocked = kl_assert_unlocked;
+		knl->kl_assert_lock = kl_assert_lock;
 
 	knl->kl_autodestroy = 0;
 	SLIST_INIT(&knl->kl_list);
@@ -2460,7 +2538,7 @@ void
 knlist_init_mtx(struct knlist *knl, struct mtx *lock)
 {
 
-	knlist_init(knl, lock, NULL, NULL, NULL, NULL);
+	knlist_init(knl, lock, NULL, NULL, NULL);
 }
 
 struct knlist *
@@ -2478,7 +2556,7 @@ knlist_init_rw_reader(struct knlist *knl, struct rwlock *lock)
 {
 
 	knlist_init(knl, lock, knlist_rw_rlock, knlist_rw_runlock,
-	    knlist_rw_assert_locked, knlist_rw_assert_unlocked);
+	    knlist_rw_assert_lock);
 }
 
 void
@@ -2734,7 +2812,8 @@ kqfd_register(int fd, struct kevent *kev, struct thread *td, int mflag)
 	cap_rights_t rights;
 	int error;
 
-	error = fget(td, fd, cap_rights_init(&rights, CAP_KQUEUE_CHANGE), &fp);
+	error = fget(td, fd, cap_rights_init_one(&rights, CAP_KQUEUE_CHANGE),
+	    &fp);
 	if (error != 0)
 		return (error);
 	if ((error = kqueue_acquire(fp, &kq)) != 0)

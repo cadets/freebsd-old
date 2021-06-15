@@ -108,7 +108,8 @@ const struct cam_status_entry cam_status_table[] = {
 };
 
 #ifdef _KERNEL
-SYSCTL_NODE(_kern, OID_AUTO, cam, CTLFLAG_RD, 0, "CAM Subsystem");
+SYSCTL_NODE(_kern, OID_AUTO, cam, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
+    "CAM Subsystem");
 
 #ifndef CAM_DEFAULT_SORT_IO_QUEUES
 #define CAM_DEFAULT_SORT_IO_QUEUES 1
@@ -204,7 +205,6 @@ cam_strvis_sbuf(struct sbuf *sb, const u_int8_t *src, int srclen,
 		srclen--;
 	}
 }
-
 
 /*
  * Compare string with pattern, returning 0 on match.
@@ -328,7 +328,6 @@ camstatusentrycomp(const void *key, const void *member)
 
 	return (status - table_entry->status_code);
 }
-
 
 #ifdef _KERNEL
 char *
@@ -492,7 +491,6 @@ cam_error_string(struct cam_device *device, union ccb *ccb, char *str,
 			if ((proto_flags & CAM_ESF_PRINT_SENSE)
 			 && (ccb->csio.scsi_status == SCSI_STATUS_CHECK_COND)
 			 && (ccb->ccb_h.status & CAM_AUTOSNS_VALID)) {
-
 #ifdef _KERNEL
 				scsi_sense_sbuf(&ccb->csio, &sb,
 						SSS_FLAG_NONE);

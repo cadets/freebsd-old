@@ -103,7 +103,8 @@ TUNABLE_STR("kern.geom.uzip.noattach_to", g_uzip_noattach_to,
     sizeof(g_uzip_noattach_to));
 
 SYSCTL_DECL(_kern_geom);
-SYSCTL_NODE(_kern_geom, OID_AUTO, uzip, CTLFLAG_RW, 0, "GEOM_UZIP stuff");
+SYSCTL_NODE(_kern_geom, OID_AUTO, uzip, CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
+    "GEOM_UZIP stuff");
 static u_int g_uzip_debug = GEOM_UZIP_DBG_DEFAULT;
 SYSCTL_UINT(_kern_geom_uzip, OID_AUTO, debug, CTLFLAG_RWTUN, &g_uzip_debug, 0,
     "Debug level (0-4)");
@@ -135,7 +136,7 @@ SYSCTL_UINT(_kern_geom_uzip, OID_AUTO, debug_block, CTLFLAG_RWTUN,
 /*
  * Maximum allowed valid block size (to prevent foot-shooting)
  */
-#define	MAX_BLKSZ	(MAXPHYS)
+#define	MAX_BLKSZ	(maxphys)
 
 static char CLOOP_MAGIC_START[] = "#!/bin/sh\n";
 
@@ -291,7 +292,7 @@ g_uzip_request(struct g_geom *gp, struct bio *bp)
 	bp2->bio_offset = TOFF_2_BOFF(sc, pp, start_blk);
 	while (1) {
 		bp2->bio_length = TLEN_2_BLEN(sc, pp, bp2, end_blk - 1);
-		if (bp2->bio_length <= MAXPHYS) {
+		if (bp2->bio_length <= maxphys) {
 			break;
 		}
 		if (end_blk == (start_blk + 1)) {
@@ -676,6 +677,7 @@ g_uzip_taste(struct g_class *mp, struct g_provider *pp, int flags)
 	struct g_geom *gp;
 	struct g_provider *pp2;
 	struct g_uzip_softc *sc;
+	struct g_geom_alias *gap;
 	enum {
 		G_UZIP = 1,
 		G_ULZMA,
@@ -705,11 +707,11 @@ g_uzip_taste(struct g_class *mp, struct g_provider *pp, int flags)
 	gp = g_new_geomf(mp, GUZ_DEV_NAME("%s"), pp->name);
 	cp = g_new_consumer(gp);
 	error = g_attach(cp, pp);
-	if (error == 0)
-		error = g_access(cp, 1, 0, 0);
-	if (error) {
+	if (error != 0)
+		goto e0;
+	error = g_access(cp, 1, 0, 0);
+	if (error)
 		goto e1;
-	}
 	g_topology_unlock();
 
 	/*
@@ -789,7 +791,7 @@ g_uzip_taste(struct g_class *mp, struct g_provider *pp, int flags)
 		goto e4;
 	}
 	if (sc->blksz > MAX_BLKSZ) {
-		printf("%s: block size (%u) should not be larger than %d.\n",
+		printf("%s: block size (%u) should not be larger than %lu.\n",
 		    gp->name, sc->blksz, MAX_BLKSZ);
 	}
 	total_offsets = sc->nblocks + 1;
@@ -909,6 +911,8 @@ g_uzip_taste(struct g_class *mp, struct g_provider *pp, int flags)
 	pp2->mediasize = (off_t)sc->nblocks * sc->blksz;
 	pp2->stripesize = pp->stripesize;
 	pp2->stripeoffset = pp->stripeoffset;
+	LIST_FOREACH(gap, &pp->aliases, ga_next)
+		g_provider_add_alias(pp2, GUZ_DEV_NAME("%s"), gap->ga_alias);
 	g_error_provider(pp2, 0);
 	g_access(cp, -1, 0, 0);
 
@@ -938,6 +942,7 @@ e2:
 	g_access(cp, -1, 0, 0);
 e1:
 	g_detach(cp);
+e0:
 	g_destroy_consumer(cp);
 	g_destroy_geom(gp);
 

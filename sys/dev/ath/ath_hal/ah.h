@@ -33,6 +33,18 @@
 #include "ah_osdep.h"
 
 /*
+ * Endianness macros; used by various structures and code.
+ */
+#define AH_BIG_ENDIAN           4321
+#define AH_LITTLE_ENDIAN        1234
+
+#if _BYTE_ORDER == _BIG_ENDIAN
+#define AH_BYTE_ORDER   AH_BIG_ENDIAN
+#else
+#define AH_BYTE_ORDER   AH_LITTLE_ENDIAN
+#endif
+
+/*
  * The maximum number of TX/RX chains supported.
  * This is intended to be used by various statistics gathering operations
  * (NF, RSSI, EVM).
@@ -727,7 +739,6 @@ typedef enum {
 	HAL_HT_EXTPROTSPACING_25 = 1,	/* 25 MHz spacing */
 } HAL_HT_EXTPROTSPACING;
 
-
 typedef enum {
 	HAL_RX_CLEAR_CTL_LOW	= 0x1,	/* force control channel to appear busy */
 	HAL_RX_CLEAR_EXT_LOW	= 0x2,	/* force extension channel to appear busy */
@@ -1040,7 +1051,6 @@ typedef enum {
 	HAL_DFS_ETSI_DOMAIN	= 2,	/* ETSI dfs domain */
 	HAL_DFS_MKK4_DOMAIN	= 3,	/* Japan dfs domain */
 } HAL_DFS_DOMAIN;
-
 
 /*
  * MFP decryption options for initializing the MAC.
@@ -1394,6 +1404,8 @@ struct ath_hal {
 				HAL_QUIET_FLAG flag);
 	void	  __ahdecl(*ah_setChainMasks)(struct ath_hal *,
 				uint32_t, uint32_t);
+	u_int	  __ahdecl(*ah_getNav)(struct ath_hal*);
+	void	  __ahdecl(*ah_setNav)(struct ath_hal*, u_int);
 
 	/* DFS functions */
 	void	  __ahdecl(*ah_enableDfs)(struct ath_hal *ah,

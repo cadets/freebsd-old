@@ -31,7 +31,7 @@
 #define	FREEBSD32_SYS_setuid	23
 #define	FREEBSD32_SYS_getuid	24
 #define	FREEBSD32_SYS_geteuid	25
-#define	FREEBSD32_SYS_ptrace	26
+#define	FREEBSD32_SYS_freebsd32_ptrace	26
 #define	FREEBSD32_SYS_freebsd32_recvmsg	27
 #define	FREEBSD32_SYS_freebsd32_sendmsg	28
 #define	FREEBSD32_SYS_freebsd32_recvfrom	29
@@ -167,7 +167,7 @@
 #define	FREEBSD32_SYS_freebsd32_shmsys	171
 				/* 173 is freebsd6 freebsd32_pread */
 				/* 174 is freebsd6 freebsd32_pwrite */
-#define	FREEBSD32_SYS_ntp_adjtime	176
+#define	FREEBSD32_SYS_freebsd32_ntp_adjtime	176
 #define	FREEBSD32_SYS_setgid	181
 #define	FREEBSD32_SYS_setegid	182
 #define	FREEBSD32_SYS_seteuid	183
@@ -431,7 +431,7 @@
 #define	FREEBSD32_SYS_freebsd32_jail_get	506
 #define	FREEBSD32_SYS_freebsd32_jail_set	507
 #define	FREEBSD32_SYS_jail_remove	508
-#define	FREEBSD32_SYS_closefrom	509
+#define	FREEBSD32_SYS_freebsd12_closefrom	509
 #define	FREEBSD32_SYS_freebsd32_semctl	510
 #define	FREEBSD32_SYS_freebsd32_msgctl	511
 #define	FREEBSD32_SYS_freebsd32_shmctl	512
@@ -499,4 +499,11 @@
 #define	FREEBSD32_SYS_freebsd32___sysctlbyname	570
 #define	FREEBSD32_SYS_shm_open2	571
 #define	FREEBSD32_SYS_shm_rename	572
-#define	FREEBSD32_SYS_MAXSYSCALL	573
+#define	FREEBSD32_SYS_sigfastblock	573
+#define	FREEBSD32_SYS___realpathat	574
+#define	FREEBSD32_SYS_close_range	575
+#define	FREEBSD32_SYS_rpctls_syscall	576
+#define	FREEBSD32_SYS___specialfd	577
+#define	FREEBSD32_SYS_freebsd32_aio_writev	578
+#define	FREEBSD32_SYS_freebsd32_aio_readv	579
+#define	FREEBSD32_SYS_MAXSYSCALL	580

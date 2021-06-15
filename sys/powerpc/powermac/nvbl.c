@@ -53,7 +53,6 @@ __FBSDID("$FreeBSD$");
 #define   NVIDIA_PMC_BL_SHIFT    (16)
 #define   NVIDIA_PMC_BL_EN       (1U << 31)
 
-
 struct nvbl_softc {
 	device_t	 dev;
 	struct resource *sc_memr;
@@ -144,8 +143,8 @@ nvbl_attach(device_t dev)
 	tree = device_get_sysctl_tree(dev);
 
 	SYSCTL_ADD_PROC(ctx, SYSCTL_CHILDREN(tree), OID_AUTO,
-			"level", CTLTYPE_INT | CTLFLAG_RW, sc, 0,
-			nvbl_sysctl, "I", "Backlight level (0-100)");
+	    "level", CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, sc, 0,
+	    nvbl_sysctl, "I", "Backlight level (0-100)");
 
 	return (0);
 }

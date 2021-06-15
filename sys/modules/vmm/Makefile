@@ -1,12 +1,15 @@
 # $FreeBSD$
 
+.include <kmod.opts.mk>
+
 KMOD=	vmm
 
-SRCS=	opt_acpi.h opt_ddb.h device_if.h bus_if.h pci_if.h pcib_if.h acpi_if.h
+SRCS=	opt_acpi.h opt_bhyve_snapshot.h opt_ddb.h
+SRCS+=	device_if.h bus_if.h pci_if.h pcib_if.h acpi_if.h vnode_if.h
 DPSRCS+=	vmx_assym.h svm_assym.h
 DPSRCS+=	vmx_genassym.c svm_genassym.c offset.inc
 
-CFLAGS+= -DVMM_KEEP_STATS -DSMP
+CFLAGS+= -DVMM_KEEP_STATS
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/io
 CFLAGS+= -I${SRCTOP}/sys/amd64/vmm/intel
@@ -49,12 +52,19 @@ SRCS+=	ept.c		\
 # amd-specific files
 .PATH: ${SRCTOP}/sys/amd64/vmm/amd
 SRCS+=	vmcb.c		\
+	amdiommu.c	\
+	ivhd_if.c	\
+	ivhd_if.h	\
 	svm.c		\
 	svm_support.S	\
 	npt.c		\
 	ivrs_drv.c	\
 	amdvi_hw.c	\
 	svm_msr.c
+
+.if ${KERN_OPTS:MBHYVE_SNAPSHOT} != ""
+SRCS+=	vmm_snapshot.c
+.endif
 
 CLEANFILES=	vmx_assym.h vmx_genassym.o svm_assym.h svm_genassym.o
 
@@ -76,9 +86,9 @@ svm_support.o:
 	    ${.IMPSRC} -o ${.TARGET}
 
 vmx_genassym.o: offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} ${.IMPSRC}
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon ${.IMPSRC}
 
 svm_genassym.o: offset.inc
-	${CC} -c ${CFLAGS:N-flto:N-fno-common} ${.IMPSRC}
+	${CC} -c ${CFLAGS:N-flto:N-fno-common} -fcommon ${.IMPSRC}
 
 .include <bsd.kmod.mk>

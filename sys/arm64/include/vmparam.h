@@ -156,8 +156,8 @@
 #define	VM_MIN_KERNEL_ADDRESS	(0xffff000000000000UL)
 #define	VM_MAX_KERNEL_ADDRESS	(0xffff008000000000UL)
 
-/* 2 TiB maximum for the direct map region */
-#define	DMAP_MIN_ADDRESS	(0xfffffd0000000000UL)
+/* 95 TiB maximum for the direct map region */
+#define	DMAP_MIN_ADDRESS	(0xffffa00000000000UL)
 #define	DMAP_MAX_ADDRESS	(0xffffff0000000000UL)
 
 #define	DMAP_MIN_PHYSADDR	(dmap_phys_base)
@@ -201,14 +201,7 @@
  * How many physical pages per kmem arena virtual page.
  */
 #ifndef VM_KMEM_SIZE_SCALE
-#define	VM_KMEM_SIZE_SCALE	(3)
-#endif
-
-/*
- * Optional floor (in bytes) on the size of the kmem arena.
- */
-#ifndef VM_KMEM_SIZE_MIN
-#define	VM_KMEM_SIZE_MIN	(16 * 1024 * 1024)
+#define	VM_KMEM_SIZE_SCALE	(1)
 #endif
 
 /*
@@ -235,12 +228,21 @@ extern vm_paddr_t dmap_phys_base;
 extern vm_paddr_t dmap_phys_max;
 extern vm_offset_t dmap_max_addr;
 extern vm_offset_t vm_max_kernel_address;
-extern vm_offset_t init_pt_va;
 
 #endif
 
 #define	ZERO_REGION_SIZE	(64 * 1024)	/* 64KB */
 
 #define	DEVMAP_MAX_VADDR	VM_MAX_KERNEL_ADDRESS
+
+/*
+ * The pmap can create non-transparent large page mappings.
+ */
+#define	PMAP_HAS_LARGEPAGES	1
+
+/*
+ * Need a page dump array for minidump.
+ */
+#define MINIDUMP_PAGE_TRACKING	1
 
 #endif /* !_MACHINE_VMPARAM_H_ */

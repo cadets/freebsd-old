@@ -36,6 +36,7 @@
 #include <sys/errno.h>
 
 #include <linux/kobject.h>
+#include <linux/stringify.h>
 
 struct sysfs_ops {
 	ssize_t (*show)(struct kobject *, struct attribute *, char *);
@@ -57,7 +58,6 @@ struct attribute_group {
 #define	__ATTR_RO(_name)	__ATTR(_name, 0444, _name##_show, NULL)
 #define	__ATTR_WO(_name)	__ATTR(_name, 0200, NULL, _name##_store)
 #define	__ATTR_RW(_name)	__ATTR(_name, 0644, _name##_show, _name##_store)
-
 #define	__ATTR_NULL	{ .attr = { .name = NULL } }
 
 #define	ATTRIBUTE_GROUPS(_name)						\

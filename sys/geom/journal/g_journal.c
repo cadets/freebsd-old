@@ -95,7 +95,8 @@ static u_int g_journal_accept_immediately = 64;
 static u_int g_journal_record_entries = GJ_RECORD_HEADER_NENTRIES;
 static u_int g_journal_do_optimize = 1;
 
-static SYSCTL_NODE(_kern_geom, OID_AUTO, journal, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern_geom, OID_AUTO, journal,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_JOURNAL stuff");
 SYSCTL_INT(_kern_geom_journal, OID_AUTO, debug, CTLFLAG_RWTUN, &g_journal_debug, 0,
     "Debug level");
@@ -128,7 +129,8 @@ g_journal_record_entries_sysctl(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 SYSCTL_PROC(_kern_geom_journal, OID_AUTO, record_entries,
-    CTLTYPE_UINT | CTLFLAG_RW, NULL, 0, g_journal_record_entries_sysctl, "I",
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, NULL, 0,
+    g_journal_record_entries_sysctl, "I",
     "Maximum number of entires in one journal record");
 SYSCTL_UINT(_kern_geom_journal, OID_AUTO, optimize, CTLFLAG_RW,
     &g_journal_do_optimize, 0, "Try to combine bios on flush and copy");
@@ -141,7 +143,8 @@ static u_int g_journal_cache_misses = 0;
 static u_int g_journal_cache_alloc_failures = 0;
 static u_long g_journal_cache_low = 0;
 
-static SYSCTL_NODE(_kern_geom_journal, OID_AUTO, cache, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern_geom_journal, OID_AUTO, cache,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_JOURNAL cache");
 SYSCTL_ULONG(_kern_geom_journal_cache, OID_AUTO, used, CTLFLAG_RD,
     &g_journal_cache_used, 0, "Number of allocated bytes");
@@ -160,7 +163,8 @@ g_journal_cache_limit_sysctl(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 SYSCTL_PROC(_kern_geom_journal_cache, OID_AUTO, limit,
-    CTLTYPE_ULONG | CTLFLAG_RWTUN, NULL, 0, g_journal_cache_limit_sysctl, "I",
+    CTLTYPE_ULONG | CTLFLAG_RWTUN | CTLFLAG_NEEDGIANT, NULL, 0,
+    g_journal_cache_limit_sysctl, "I",
     "Maximum number of allocated bytes");
 SYSCTL_UINT(_kern_geom_journal_cache, OID_AUTO, divisor, CTLFLAG_RDTUN,
     &g_journal_cache_divisor, 0,
@@ -182,7 +186,8 @@ g_journal_cache_switch_sysctl(SYSCTL_HANDLER_ARGS)
 	return (0);
 }
 SYSCTL_PROC(_kern_geom_journal_cache, OID_AUTO, switch,
-    CTLTYPE_UINT | CTLFLAG_RW, NULL, 0, g_journal_cache_switch_sysctl, "I",
+    CTLTYPE_UINT | CTLFLAG_RW | CTLFLAG_NEEDGIANT, NULL, 0,
+    g_journal_cache_switch_sysctl, "I",
     "Force switch when we hit this percent of cache use");
 SYSCTL_UINT(_kern_geom_journal_cache, OID_AUTO, misses, CTLFLAG_RW,
     &g_journal_cache_misses, 0, "Number of cache misses");
@@ -196,7 +201,8 @@ static u_long g_journal_stats_wait_for_copy = 0;
 static u_long g_journal_stats_journal_full = 0;
 static u_long g_journal_stats_low_mem = 0;
 
-static SYSCTL_NODE(_kern_geom_journal, OID_AUTO, stats, CTLFLAG_RW, 0,
+static SYSCTL_NODE(_kern_geom_journal, OID_AUTO, stats,
+    CTLFLAG_RW | CTLFLAG_MPSAFE, 0,
     "GEOM_JOURNAL statistics");
 SYSCTL_ULONG(_kern_geom_journal_stats, OID_AUTO, skipped_bytes, CTLFLAG_RW,
     &g_journal_stats_bytes_skipped, 0, "Number of skipped bytes");
@@ -1047,7 +1053,7 @@ g_journal_optimize(struct bio *head)
 			continue;
 		}
 		/* Be sure we don't end up with too big bio. */
-		if (pbp->bio_length + cbp->bio_length > MAXPHYS) {
+		if (pbp->bio_length + cbp->bio_length > maxphys) {
 			pbp = cbp;
 			continue;
 		}
@@ -2477,9 +2483,11 @@ g_journal_taste(struct g_class *mp, struct g_provider *pp, int flags __unused)
 	/* This orphan function should be never called. */
 	gp->orphan = g_journal_taste_orphan;
 	cp = g_new_consumer(gp);
-	g_attach(cp, pp);
-	error = g_journal_metadata_read(cp, &md);
-	g_detach(cp);
+	error = g_attach(cp, pp);
+	if (error == 0) {
+		error = g_journal_metadata_read(cp, &md);
+		g_detach(cp);
+	}
 	g_destroy_consumer(cp);
 	g_destroy_geom(gp);
 	if (error != 0)
@@ -2505,7 +2513,7 @@ g_journal_find_device(struct g_class *mp, const char *name)
 	struct g_geom *gp;
 	struct g_provider *pp;
 
-	if (strncmp(name, "/dev/", 5) == 0)
+	if (strncmp(name, _PATH_DEV, 5) == 0)
 		name += 5;
 	LIST_FOREACH(gp, &mp->geom, geom) {
 		sc = gp->softc;
@@ -2751,7 +2759,8 @@ g_journal_fini(struct g_class *mp)
 	}
 	if (g_journal_event_lowmem != NULL)
 		EVENTHANDLER_DEREGISTER(vm_lowmem, g_journal_event_lowmem);
-	g_journal_stop_switcher();
+	if (g_journal_switcher_proc != NULL)
+		g_journal_stop_switcher();
 }
 
 DECLARE_GEOM_CLASS(g_journal_class, g_journal);

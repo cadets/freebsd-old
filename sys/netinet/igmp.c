@@ -145,6 +145,7 @@ static void	igmp_v3_suppress_group_record(struct in_multi *);
 static int	sysctl_igmp_default_version(SYSCTL_HANDLER_ARGS);
 static int	sysctl_igmp_gsr(SYSCTL_HANDLER_ARGS);
 static int	sysctl_igmp_ifinfo(SYSCTL_HANDLER_ARGS);
+static int	sysctl_igmp_stat(SYSCTL_HANDLER_ARGS);
 
 static const struct netisr_handler igmp_nh = {
 	.nh_name = "igmp",
@@ -229,16 +230,15 @@ VNET_DEFINE_STATIC(int, current_state_timers_running);	/* IGMPv1/v2 host
 #define	V_state_change_timers_running	VNET(state_change_timers_running)
 #define	V_current_state_timers_running	VNET(current_state_timers_running)
 
+VNET_PCPUSTAT_DEFINE(struct igmpstat, igmpstat);
+VNET_PCPUSTAT_SYSINIT(igmpstat);
+VNET_PCPUSTAT_SYSUNINIT(igmpstat);
+
 VNET_DEFINE_STATIC(LIST_HEAD(, igmp_ifsoftc), igi_head) =
     LIST_HEAD_INITIALIZER(igi_head);
-VNET_DEFINE_STATIC(struct igmpstat, igmpstat) = {
-	.igps_version = IGPS_VERSION_3,
-	.igps_len = sizeof(struct igmpstat),
-};
 VNET_DEFINE_STATIC(struct timeval, igmp_gsrdelay) = {10, 0};
 
 #define	V_igi_head			VNET(igi_head)
-#define	V_igmpstat			VNET(igmpstat)
 #define	V_igmp_gsrdelay			VNET(igmp_gsrdelay)
 
 VNET_DEFINE_STATIC(int, igmp_recvifkludge) = 1;
@@ -260,8 +260,10 @@ VNET_DEFINE_STATIC(int, igmp_default_version) = IGMP_VERSION_3;
 /*
  * Virtualized sysctls.
  */
-SYSCTL_STRUCT(_net_inet_igmp, IGMPCTL_STATS, stats, CTLFLAG_VNET | CTLFLAG_RW,
-    &VNET_NAME(igmpstat), igmpstat, "");
+SYSCTL_PROC(_net_inet_igmp, IGMPCTL_STATS, stats,
+    CTLFLAG_VNET | CTLTYPE_STRUCT | CTLFLAG_RW | CTLFLAG_MPSAFE,
+    &VNET_NAME(igmpstat), 0, sysctl_igmp_stat, "S,igmpstat",
+    "IGMP statistics (struct igmpstat, netinet/igmp_var.h)");
 SYSCTL_INT(_net_inet_igmp, OID_AUTO, recvifkludge, CTLFLAG_VNET | CTLFLAG_RW,
     &VNET_NAME(igmp_recvifkludge), 0,
     "Rewrite IGMPv1/v2 reports from 0.0.0.0 to contain subnet address");
@@ -303,6 +305,7 @@ igmp_save_context(struct mbuf *m, struct ifnet *ifp)
 #ifdef VIMAGE
 	m->m_pkthdr.PH_loc.ptr = ifp->if_vnet;
 #endif /* VIMAGE */
+	m->m_pkthdr.rcvif = ifp;
 	m->m_pkthdr.flowid = ifp->if_index;
 }
 
@@ -332,6 +335,64 @@ igmp_restore_context(struct mbuf *m)
 #endif
 #endif
 	return (m->m_pkthdr.flowid);
+}
+
+/*
+ * IGMP statistics.
+ */
+static int
+sysctl_igmp_stat(SYSCTL_HANDLER_ARGS)
+{
+	struct igmpstat igps0;
+	int error;
+	char *p;
+
+	error = sysctl_wire_old_buffer(req, sizeof(struct igmpstat));
+	if (error)
+		return (error);
+
+	if (req->oldptr != NULL) {
+		if (req->oldlen < sizeof(struct igmpstat))
+			error = ENOMEM;
+		else {
+			/*
+			 * Copy the counters, and explicitly set the struct's
+			 * version and length fields.
+			 */
+			COUNTER_ARRAY_COPY(VNET(igmpstat), &igps0,
+			    sizeof(struct igmpstat) / sizeof(uint64_t));
+			igps0.igps_version = IGPS_VERSION_3;
+			igps0.igps_len = IGPS_VERSION3_LEN;
+			error = SYSCTL_OUT(req, &igps0,
+			    sizeof(struct igmpstat));
+		}
+	} else
+		req->validlen = sizeof(struct igmpstat);
+	if (error)
+		goto out;
+	if (req->newptr != NULL) {
+		if (req->newlen < sizeof(struct igmpstat))
+			error = ENOMEM;
+		else
+			error = SYSCTL_IN(req, &igps0,
+			    sizeof(igps0));
+		if (error)
+			goto out;
+		/*
+		 * igps0 must be "all zero".
+		 */
+		p = (char *)&igps0;
+		while (p < (char *)&igps0 + sizeof(igps0) && *p == '\0')
+			p++;
+		if (p != (char *)&igps0 + sizeof(igps0)) {
+			error = EINVAL;
+			goto out;
+		}
+		COUNTER_ARRAY_ZERO(VNET(igmpstat),
+		    sizeof(struct igmpstat) / sizeof(uint64_t));
+	}
+out:
+	return (error);
 }
 
 /*
@@ -877,7 +938,7 @@ out_locked:
  * We may be updating the group for the first time since we switched
  * to IGMPv3. If we are, then we must clear any recorded source lists,
  * and transition to REPORTING state; the group timer is overloaded
- * for group and group-source query responses. 
+ * for group and group-source query responses.
  *
  * Unlike IGMPv3, the delay per group should be jittered
  * to avoid bursts of IGMPv2 reports.
@@ -1528,6 +1589,7 @@ igmp_input(struct mbuf **mp, int *offp, int proto)
 				if (nsrc * sizeof(in_addr_t) >
 				    UINT16_MAX - iphlen - IGMP_V3_QUERY_MINLEN) {
 					IGMPSTAT_INC(igps_rcv_tooshort);
+					m_freem(m);
 					return (IPPROTO_DONE);
 				}
 				/*
@@ -1593,7 +1655,6 @@ igmp_input(struct mbuf **mp, int *offp, int proto)
 	*mp = m;
 	return (rip_input(mp, offp, proto));
 }
-
 
 /*
  * Fast timeout handler (global).
@@ -1894,7 +1955,6 @@ igmp_v3_process_group_timers(struct in_multi_head *inmh,
 		break;
 	}
 }
-
 
 /*
  * Suppress a group's pending response to a group or source/group query.
@@ -2324,7 +2384,7 @@ igmp_initial_join(struct in_multi *inm, struct igmp_ifsoftc *igi)
 	struct ifnet		*ifp;
 	struct mbufq		*mq;
 	int			 error, retval, syncstates;
- 
+
 	CTR4(KTR_IGMPV3, "%s: initial join 0x%08x on ifp %p(%s)", __func__,
 	    ntohl(inm->inm_addr.s_addr), inm->inm_ifp, inm->inm_ifp->if_xname);
 

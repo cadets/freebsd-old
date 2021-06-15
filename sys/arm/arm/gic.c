@@ -98,7 +98,6 @@ __FBSDID("$FreeBSD$");
 #define	GIC_SUPPORT_SECEXT(_sc)	\
     ((_sc->typer & GICD_TYPER_SECURITYEXT) == GICD_TYPER_SECURITYEXT)
 
-
 #ifndef	GIC_DEFAULT_ICFGR_INIT
 #define	GIC_DEFAULT_ICFGR_INIT	0x00000000
 #endif
@@ -133,7 +132,6 @@ static struct resource_spec arm_gic_spec[] = {
 	{ -1, 0 }
 };
 
-
 #if defined(__arm__) && defined(INVARIANTS)
 static int gic_debug_spurious = 1;
 #else
@@ -145,16 +143,18 @@ static u_int arm_gic_map[MAXCPU];
 
 static struct arm_gic_softc *gic_sc = NULL;
 
+/* CPU Interface */
 #define	gic_c_read_4(_sc, _reg)		\
-    bus_space_read_4((_sc)->gic_c_bst, (_sc)->gic_c_bsh, (_reg))
+    bus_read_4((_sc)->gic_res[GIC_RES_CPU], (_reg))
 #define	gic_c_write_4(_sc, _reg, _val)		\
-    bus_space_write_4((_sc)->gic_c_bst, (_sc)->gic_c_bsh, (_reg), (_val))
+    bus_write_4((_sc)->gic_res[GIC_RES_CPU], (_reg), (_val))
+/* Distributor Interface */
 #define	gic_d_read_4(_sc, _reg)		\
-    bus_space_read_4((_sc)->gic_d_bst, (_sc)->gic_d_bsh, (_reg))
+    bus_read_4((_sc)->gic_res[GIC_RES_DIST], (_reg))
 #define	gic_d_write_1(_sc, _reg, _val)		\
-    bus_space_write_1((_sc)->gic_d_bst, (_sc)->gic_d_bsh, (_reg), (_val))
+    bus_write_1((_sc)->gic_res[GIC_RES_DIST], (_reg), (_val))
 #define	gic_d_write_4(_sc, _reg, _val)		\
-    bus_space_write_4((_sc)->gic_d_bst, (_sc)->gic_d_bsh, (_reg), (_val))
+    bus_write_4((_sc)->gic_res[GIC_RES_DIST], (_reg), (_val))
 
 static inline void
 gic_irq_unmask(struct arm_gic_softc *sc, u_int irq)
@@ -322,14 +322,6 @@ arm_gic_attach(device_t dev)
 
 	/* Initialize mutex */
 	mtx_init(&sc->mutex, "GIC lock", NULL, MTX_SPIN);
-
-	/* Distributor Interface */
-	sc->gic_d_bst = rman_get_bustag(sc->gic_res[0]);
-	sc->gic_d_bsh = rman_get_bushandle(sc->gic_res[0]);
-
-	/* CPU Interface */
-	sc->gic_c_bst = rman_get_bustag(sc->gic_res[1]);
-	sc->gic_c_bsh = rman_get_bushandle(sc->gic_res[1]);
 
 	/* Disable interrupt forwarding to the CPU interface */
 	gic_d_write_4(sc, GICD_CTLR, 0x00);
@@ -1137,7 +1129,6 @@ arm_gicv2m_alloc_msi(device_t dev, device_t child, int count, int maxcount,
 	for (i = 0; i < count; i++) {
 		/* Mark the interrupt as used */
 		psc->gic_irqs[irq + i].gi_flags |= GI_FLAG_MSI_USED;
-
 	}
 	mtx_unlock(&sc->sc_mutex);
 

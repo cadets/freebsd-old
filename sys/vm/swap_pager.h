@@ -38,14 +38,9 @@
  */
 
 #ifndef	_VM_SWAP_PAGER_H_
-#define	_VM_SWAP_PAGER_H_ 1
+#define	_VM_SWAP_PAGER_H_
 
-typedef	int32_t	swblk_t;	/*
-				 * swap offset.  This is the type used to
-				 * address the "virtual swap device" and
-				 * therefore the maximum swap space is
-				 * 2^32 pages.
-				 */
+#include <sys/_types.h>
 
 struct buf;
 struct swdevt;
@@ -62,8 +57,8 @@ struct swdevt {
 	dev_t	sw_dev;
 	struct vnode *sw_vp;
 	void	*sw_id;
-	swblk_t	sw_first;
-	swblk_t	sw_end;
+	__daddr_t sw_first;
+	__daddr_t sw_end;
 	struct blist *sw_blist;
 	TAILQ_ENTRY(swdevt)	sw_list;
 	sw_strategy_t		*sw_strategy;
@@ -81,12 +76,13 @@ struct xswdev;
 int swap_dev_info(int name, struct xswdev *xs, char *devname, size_t len);
 void swap_pager_copy(vm_object_t, vm_object_t, vm_pindex_t, int);
 vm_pindex_t swap_pager_find_least(vm_object_t object, vm_pindex_t pindex);
-void swap_pager_freespace(vm_object_t, vm_pindex_t, vm_size_t);
 void swap_pager_swap_init(void);
 int swap_pager_nswapdev(void);
 int swap_pager_reserve(vm_object_t, vm_pindex_t, vm_size_t);
 void swap_pager_status(int *total, int *used);
+u_long swap_pager_swapped_pages(vm_object_t object);
 void swapoff_all(void);
-
+bool swap_pager_init_object(vm_object_t object, void *handle,
+    struct ucred *cred, vm_ooffset_t size, vm_ooffset_t offset);
 #endif				/* _KERNEL */
 #endif				/* _VM_SWAP_PAGER_H_ */

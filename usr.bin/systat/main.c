@@ -135,6 +135,21 @@ parse_cmd_args (int argc, char **argv)
 
 }
 
+static void
+resize(int signo __unused)
+{
+
+	endwin();
+	refresh();
+	clear();
+
+	CMDLINE = LINES - 1;
+	labels();
+	display();
+	status();
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -191,6 +206,7 @@ main(int argc, char **argv)
 	signal(SIGINT, die);
 	signal(SIGQUIT, die);
 	signal(SIGTERM, die);
+	signal(SIGWINCH, resize);
 
 	/*
 	 * Initialize display.  Load average appears in a one line
@@ -300,17 +316,8 @@ display(void)
 		    GETSYSCTL("kstat.zfs.misc.arcstats.dbuf_size", arc_stat);
 		    arc[6] += arc_stat;
 		    wmove(wload, 0, 0); wclrtoeol(wload);
-		    for (i = 0 ; i < nitems(arc); i++) {
-			if (arc[i] > 10llu * 1024 * 1024 * 1024 ) {
-				wprintw(wload, "%7lluG", arc[i] >> 30);
-			}
-			else if (arc[i] > 10 * 1024 * 1024 ) {
-				wprintw(wload, "%7lluM", arc[i] >> 20);
-			}
-			else {
-				wprintw(wload, "%7lluK", arc[i] >> 10);
-			}
-		    }
+		    for (i = 0 ; i < nitems(arc); i++)
+			sysputuint64(wload, 0, i*8+2, 6, arc[i], 0);
 	    }
 	}
 	(*curcmd->c_refresh)();

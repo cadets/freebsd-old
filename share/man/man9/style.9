@@ -25,7 +25,7 @@
 .\"	From: @(#)style	1.14 (Berkeley) 4/28/95
 .\" $FreeBSD$
 .\"
-.Dd December 13, 2019
+.Dd October 28, 2020
 .Dt STYLE 9
 .Os
 .Sh NAME
@@ -36,6 +36,10 @@ This file specifies the preferred style for kernel source files in the
 .Fx
 source tree.
 It is also a guide for the preferred userland code style.
+The preferred line width is 80 characters, but some exceptions are
+made when a slightly longer line is clearer or easier to read.
+Anything that is frequently grepped for, such as diagnostic, error or panic
+messages, should not be broken up over multiple lines despite this rule.
 Many of the style rules are implicit in the examples.
 Be careful to check the examples before assuming that
 .Nm
@@ -156,9 +160,13 @@ includes
 .In sys/types.h ;
 do not include both.
 .Pc
+Next, include
+.In sys/systm.h ,
+if needed.
 The remaining kernel headers should be sorted alphabetically.
 .Bd -literal
 #include <sys/types.h>	/* Non-local includes in angle brackets. */
+#include <sys/systm.h>
 #include <sys/endian.h>
 #include <sys/lock.h>
 #include <sys/queue.h>
@@ -211,9 +219,9 @@ macros (ones that have side effects), and the names of macros for
 manifest constants, are all in uppercase.
 The expansions of expression-like macros are either a single token
 or have outer parentheses.
-Put a single tab character between the
+Put a single space or tab character between the
 .Ic #define
-and the macro name.
+and the macro name, but be consistent within a file.
 If a macro is an inline expansion of a function, the function name is
 all in lowercase and the macro has the same name all in uppercase.
 .\" XXX the above conflicts with ANSI style where the names are the
@@ -301,11 +309,11 @@ is treated as
 #endif /* !COMPAT_43 */
 .Ed
 .Pp
-The project is slowly moving to use the
+The project prefers the use of
 .St -isoC-99
 unsigned integer identifiers of the form
 .Vt uintXX_t
-in preference to the older
+rather than the older
 .Bx Ns -style
 integer identifiers of the form
 .Vt u_intXX_t .
@@ -317,10 +325,10 @@ Like white-space commits, care should be taken in making
 .Vt uintXX_t
 only commits.
 .Pp
-Similarly, the project is slowly moving to use the
-.St -isoC-99
+Similarly, the project prefers the use of
+ISO C99
 .Vt bool
-in preference to the older
+rather than the older
 .Vt int
 or
 .Vt boolean_t .
@@ -341,8 +349,8 @@ Userspace code should include
 while kernel code should include
 .In sys/types.h .
 .Pp
-Likewise, the project is moving to using the
-.St -isoC-99
+Likewise, the project prefers
+ISO C99
 designated initializers when it makes sense to do so.
 .Pp
 Enumeration values are all uppercase.
@@ -592,12 +600,19 @@ not
 Parts of a
 .Ic for
 loop may be left empty.
-Do not put declarations
-inside blocks unless the routine is unusually complicated.
 .Bd -literal
 	for (; cnt < 15; cnt++) {
 		stmt1;
 		stmt2;
+	}
+.Ed
+.Pp
+A
+.Ic for
+loop may declare and initialize its counting variable.
+.Bd -literal
+	for (int i = 0; i < 15; i++) {
+		stmt1;
 	}
 .Ed
 .Pp
@@ -676,25 +691,26 @@ The opening brace of the function body should be
 on a line by itself.
 .Bd -literal
 static char *
-function(int a1, int a2, float fl, int a4)
+function(int a1, int a2, float fl, int a4, struct bar *bar)
 {
 .Ed
 .Pp
 When declaring variables in functions declare them sorted by size,
 then in alphabetical order; multiple ones per line are okay.
 If a line overflows reuse the type keyword.
-.Pp
-Be careful to not obfuscate the code by initializing variables in
-the declarations.
-Use this feature only thoughtfully.
-DO NOT use function calls in initializers.
+Variables may be initialized where declared especially when they
+are constant for the rest of the scope.
+Declarations may be placed before executable lines at the start
+of any block.
+Calls to complicated functions should be avoided when initializing variables.
 .Bd -literal
 	struct foo one, *two;
-	double three;
-	int *four, five;
-	char *six, seven, eight, nine, ten, eleven, twelve;
+	struct baz *three = bar_get_baz(bar);
+	double four;
+	int *five, six;
+	char *seven, eight, nine, ten, eleven, twelve;
 
-	four = myfunction();
+	four = my_complicated_function(a1, f1, a4);
 .Ed
 .Pp
 Do not declare functions inside other functions; ANSI C says that
@@ -893,6 +909,11 @@ Whenever possible, code should be run through a code checker
 (e.g., various static analyzers or
 .Nm cc Fl Wall )
 and produce minimal warnings.
+.Pp
+New code should use
+.Fn _Static_assert
+instead of the older
+.Fn CTASSERT .
 .Sh FILES
 .Bl -tag -width indent
 .It Pa /usr/src/tools/tools/editing/freebsd.el
@@ -911,6 +932,7 @@ indentation rules.
 .Xr err 3 ,
 .Xr warn 3 ,
 .Xr style.Makefile 5 ,
+.Xr style.mdoc 5 ,
 .Xr style.lua 9
 .Sh HISTORY
 This manual page is largely based on the

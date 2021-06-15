@@ -396,6 +396,9 @@ struct pthread {
 	/* Signal blocked counter. */
 	int			sigblock;
 
+	/* Fast sigblock var. */
+	uint32_t		fsigblock;
+
 	/* Queue entry for list of all threads. */
 	TAILQ_ENTRY(pthread)	tle;	/* link for all threads in process */
 
@@ -574,6 +577,10 @@ struct pthread {
 
 	/* pthread_set/get_name_np */
 	char			*name;
+
+	/* rtld thread-local dlerror message and seen control */
+	char			dlerror_msg[512];
+	int			dlerror_seen;
 };
 
 #define THR_SHOULD_GC(thrd) 						\
@@ -813,6 +820,8 @@ void	_thr_cancel_leave(struct pthread *, int) __hidden;
 void	_thr_testcancel(struct pthread *) __hidden;
 void	_thr_signal_block(struct pthread *) __hidden;
 void	_thr_signal_unblock(struct pthread *) __hidden;
+void	_thr_signal_block_check_fast(void) __hidden;
+void	_thr_signal_block_setup(struct pthread *) __hidden;
 void	_thr_signal_init(int) __hidden;
 void	_thr_signal_deinit(void) __hidden;
 int	_thr_send_sig(struct pthread *, int sig) __hidden;
@@ -979,6 +988,7 @@ void __pthread_distribute_static_tls(size_t offset, void *src, size_t len,
 int *__error_threaded(void) __hidden;
 void __thr_interpose_libc(void) __hidden;
 pid_t __thr_fork(void);
+pid_t __thr_pdfork(int *, int);
 int __thr_setcontext(const ucontext_t *ucp);
 int __thr_sigaction(int sig, const struct sigaction *act,
     struct sigaction *oact) __hidden;
