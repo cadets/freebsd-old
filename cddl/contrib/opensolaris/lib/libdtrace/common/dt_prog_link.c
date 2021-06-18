@@ -44,10 +44,10 @@
 #include <dt_typefile.h>
 #include <dt_typing.h>
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <assert.h>
 #include <err.h>
 #include <errno.h>
 
@@ -61,6 +61,11 @@ dt_ifg_list_t *node_last = NULL;
 dt_list_t var_list;
 dt_ifg_node_t *r0node = NULL;
 
+typedef struct dtrace_ecbdesclist {
+	dt_list_t next;
+	dtrace_ecbdesc_t *ecbdesc;
+} dtrace_ecbdesclist_t;
+
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
@@ -73,10 +78,12 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	ctf_id_t ctfid;
 	uint8_t rd, r1;
 	uint16_t offset;
-        ctf_encoding_t encoding;
+	ctf_encoding_t encoding;
 	dtrace_diftype_t *rtype;
 	int index, i;
 	int ctf_kind;
+	dt_var_entry_t *ve;
+	dtrace_difv_t *var, *difo_var;
 
 	rtype = NULL;
 	ifgl = NULL;
@@ -110,7 +117,24 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		}
 	}
 
-	for (ifgl = dt_list_next(&node_list); ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+	if (difo->dtdo_vartab != NULL) {
+		for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
+			var = ve->dtve_var;
+			difo_var = dt_get_variable(difo, var->dtdv_id,
+			    var->dtdv_scope, var->dtdv_kind);
+
+			if (difo_var != NULL) {
+				difo_var->dtdv_ctfid = var->dtdv_ctfid;
+				difo_var->dtdv_type.dtdt_kind =
+				    var->dtdv_type.dtdt_kind;
+				difo_var->dtdv_type.dtdt_size =
+				    var->dtdv_type.dtdt_size;
+			}
+		}
+	}
+
+	for (ifgl = dt_list_next(&node_list); ifgl != NULL;
+	    ifgl = dt_list_next(ifgl)) {
 		node = ifgl->dil_ifgnode;
 
 		if (node->din_difo != difo)
@@ -141,8 +165,9 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					rtype->dtdt_ckind = DT_STR_TYPE(dtp);
 				else
 					errx(EXIT_FAILURE,
-					    "unexpected node->din_type (%x)",
-					    node->din_type);
+					    "unexpected node->din_type "
+					    "(%x) at location %u",
+					    node->din_type, node->din_uidx);
 
 				if (rtype->dtdt_kind == DIF_TYPE_CTF) {
 					ctf_kind = dt_typefile_typekind(
@@ -423,8 +448,8 @@ _dt_update_usetxs(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 	if (redefined)
 		return;
 
-	for (chld = dt_list_next(&bb->dtbb_children);
-	     chld; chld = dt_list_next(chld)) {
+	for (chld = dt_list_next(&bb->dtbb_children); chld;
+	    chld = dt_list_next(chld)) {
 		chld_bb = chld->dtbe_bb;
 		if (chld_bb->dtbb_idx > DT_BB_MAX)
 			errx(EXIT_FAILURE, "too many basic blocks.");
@@ -484,7 +509,7 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 
 	var = vlvar = NULL;
 	i = 0;
-        otab = NULL;
+	otab = NULL;
 	inthash_size = 0;
 
 	if (difo->dtdo_inthash != NULL) {
@@ -529,12 +554,40 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	}
 }
 
+static int
+process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
+    dtrace_ecbdesc_t *ecbdesc)
+{
+	int rval;
+
+	rval = dt_prog_infer_defns(dtp, ecbdesc, difo);
+	if (rval != 0)
+		return (rval);
+
+	rval = dt_prog_infer_types(dtp, pgp, difo);
+	if (rval != 0)
+		return (rval);
+
+	dt_prog_infer_usetxs(difo);
+
+	rval = dt_prog_relocate(dtp, difo);
+	if (rval != 0)
+		return (rval);
+
+	dt_prog_assemble(dtp, difo);
+	return (0);
+}
+
 int
 dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	dt_stmt_t *stp = NULL;
 	dtrace_stmtdesc_t *sdp = NULL;
 	dtrace_actdesc_t *ad = NULL;
+	dtrace_ecbdesc_t *ecbdesc;
+	dtrace_preddesc_t *pred;
+	dt_list_t processed_ecbdescs;
+	dtrace_ecbdesclist_t *edl;
 	int rval = 0;
 	int err = 0;
 
@@ -548,6 +601,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	 */
 	memset(&node_list, 0, sizeof(dt_list_t));
 	memset(&bb_list, 0, sizeof(dt_list_t));
+	memset(&processed_ecbdescs, 0, sizeof(dt_list_t));
 
 	r0node = dt_ifg_node_alloc(NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
@@ -560,6 +614,37 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		if (sdp == NULL)
 			return (dt_set_errno(dtp, EDT_NOSTMT));
 
+		ecbdesc = sdp->dtsd_ecbdesc;
+		if (ecbdesc == NULL)
+			return (dt_set_errno(dtp, EDT_DIFINVAL));
+
+		pred = &ecbdesc->dted_pred;
+		assert(pred != NULL);
+
+		if (pred->dtpdd_difo != NULL) {
+			for (edl = dt_list_next(&processed_ecbdescs); edl;
+			     edl = dt_list_next(edl))
+				if (edl->ecbdesc == ecbdesc)
+					break;
+
+			if (edl == NULL) {
+				dt_populate_varlist(pred->dtpdd_difo);
+
+				rval = process_difo(dtp, pgp, pred->dtpdd_difo,
+				    ecbdesc);
+				if (rval != 0)
+					return (dt_set_errno(dtp, rval));
+
+				edl = malloc(sizeof(dtrace_ecbdesclist_t));
+				if (edl == NULL)
+					return (dt_set_errno(dtp, EDT_NOMEM));
+
+				memset(edl, 0, sizeof(dtrace_ecbdesclist_t));
+
+				edl->ecbdesc = ecbdesc;
+				dt_list_append(&processed_ecbdescs, edl);
+			}
+		}
 		/*
 		 * Nothing to do if the action is missing
 		 */
@@ -586,7 +671,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * foo { y = x; } bar { x = 1; }
 		 */
 		for (ad = sdp->dtsd_action;
-		     ad != sdp->dtsd_action_last->dtad_next; ad = ad->dtad_next) {
+		     ad != sdp->dtsd_action_last->dtad_next;
+		     ad = ad->dtad_next) {
 			if (ad->dtad_difo == NULL)
 				continue;
 
@@ -603,22 +689,18 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == NULL)
 				continue;
 
-			rval = dt_prog_infer_defns(
-			    dtp, sdp->dtsd_ecbdesc, ad->dtad_difo);
+			/*
+			 * FIXME(dstolfa, important): This is not sufficient.
+			 * We actually need to find every action that requires
+			 * further type-checking of DIFOs coming back from it
+			 * (e.g. lquantize needs a few). Need to figure out a
+			 * way to do this. Also need to somehow deal with
+			 * optional arguments.
+			 */
+			//ad->dtad_difo->dtdo_next = ad->dtad_next;
+			rval = process_difo(dtp, pgp, ad->dtad_difo, ecbdesc);
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
-
-			rval = dt_prog_infer_types(dtp, pgp, ad->dtad_difo);
-			if (rval != 0)
-				return (dt_set_errno(dtp, rval));
-
-		        dt_prog_infer_usetxs(ad->dtad_difo);
-
-			rval = dt_prog_relocate(dtp, ad->dtad_difo);
-			if (rval != 0)
-				return (dt_set_errno(dtp, rval));
-
-			dt_prog_assemble(dtp, ad->dtad_difo);
 		}
 	}
 

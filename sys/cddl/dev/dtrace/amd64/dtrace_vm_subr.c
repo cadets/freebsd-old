@@ -273,6 +273,7 @@ static vm_page_t
 dtrace_get_page(pmap_t pmap, vm_offset_t va)
 {
 	pd_entry_t pde, *pdep;
+	pt_entry_t *ptep;
 	pt_entry_t pte;
 	vm_paddr_t pa;
 	vm_page_t m;
@@ -285,7 +286,10 @@ dtrace_get_page(pmap_t pmap, vm_offset_t va)
 			m = DTRACE_PHYS_TO_VM_PAGE((pde & PG_PS_FRAME) |
 			    (va & PDRMASK));
 		} else {
-			pte = *dtrace_pde_to_pte(pdep, va);
+			ptep = dtrace_pde_to_pte(pdep, va);
+			if (ptep == NULL)
+				return (NULL);
+			pte = *ptep;
 			m = DTRACE_PHYS_TO_VM_PAGE(pte & PG_FRAME);
 		}
 	}

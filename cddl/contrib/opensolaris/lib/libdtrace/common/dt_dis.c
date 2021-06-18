@@ -328,13 +328,6 @@ dt_dis_xlate(const dtrace_difo_t *dp, const char *name,
 }
 
 static char *
-dt_dis_locstr(const dtrace_diftype_t *t)
-{
-
-	return (t->dtdt_flags & DIF_TF_GUEST ? "guest" : "host");
-}
-
-static char *
 dt_dis_typestr(const dtrace_diftype_t *t, char *buf, size_t len)
 {
 	char kind[16], ckind[16];
@@ -519,10 +512,6 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		{ "xlate", dt_dis_xlate },		/* DIF_OP_XLATE */
 		{ "xlarg", dt_dis_xlate },		/* DIF_OP_XLARG */
 		{ "hypercall", dt_dis_str },		/* DIF_OP_HYPERRCALL */
-		{ "scmp_hh", dt_dis_cmp },		/* DIF_OP_SCMP_HH */
-		{ "scmp_gh", dt_dis_cmp },		/* DIF_OP_SCMP_GH */
-		{ "scmp_gg", dt_dis_cmp },		/* DIF_OP_SCMP_GG */
-		{ "scmp_hg", dt_dis_cmp },		/* DIF_OP_SCMP_HG */
 		{ "usetx", dt_dis_sym },		/* DIF_OP_USETX */
 		{ "uload", dt_dis_load },		/* DIF_OP_ULOAD */
 		{ "uuload", dt_dis_load },		/* DIF_OP_UULOAD */
@@ -533,9 +522,8 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 	ulong_t i = 0;
 	char type[DT_TYPE_NAMELEN];
 
-	(void) fprintf(fp, "\nDIFO %p returns %s(%s)\n", (void *)dp,
-	    dt_dis_typestr(&dp->dtdo_rtype, type, sizeof (type)),
-	    dt_dis_locstr(&dp->dtdo_rtype));
+	(void) fprintf(fp, "\nDIFO %p returns %s\n", (void *)dp,
+	    dt_dis_typestr(&dp->dtdo_rtype, type, sizeof (type)));
 
 	(void) fprintf(fp, "%-3s %-8s    %s\n",
 	    "OFF", "OPCODE", "INSTRUCTION");
@@ -546,8 +534,10 @@ dt_dis(const dtrace_difo_t *dp, FILE *fp)
 		const char *type = dp->dtdo_types == NULL ?
 		    NULL : dp->dtdo_types[i];
 
-		if (opcode >= sizeof (optab) / sizeof (optab[0]))
+		if (opcode >= sizeof (optab) / sizeof (optab[0])) {
+			printf("opcode %d > size %zu\n", opcode, sizeof(optab)/sizeof(optab[0]));
 			opcode = 0; /* force invalid opcode message */
+		}
 
 		op = &optab[opcode];
 		(void) fprintf(fp, "%02lu: %08x    ", i, instr);

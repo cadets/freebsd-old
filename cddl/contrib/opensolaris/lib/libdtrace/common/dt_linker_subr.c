@@ -304,9 +304,10 @@ dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 
 	var->dtdv_ctfid = CTF_ERR;
 	var->dtdv_sym = NULL;
-	var->dtdv_type.dtdt_kind = DIF_TYPE_NONE;
+	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
 	var->dtdv_type.dtdt_size = 0;
 	var->dtdv_stack = NULL;
+	var->dtdv_tf = NULL;
 
 	ve = malloc(sizeof(dt_var_entry_t));
 	if (ve == NULL)
@@ -343,27 +344,32 @@ dt_populate_varlist(dtrace_difo_t *difo)
 		switch (opcode) {
 		case DIF_OP_STGS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL,
+			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_STLS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+			dt_insert_var(difo, varid, DIFV_SCOPE_LOCAL,
+			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_STTS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
+			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_STGAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL,
+			    DIFV_KIND_ARRAY);
 			break;
 
 		case DIF_OP_STTAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
+			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_ARRAY);
 			break;
 		}
 	}

@@ -104,10 +104,11 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
 				dt_list_append(&bb2->dtbb_parents, bb_new2);
-				printf("bb1 (%zu) -> bb2 (%zu):\n", bb1->dtbb_idx, bb2->dtbb_idx);
-				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
-				       bb1->dtbb_start, bb1->dtbb_end,
-				       bb2->dtbb_start, bb2->dtbb_end);
+				DPRINTF("bb1 (%zu) -> bb2 (%zu):\n",
+				    bb1->dtbb_idx, bb2->dtbb_idx);
+				DPRINTF("\t(%zu, %zu) ===> (%zu, %zu)\n",
+				    bb1->dtbb_start, bb1->dtbb_end,
+				    bb2->dtbb_start, bb2->dtbb_end);
 			}
 
 			if (bb1->dtbb_end + 1 == bb2->dtbb_start) {
@@ -127,10 +128,11 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 				dt_list_append(&bb1->dtbb_children, bb_new1);
 				dt_list_append(&bb2->dtbb_parents, bb_new2);
-				printf("bb1 (%zu) -> bb2 (%zu):\n", bb1->dtbb_idx, bb2->dtbb_idx);
-				printf("\t(%zu, %zu) ===> (%zu, %zu)\n",
-				       bb1->dtbb_start, bb1->dtbb_end,
-				       bb2->dtbb_start, bb2->dtbb_end);
+				DPRINTF("bb1 (%zu) -> bb2 (%zu):\n",
+				    bb1->dtbb_idx, bb2->dtbb_idx);
+				DPRINTF("\t(%zu, %zu) ===> (%zu, %zu)\n",
+				    bb1->dtbb_start, bb1->dtbb_end,
+				    bb2->dtbb_start, bb2->dtbb_end);
 			}
 		}
 	}

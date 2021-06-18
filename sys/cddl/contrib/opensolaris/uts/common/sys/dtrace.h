@@ -225,18 +225,14 @@ typedef enum dtrace_probespec {
  * XXX(dstolfa): Should we be passing in which hypercall?
  */
 #define DIF_OP_HYPERCALL 80		/* hcall */
-#define DIF_OP_SCMP_HH   81
-#define DIF_OP_SCMP_GH   82
-#define DIF_OP_SCMP_GG   83
-#define DIF_OP_SCMP_HG   84
 
 /*
  * Relocations
  */
-#define	DIF_OP_USETX     87
-#define	DIF_OP_ULOAD     88
-#define	DIF_OP_UULOAD    89
-#define	DIF_OP_TYPECAST  90
+#define	DIF_OP_USETX     81
+#define	DIF_OP_ULOAD     82
+#define	DIF_OP_UULOAD    83
+#define	DIF_OP_TYPECAST  84
 
 #define	DIF_INTOFF_MAX		0xffff	/* highest integer table offset */
 #define	DIF_STROFF_MAX		0xffff	/* highest string table offset */
@@ -480,7 +476,6 @@ typedef struct dtrace_diftype {
 
 #define	DIF_TF_BYREF		0x1	/* type is passed by reference */
 #define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
-#define DIF_TF_GUEST		0x4	/* this is a guest address */
 #define DIF_TF_BMASK		0x3	/* bitmask of relevant flags for variables */
 
 /*
@@ -1008,6 +1003,7 @@ typedef struct dtrace_difo {
 	struct dt_basic_block *dtdo_bb;	/* first basic block */
 	size_t dtdo_idx;		/* difo identifier */
 	struct dt_inttab *dtdo_inthash;	/* integer hash table (userspace only) */
+	struct dtrace_actdesc *dtdo_next; /* next action of a difo */
 #endif
 } dtrace_difo_t;
 

@@ -2041,13 +2041,13 @@ dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 			 */
 			uint64_t j, size = key[i].dttk_size;
 			uintptr_t base = (uintptr_t)key[i].dttk_value;
+			void *vmhdl = key[i].dttk_vmhdl;
 
 			if (!dtrace_canload(base, size, mstate, vstate))
 				break;
 
 			for (j = 0; j < size; j++) {
-				hashval +=
-				    dtrace_load8(mstate->dtms_vmhdl, base + j);
+				hashval += dtrace_load8(vmhdl, base + j);
 				hashval += (hashval << 10);
 				hashval ^= (hashval >> 6);
 			}
@@ -2407,7 +2407,7 @@ retry:
 		size_t kesize = key[i].dttk_size;
 
 		if (kesize != 0) {
-			dtrace_bcopy(mstate,
+			dtrace_bcopy(key[i].dttk_vmhdl,
 			    (const void *)(uintptr_t)key[i].dttk_value,
 			    (void *)kdata, kesize);
 			dkey->dttk_value = kdata;
@@ -4686,8 +4686,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_PTINFO: {
 		uintptr_t gla = tupregs[0].dttk_value;
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		dtrace_gla2hva(
-		    dtrace_get_paging(mstate->dtms_vmhdl), gla, &regs[rd].dttr_value);
+		dtrace_gla2hva(dtrace_get_paging(mstate->dtms_vmhdl), gla,
+		    &regs[rd].dttr_value);
 		regs[rd].dttr_vmhdl = NULL;
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 		break;
@@ -5615,9 +5615,11 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_JSON: {
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t json = tupregs[0].dttk_value;
-		size_t jsonlen = dtrace_strlen(mstate, (char *)json, size);
+		void *vh1 = tupregs[0].dttk_vmhdl;
+		size_t jsonlen = dtrace_strlen(vh1, (char *)json, size);
 		uintptr_t elem = tupregs[1].dttk_value;
-		size_t elemlen = dtrace_strlen(mstate, (char *)elem, size);
+		void *vh2 = tupregs[1].dttk_vmhdl;
+		size_t elemlen = dtrace_strlen(vh2, (char *)elem, size);
 
 		void *vhjson = tupregs[0].dttk_vmhdl;
 		void *vhelem = tupregs[1].dttk_vmhdl;
@@ -6073,7 +6075,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		uintptr_t src = tupregs[0].dttk_value;
 		void *vmhdl = tupregs[0].dttk_vmhdl;
 		char dot[] = ".";
-		int i, j, len = dtrace_strlen(mstate, (char *)src, size);
+		int i, j, len = dtrace_strlen(vmhdl, (char *)src, size);
 		int lastbase = -1, firstbase = -1, lastdir = -1;
 		int start, end;
 
@@ -8568,7 +8570,8 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 			dtrace_difo_t *dp = pred->dtp_difo;
 			uint64_t rval;
 
-			rval = dtrace_dif_emulate(dp, &mstate, vstate, state, &retvmhdl);
+			rval = dtrace_dif_emulate(dp, &mstate, vstate, state,
+			    &retvmhdl);
 
 			if (!(*flags & CPU_DTRACE_ERROR) && !rval) {
 				dtrace_cacheid_t cid = probe->dtpr_predcache;
@@ -8904,10 +8907,10 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 				    NULL, &mstate, vstate))
 					continue;
 
-				dtrace_store_by_ref(&mstate, dp, tomax, size, &valoffs,
-				    &val, end, act->dta_intuple,
+				dtrace_store_by_ref(&mstate, dp, tomax, size,
+				    &valoffs, &val, end, act->dta_intuple,
 				    dp->dtdo_rtype.dtdt_flags & DIF_TF_BYREF ?
-				    DIF_TF_BYREF: DIF_TF_BYUREF, retvmhdl);
+				    DIF_TF_BYREF : DIF_TF_BYUREF, retvmhdl);
 				continue;
 			}
 
@@ -11224,10 +11227,6 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			break;
 		case DIF_OP_CMP:
 		case DIF_OP_SCMP:
-		case DIF_OP_SCMP_HH:
-		case DIF_OP_SCMP_HG:
-		case DIF_OP_SCMP_GH:
-		case DIF_OP_SCMP_GG:
 			if (r1 >= nregs)
 				err += efunc(pc, "invalid register %u\n", r1);
 			if (r2 >= nregs)
@@ -11509,7 +11508,9 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 		}
 
 		if (vt->dtdt_size != 0 && vt->dtdt_size != et->dtdt_size) {
-			err += efunc(i, "%d changed variable type size\n", id);
+			err += efunc(i,
+			    "%d changed variable type size (%u != %u)\n", id,
+			    vt->dtdt_size, et->dtdt_size);
 			break;
 		}
 	}
@@ -12983,7 +12984,7 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 
 		case DTRACEACT_EXIT:
 			if (dp == NULL ||
-			    (size = dp->dtdo_rtype.dtdt_size) != sizeof (int) ||
+			    (size = dp->dtdo_rtype.dtdt_size) < sizeof (int) ||
 			    (dp->dtdo_rtype.dtdt_flags & DIF_TF_BYREF))
 				return (EINVAL);
 			break;
@@ -14603,7 +14604,7 @@ dtrace_enabling_reap(void)
 	for (i = 0; i < dtrace_nvprobes[HYPERTRACE_HOSTID]; i++) {
 		if ((probe = dtrace_vprobes[HYPERTRACE_HOSTID][i]) == NULL)
 			continue;
-		
+
 		ASSERT(probe->dtpr_vmid == 0);
 
 		if (probe->dtpr_ecb == NULL)

@@ -577,14 +577,17 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	    dn2->din_type == DIF_TYPE_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp, "both types are bottom");
 
+	assert(dn1->din_type != DIF_TYPE_BOTTOM ||
+	    dn2->din_type != DIF_TYPE_BOTTOM);
+
 	if (dn1->din_type == DIF_TYPE_BOTTOM)
 		return (2);
 
 	if (dn2->din_type == DIF_TYPE_BOTTOM)
 		return (1);
 
-	assert(dn1->din_tf != NULL);
-	assert(dn2->din_tf != NULL);
+	assert(dn1->din_type != DIF_TYPE_NONE);
+	assert(dn2->din_type != DIF_TYPE_NONE);
 
 	if (dn1->din_type == DIF_TYPE_CTF) {
 		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf1,
@@ -1363,7 +1366,7 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			if (onode == NULL)
 				continue;
 
- 			/*
+			/*
 			 * Get the previous' node's inferred type for
 			 * error reporting.
 			 */
@@ -1460,6 +1463,18 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	if (dif_var == NULL) {
 		fprintf(stderr, "dif_var is NULL, this makes no sense\n");
 		return (-1);
+	}
+
+	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM) {
+		dif_var->dtdv_tf = dr->din_tf;
+		dif_var->dtdv_ctfid = dr->din_ctfid;
+		dif_var->dtdv_sym = dr->din_sym;
+		dif_var->dtdv_type.dtdt_kind = dr->din_type;
+		dif_var->dtdv_type.dtdt_size =
+		    dt_typefile_typesize(dr->din_tf, dr->din_ctfid);
+		dif_var->dtdv_type.dtdt_ckind = dr->din_ctfid;
+
+		return (dr->din_type);
 	}
 
 	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
@@ -1778,7 +1793,7 @@ dt_infer_type(dt_ifg_node_t *n)
 	int empty;
 
 	empty = 1;
-        se = NULL;
+	se = NULL;
 	il = NULL;
 	dn1 = dn2 = dnv = var_stacknode = node = NULL;
 	type1 = -1;
@@ -1816,13 +1831,13 @@ dt_infer_type(dt_ifg_node_t *n)
 	instr = n->din_buf[n->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
-        dn1 = dt_typecheck_regdefs(&n->din_r1defs, &empty);
+	dn1 = dt_typecheck_regdefs(&n->din_r1defs, &empty);
 	if (dn1 == NULL && empty == 0) {
 		fprintf(stderr, "inferring types for r1defs failed\n");
 		return (-1);
 	}
 
-        dn2 = dt_typecheck_regdefs(&n->din_r2defs, &empty);
+	dn2 = dt_typecheck_regdefs(&n->din_r2defs, &empty);
 	if (dn2 == NULL && empty == 0) {
 		fprintf(stderr, "inferring types for r2defs failed\n");
 		return (-1);
@@ -1834,7 +1849,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (-1);
 	}
 
-        data_dn2 = dt_typecheck_regdefs(&n->din_r2datadefs, &empty);
+	data_dn2 = dt_typecheck_regdefs(&n->din_r2datadefs, &empty);
 	if (data_dn2 == NULL && empty == 0) {
 		fprintf(stderr, "inferring types for r2datadefs failed\n");
 		return (-1);
@@ -1987,10 +2002,10 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * symbols too?
 		 */
 		n->din_tf = dt_typefile_mod(n->din_edp->dted_probe.dtpd_mod);
-		assert(n->din_tf != NULL);
 
-		n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
-		if (n->din_ctfid == CTF_ERR) {
+		if (n->din_tf != NULL)
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
+		if (n->din_tf == NULL || n->din_ctfid == CTF_ERR) {
 			n->din_tf = dt_typefile_kernel();
 			assert(n->din_tf != NULL);
 			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
@@ -2077,11 +2092,13 @@ dt_infer_type(dt_ifg_node_t *n)
 			res = dt_type_compare(dn1, dn2);
 			assert(res == 1 || res == 2 || res == -1);
 
-			if (res == 1)
+			if (res == 1) {
 				tc_n = dn1;
-			else if (res == 2)
+				other = dn2;
+			} else if (res == 2) {
 				tc_n = dn2;
-			else {
+				other = dn1;
+			} else {
 				fprintf(stderr,
 				    "r1r2 nosym: types can not be compared\n");
 				return (-1);
@@ -2094,6 +2111,12 @@ dt_infer_type(dt_ifg_node_t *n)
 			n->din_type = tc_n->din_type;
 			n->din_ctfid = tc_n->din_ctfid;
 			n->din_tf = tc_n->din_tf;
+
+			if (other->din_type == DIF_TYPE_BOTTOM) {
+				other->din_type = tc_n->din_type;
+				other->din_ctfid = tc_n->din_ctfid;
+				other->din_tf = tc_n->din_tf;
+			}
 		} else {
 			symnode = dn1->din_sym != NULL ? dn1 : dn2;
 			other = dn1->din_sym != NULL ? dn2 : dn1;
@@ -2150,7 +2173,8 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (res == 1) {
 				if (strcmp(buf, "uint64_t") != 0)
-					dt_set_progerr(g_dtp, g_pgp, "the type of the"
+					dt_set_progerr(g_dtp, g_pgp,
+					    "the type of the"
 					    " other node must be unit64_t"
 					    " if symnode->din_ctfid <: "
 					    " other->din_ctfid, but it is: %s",

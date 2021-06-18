@@ -377,7 +377,7 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 	uint8_t op;
 	dif_instr_t instr;
 	dt_ifg_list_t *curnode_e;
-        int n_pushes;
+	int n_pushes;
 	dt_stack_t *s_entry;
 	dt_stacklist_t *curstack;
 
@@ -487,10 +487,9 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	assert(curnode != NULL);
 
 	_difo = bb->dtbb_difo;
-/*
+
 	if (_difo != difo)
 		return (0);
-*/
 
 	curinstr = curnode->din_buf[curnode->din_uidx];
 	curop = DIF_INSTR_OP(curinstr);
@@ -514,7 +513,6 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 
 	curnode_e = NULL;
 	r1 = r2 = 0;
-
 
 	for (ifgl = dt_list_next(&node_list);
 	    ifgl != NULL; ifgl = dt_list_next(ifgl)) {
@@ -544,34 +542,44 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1 && seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
-				if (dt_in_list(&n->din_r1defs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
-					dt_list_append(&n->din_r1defs, curnode_e);
-
-
+				if (dt_in_list(&n->din_r1defs, (void *)&curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&n->din_r1defs,
+					    curnode_e);
+				else
+					free(curnode_e);
 			}
 
 			if (r2 == 1 && seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
-				if (dt_in_list(&n->din_r2defs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
-					dt_list_append(&n->din_r2defs, curnode_e);
+				if (dt_in_list(&n->din_r2defs, (void *)&curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&n->din_r2defs,
+					    curnode_e);
+				else
+					free(curnode_e);
 			}
 
 			if (r1 == 1 && curop != DIF_OP_TYPECAST) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r1datadefs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
+				    (void *)&curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r1datadefs,
 					    curnode_e);
+				else
+					free(curnode_e);
 			}
 
 			if (r2 == 1 && curop != DIF_OP_TYPECAST) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r2datadefs,
-				    (void *)&curnode, sizeof(dt_ifg_node_t *)) == NULL)
+				    (void *)&curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
 					dt_list_append(&n->din_r2datadefs,
 					    curnode_e);
+				else
+					free(curnode_e);
 			}
 		}
 
@@ -584,7 +592,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		    opcode != DIF_OP_TYPECAST)
 			return (1);
 
-		if (opcode == DIF_OP_TYPECAST)
+		if (dt_clobbers_reg(instr, rd) && opcode == DIF_OP_TYPECAST)
 			seen_typecast = 1;
 	}
 
@@ -600,7 +608,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	int redefined;
 	uint8_t rd;
 	uint16_t var;
-	static dt_list_t bb_path = {0};
+	static dt_list_t bb_path;
 	dt_pathlist_t *bb_path_entry;
 
 	chld = NULL;
@@ -617,13 +625,15 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	dt_list_append(&bb_path, bb_path_entry);
 
 	if (nkind->dtnk_kind == DT_NKIND_REG)
-		redefined = dt_update_nodes_bb_reg(difo, bb, nkind->dtnk_rd, curnode);
+		redefined = dt_update_nodes_bb_reg(difo, bb, nkind->dtnk_rd,
+		    curnode);
 	else if (nkind->dtnk_kind == DT_NKIND_VAR)
 		redefined = dt_update_nodes_bb_var(difo, bb, nkind, curnode);
 	else if (nkind->dtnk_kind == DT_NKIND_STACK)
-		redefined = dt_update_nodes_bb_stack(&bb_path, difo, bb, curnode);
+		redefined = dt_update_nodes_bb_stack(&bb_path, difo, bb,
+		    curnode);
 	else
-	        goto end;
+		goto end;
 
 	if (redefined)
 		goto end;
@@ -674,17 +684,22 @@ dt_update_ifg(dtrace_difo_t *difo,
 	     ifgl != NULL; ifgl = dt_list_next(ifgl)) {
 		n = ifgl->dil_ifgnode;
 
-		for (r1l = dt_list_next(&n->din_r1defs); r1l; r1l = dt_list_next(r1l)) {
+		for (r1l = dt_list_next(&n->din_r1defs); r1l;
+		     r1l = dt_list_next(r1l)) {
 			n1 = r1l->dil_ifgnode;
-			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx,
+			    n1->din_uidx);
 		}
 
-		for (r1l = dt_list_next(&n->din_r2defs); r1l; r1l = dt_list_next(r1l)) {
+		for (r1l = dt_list_next(&n->din_r2defs); r1l;
+		     r1l = dt_list_next(r1l)) {
 			n1 = r1l->dil_ifgnode;
-			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx,
+			    n1->din_uidx);
 		}
 
-		for (r1l = dt_list_next(&n->din_vardefs); r1l; r1l = dt_list_next(r1l)) {
+		for (r1l = dt_list_next(&n->din_vardefs); r1l;
+		     r1l = dt_list_next(r1l)) {
 			n1 = r1l->dil_ifgnode;
 			__nkind = &n1->din_kind;
 			if (__nkind->dtnk_kind != DT_NKIND_VAR)
@@ -693,28 +708,36 @@ dt_update_ifg(dtrace_difo_t *difo,
 
 			DPRINTF("VAR: (%s, %s)\n",
 			    __nkind->dtnk_scope == DIFV_SCOPE_GLOBAL ?
-			    "global" : __nkind->dtnk_scope == DIFV_SCOPE_THREAD
-			    ? "thread" : "local",
-			    __nkind->dtnk_varkind == DIFV_KIND_SCALAR ? "scalar" : "array");
-			DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+				      "global" :
+				__nkind->dtnk_scope == DIFV_SCOPE_THREAD ?
+				      "thread" :
+				      "local",
+			    __nkind->dtnk_varkind == DIFV_KIND_SCALAR ?
+				      "scalar" :
+				      "array");
+			DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx,
+			    n1->din_uidx);
 		}
 
-		for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
+		for (sl = dt_list_next(&n->din_stacklist); sl;
+		     sl = dt_list_next(sl)) {
 			stack = &sl->dsl_stack;
 			DPRINTF("Stack identified by: ");
-			for (il = dt_list_next(&sl->dsl_identifier); il; il = dt_list_next(il)) {
+			for (il = dt_list_next(&sl->dsl_identifier); il;
+			     il = dt_list_next(il)) {
 				if (dt_list_next(il) != NULL)
 					DPRINTF("%zu--", il->dtpl_bb->dtbb_idx);
 				else
 					DPRINTF("%zu\n", il->dtpl_bb->dtbb_idx);
 			}
 
-			for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
+			for (se = dt_list_next(stack); se;
+			     se = dt_list_next(se)) {
 				n1 = se->ds_ifgnode;
-				DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx, n1->din_uidx);
+				DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx,
+				    n1->din_uidx);
 			}
 		}
-
 	}
 	DPRINTF("----------------------------------------------\n");
 }

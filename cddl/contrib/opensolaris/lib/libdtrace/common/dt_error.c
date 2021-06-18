@@ -315,7 +315,7 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	va_list args;
 	int dtdaemon_sock, tmpfd;
 	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
-	
+
 	if (pgp == NULL)
 		return;
 
@@ -326,7 +326,7 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 		    strerror(errno));
 
 	pgp->dp_haserror = 1;
-	
+
 	va_start(args, fmt);
 	l = vsnprintf(pgp->dp_err, DT_PROG_ERRLEN, fmt, args);
 	va_end(args);

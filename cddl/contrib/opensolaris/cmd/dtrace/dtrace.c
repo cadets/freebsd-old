@@ -1417,12 +1417,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 	int tmpfd;
 	uint64_t subs = 0;
 
-	/*
-	 * Don't take any action based on unwanted mod/ref behaviour;
-	 * checkmodref emits warnings and that's the end of it.
-	 */
-	(void) dtrace_analyze_program_modref(dcp->dc_prog, checkmodref, stderr);
-
 	dcp->dc_prog->dp_rflags = rslv;
 
 	if (g_graphfile) {
@@ -1607,6 +1601,7 @@ again:
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
+		dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable '%s'", dcp->dc_name);
 		} else {

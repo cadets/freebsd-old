@@ -44,7 +44,8 @@
 dt_ifg_list_t *
 dt_ifgl_alloc(dt_ifg_node_t *node)
 {
-	dt_ifg_list_t *
+	dt_ifg_list_t *ifgl;
+
 	ifgl = malloc(sizeof(dt_ifg_list_t));
 	if (ifgl == NULL)
 		errx(EXIT_FAILURE, "failed to malloc node entry");

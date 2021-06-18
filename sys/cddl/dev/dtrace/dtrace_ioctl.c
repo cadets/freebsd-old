@@ -417,7 +417,7 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			return (0);
 		}
 
-		if ((dof = dtrace_dof_copyin((uintptr_t) p->dof, &rval)) == NULL)
+		if ((dof = dtrace_dof_copyin((uintptr_t)p->dof, &rval)) == NULL)
 			return (EINVAL);
 
 		state->dts_dof = kmem_alloc(dof->dofh_filesz, KM_SLEEP);
@@ -488,9 +488,10 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_exit(&dtrace_lock);
 
 		if (err == 0 &&
-		    (ndesc * sizeof(dtrace_probedesc_t) <= p->ps_bufsize))
+		    (ndesc * sizeof(dtrace_probedesc_t) <= p->ps_bufsize)) {
 			err = copyout(probes, p->ps,
 			    ndesc * sizeof(dtrace_probedesc_t));
+		}
 
 		if (probes)
 			kmem_free(probes, pbbufsize);
