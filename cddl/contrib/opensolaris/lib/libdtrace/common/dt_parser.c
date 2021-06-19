@@ -562,7 +562,6 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	dnp->dn_attr = _dtrace_defattr;
 	dnp->dn_list = NULL;
 	dnp->dn_link = NULL;
-	dnp->dn_addr_type = 0;
 	bzero(&dnp->dn_u, sizeof (dnp->dn_u));
 	bzero(&dnp->dn_target, sizeof (dnp->dn_target));
 
@@ -762,14 +761,6 @@ dt_node_type_propagate(const dt_node_t *src, dt_node_t *dst)
 	dst->dn_flags = src->dn_flags & ~DT_NF_LVALUE;
 	dst->dn_ctfp = src->dn_ctfp;
 	dst->dn_type = src->dn_type;
-}
-
-const char *
-dt_node_addr_type_name(const dt_node_t *dnp)
-{
-
-	return (dnp->dn_addr_type == DT_ADDR_HOST ? "host" :
-	    dnp->dn_addr_type == DT_ADDR_GUEST ? "guest" : "unknown");
 }
 
 const char *
@@ -996,13 +987,6 @@ dt_node_is_dynamic(const dt_node_t *dnp)
 }
 
 int
-dt_node_is_host(const dt_node_t *dnp)
-{
-
-	return (dnp->dn_addr_type == DT_ADDR_HOST);
-}
-
-int
 dt_node_is_bottom(const dt_node_t *dnp)
 {
 	return (dnp->dn_ctfp == NULL &&
@@ -1125,7 +1109,7 @@ dt_node_is_ptrcompat(const dt_node_t *lp, const dt_node_t *rp,
 
 	if (dt_node_is_bottom(lp) || dt_node_is_bottom(rp))
 		return (1);
-	
+
 	lp_is_int = dt_node_is_integer(lp);
 	rp_is_int = dt_node_is_integer(rp);
 
@@ -3786,21 +3770,6 @@ endlt:
 				lp->dn_flags |= DT_NF_USERLAND;
 				lp->dn_ident->di_flags |= DT_IDFLG_USER;
 			}
-
-			/*
-			 * FIXME: This makes no sense because we won't know
-			 *        this with bottom types.
-			 */
-			if (dt_node_is_string(rp)) {
-				if (dt_node_is_builtin(rp))
-					lp->dn_addr_type =
-					    script_type == DT_SCRIPT_TYPE_HOST ?
-					    DT_ADDR_HOST : DT_ADDR_GUEST;
-				else if (rp->dn_kind == DT_NODE_STRING)
-					lp->dn_addr_type = DT_ADDR_HOST;
-				else
-					lp->dn_addr_type = rp->dn_addr_type;
-			}
 		}
 
 		if (lp->dn_kind == DT_NODE_VAR)
@@ -3821,16 +3790,6 @@ endlt:
 				    opstr(op),
 				    dt_node_type_name(lp, n1, sizeof (n1)));
 			}
-		}
-
-		if (dt_node_is_string(rp) && dt_node_is_string(lp)) {
-			if (lp->dn_addr_type != rp->dn_addr_type &&
-			    !dt_node_is_builtin(rp))
-				xyerror(D_OP_INCOMPAT,
-				    "operands have incompatible "
-				    "address types: \"%s\" %s \"%s\"\n",
-				    dt_node_addr_type_name(lp), opstr(op),
-				    dt_node_addr_type_name(rp));
 		}
 
 		if (idp != NULL && idp->di_kind == DT_IDENT_XLSOU &&

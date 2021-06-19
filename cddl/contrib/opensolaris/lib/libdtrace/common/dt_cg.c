@@ -62,77 +62,6 @@ dt_cg_node_alloc(uint_t label, dif_instr_t instr)
 	return (dip);
 }
 
-static int
-dt_cg_resolve_addr_type(dt_node_t *dnp)
-{
-	if (dnp->dn_kind != DT_NODE_STRING &&
-	    dnp->dn_kind != DT_NODE_VAR    &&
-	    dnp->dn_kind != DT_NODE_FUNC   &&
-	    dnp->dn_kind != DT_NODE_OP1    &&
-	    dnp->dn_kind != DT_NODE_OP2    &&
-	    dnp->dn_kind != DT_NODE_OP3    &&
-	    dnp->dn_kind != DT_NODE_IDENT)
-		return (0);
-
-	/*
-	 * The VM name can only originate on the host for now. Treat it as
-	 * such.
-	 */
-	if (dnp->dn_kind == DT_NODE_VAR &&
-	    (dnp->dn_ident->di_id == DIF_VAR_VMNAME  ||
-	     dnp->dn_ident->di_id == DIF_VAR_HVMNAME))
-		return (DT_ADDR_HOST);
-
-	if (dnp->dn_ident && dnp->dn_kind == DT_NODE_IDENT &&
-	    strcmp(dnp->dn_ident->di_name, "fds") == 0)
-		return (DT_ADDR_GUEST);
-	/*
-	 * This should cover any user-defined variable that has previously
-	 * been assigned to.
-	 */
-	if (dnp->dn_addr_type == DT_ADDR_HOST ||
-	    dnp->dn_addr_type == DT_ADDR_GUEST)
-		return (dnp->dn_addr_type);
-
-	if (dnp->dn_kind == DT_NODE_FUNC &&
-	    dt_subr_h2g[dnp->dn_ident->di_id] == 0)
-		return (DT_ADDR_GUEST);
-
-
-	if (dnp->dn_kind == DT_NODE_OP2)
-		return (DT_ADDR_GUEST);
-	/*
-	 * Any string literal or a function returning a string.
-	 */
-	if (dnp->dn_kind == DT_NODE_STRING ||
-	    dnp->dn_kind == DT_NODE_FUNC)
-		return (DT_ADDR_HOST);
-
-	if (dnp->dn_kind == DT_NODE_OP1)
-		return (dt_cg_resolve_addr_type(dnp->dn_child));
-
-	if (dnp->dn_kind == DT_NODE_OP3) {
-		int t1, t2;
-
-		t1 = dt_cg_resolve_addr_type(dnp->dn_left);
-		t2 = dt_cg_resolve_addr_type(dnp->dn_right);
-
-		if (t1 == t2)
-			return (t1);
-
-		return (0);
-	}
-
-	/*
-	 * This is actually a built-in variable.
-	 */
-	if (dnp->dn_kind == DT_NODE_VAR &&
-	    script_type == DT_SCRIPT_TYPE_GUEST)
-		return (DT_ADDR_GUEST);
-
-	return (DT_ADDR_HOST);
-}
-
 /*
  * Code generator wrapper function for ctf_member_info.  If we are given a
  * reference to a forward declaration tag, search the entire type space for
@@ -1649,15 +1578,6 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 	case DT_TOK_ASGN:
 		dt_cg_node(dnp->dn_right, dlp, drp);
 		dnp->dn_reg = dnp->dn_right->dn_reg;
-		if (dt_node_is_string(dnp->dn_right)) {
-			if (dnp->dn_addr_type != 0)
-				xyerror(D_OP_INCOMPAT,
-				    "trying to assign %s to %s",
-				    dt_node_addr_type_name(dnp->dn_right),
-				    dt_node_addr_type_name(dnp));
-			dnp->dn_addr_type =
-			    dt_cg_resolve_addr_type(dnp->dn_right);
-		}
 		dt_cg_asgn_op(dnp, dlp, drp);
 		break;
 
