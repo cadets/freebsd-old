@@ -520,7 +520,7 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		}
 
 		otab = difo->dtdo_inttab;
-		difo->dtdo_inttab = malloc(sizeof(uint64_t) * inthash_size);
+		difo->dtdo_inttab = dt_alloc(dtp, sizeof(uint64_t) * inthash_size);
 		if (difo->dtdo_inttab == NULL)
 			errx(EXIT_FAILURE, "failed to malloc inttab");
 
@@ -635,7 +635,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				if (rval != 0)
 					return (dt_set_errno(dtp, rval));
 
-				edl = malloc(sizeof(dtrace_ecbdesclist_t));
+				edl = dt_alloc(dtp, sizeof(dtrace_ecbdesclist_t));
 				if (edl == NULL)
 					return (dt_set_errno(dtp, EDT_NOMEM));
 
@@ -702,6 +702,11 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 		}
+	}
+
+	while ((edl = dt_list_next(&processed_ecbdescs)) != NULL) {
+		dt_list_delete(&processed_ecbdescs, edl);
+		dt_free(dtp, edl);
 	}
 
 	return (0);
