@@ -1182,8 +1182,10 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (node->din_ctfid != onode->din_ctfid) {
 				fprintf(stderr,
-				    "types %s and %s do not match\n", buf1,
-				    buf2);
+				    "types %s (%zu) and %s (%zu) "
+				    "do not match\n",
+				    buf1, node->din_uidx, buf2,
+				    onode->din_uidx);
 				return (NULL);
 			}
 
@@ -2236,7 +2238,8 @@ dt_infer_type(dt_ifg_node_t *n)
 		 *       if dn1 is not NULL, then we'll have checked it already.
 		 */
 		if (dn1 == NULL) {
-			fprintf(stderr, "mov/not: dn1 is NULL\n");
+			fprintf(stderr, "mov/not (%zu): dn1 is NULL\n",
+			    n->din_uidx);
 			return (-1);
 		}
 

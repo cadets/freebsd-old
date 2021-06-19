@@ -603,7 +603,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memset(&bb_list, 0, sizeof(dt_list_t));
 	memset(&processed_ecbdescs, 0, sizeof(dt_list_t));
 
-	r0node = dt_ifg_node_alloc(NULL, NULL, UINT_MAX);
+	r0node = dt_ifg_node_alloc(NULL, NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
 	/*

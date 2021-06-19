@@ -34,6 +34,7 @@
 #include <dtrace.h>
 #include <dt_list.h>
 #include <_dt_typefile.h>
+#include <_dt_basic_block.h>
 
 typedef struct dt_node_kind {
 	int                             dtnk_kind; /* kind (see below) */
@@ -68,6 +69,7 @@ typedef struct dt_ifg_node {
 	char               *din_sym;       /* symbol (if applicable) */
 	dtrace_difo_t      *din_difo;      /* DIFO which this node belongs to */
 #define din_buf            din_difo->dtdo_buf
+	dt_basic_block_t   *din_bb;        /* basic block that the node is in */
 	ctf_membinfo_t     *din_mip;       /* CTF member info (type, offs) */
 	dt_list_t          din_stacklist;  /* list of pushtr/pushtv nodes */
 	dt_node_kind_t     din_kind;       /* node kind (reg, var, stack) */

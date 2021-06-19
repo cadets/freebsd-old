@@ -588,8 +588,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		 * we simply break out of the loop, there is nothing left
 		 * to fill in inside this basic block.
 		 */
-		if (dt_clobbers_reg(instr, rd) &&
-		    opcode != DIF_OP_TYPECAST)
+		if (dt_clobbers_reg(instr, rd) && opcode != DIF_OP_TYPECAST)
 			return (1);
 
 		if (dt_clobbers_reg(instr, rd) && opcode == DIF_OP_TYPECAST)
@@ -604,7 +603,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
     dt_node_kind_t *nkind, dt_ifg_node_t *curnode)
 {
 	dt_bb_entry_t *chld;
-	dt_basic_block_t *chld_bb;
+	dt_basic_block_t *chld_bb, *curbb;
 	int redefined;
 	uint8_t rd;
 	uint16_t var;
@@ -677,7 +676,7 @@ dt_update_ifg(dtrace_difo_t *difo,
 	rd = 0;
 	var = 0;
 
-	dt_update_nodes(_difo, difo->dtdo_bb, nkind, curnode);
+	dt_update_nodes(_difo, curnode->din_bb, nkind, curnode);
 
 	DPRINTF("----------------------------------------------\n");
 	for (ifgl = dt_list_next(&node_list);
@@ -742,6 +741,28 @@ dt_update_ifg(dtrace_difo_t *difo,
 	DPRINTF("----------------------------------------------\n");
 }
 
+static dt_basic_block_t *
+dt_node_find_bb(dt_basic_block_t *root, uint_t ins_idx)
+{
+	dt_bb_entry_t *chld;
+	dt_basic_block_t *bb;
+
+	if (root == NULL)
+		return (NULL);
+
+	if (root->dtbb_start <= ins_idx && root->dtbb_end >= ins_idx)
+		return (root);
+
+	for (chld = dt_list_next(&root->dtbb_children); chld;
+	     chld = dt_list_next(chld)) {
+		bb = dt_node_find_bb(chld->dtbe_bb, ins_idx);
+		if (bb != NULL)
+			return (bb);
+	}
+
+	return (NULL);
+}
+
 /*
  * We assume that both dtp and difo are not NULL.
  */
@@ -757,6 +778,7 @@ dt_prog_infer_defns(
 	uint8_t opcode = 0;
 	uint8_t rd = 0;
 	uint16_t var = 0;
+	dt_basic_block_t *nodebb;
 
 	memset(&nkind, 0, sizeof(dt_node_kind_t));
 	/*
@@ -805,7 +827,10 @@ dt_prog_infer_defns(
 		idx = difo->dtdo_len - 1 - i;
 		instr = difo->dtdo_buf[idx];
 
-		n = dt_ifg_node_alloc(edp, difo, idx);
+		nodebb = dt_node_find_bb(difo->dtdo_bb, idx);
+		assert(nodebb != NULL);
+
+		n = dt_ifg_node_alloc(edp, difo, nodebb, idx);
 		ifgl = malloc(sizeof(dt_ifg_list_t));
 		if (ifgl == NULL)
 			errx(EXIT_FAILURE, "failed to malloc ifgl");
