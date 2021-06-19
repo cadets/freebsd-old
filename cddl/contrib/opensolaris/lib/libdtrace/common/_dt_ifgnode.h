@@ -67,12 +67,13 @@ typedef struct dt_ifg_node {
 	ctf_id_t           din_ctfid;      /* CTF type */
 	char               *din_sym;       /* symbol (if applicable) */
 	dtrace_difo_t      *din_difo;      /* DIFO which this node belongs to */
-#define din_buf din_difo->dtdo_buf
+#define din_buf            din_difo->dtdo_buf
 	ctf_membinfo_t     *din_mip;       /* CTF member info (type, offs) */
 	dt_list_t          din_stacklist;  /* list of pushtr/pushtv nodes */
 	dt_node_kind_t     din_kind;       /* node kind (reg, var, stack) */
 	dt_list_t          din_usetxs;     /* usetx insn list defining the node */
 	int                din_relocated;  /* relocated or not? */
+	int                din_isnull;     /* can this node contain NULL? */
 } dt_ifg_node_t;
 
 typedef struct dt_ifg_list {

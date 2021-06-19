@@ -1470,12 +1470,16 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		dif_var->dtdv_ctfid = dr->din_ctfid;
 		dif_var->dtdv_sym = dr->din_sym;
 		dif_var->dtdv_type.dtdt_kind = dr->din_type;
-		dif_var->dtdv_type.dtdt_size =
-		    dt_typefile_typesize(dr->din_tf, dr->din_ctfid);
+		if (dr->din_type == DIF_TYPE_CTF)
+			dif_var->dtdv_type.dtdt_size =
+			    dt_typefile_typesize(dr->din_tf, dr->din_ctfid);
 		dif_var->dtdv_type.dtdt_ckind = dr->din_ctfid;
 
 		return (dr->din_type);
 	}
+
+	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING && dr->din_isnull)
+		return (DIF_TYPE_STRING);
 
 	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
 	    dif_var->dtdv_type.dtdt_kind != dr->din_type) {
@@ -1763,6 +1767,22 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 	}
 
 	return (stack);
+}
+
+static int
+dt_setx_value(dtrace_difo_t *difo, dif_instr_t instr)
+{
+	uint8_t opcode;
+	uint16_t index;
+
+	opcode = DIF_INSTR_OP(instr);
+	assert(opcode == DIF_OP_SETX);
+	assert(difo->dtdo_inttab != NULL);
+
+	index = DIF_INSTR_INTEGER(instr);
+	assert(index < difo->dtdo_intlen);
+
+	return (difo->dtdo_inttab[index]);
 }
 
 /*
@@ -2357,6 +2377,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
+		n->din_isnull = dt_setx_value(difo, instr) == 0;
 		return (n->din_type);
 
 	case DIF_OP_SETS:
