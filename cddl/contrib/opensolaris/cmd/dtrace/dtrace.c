@@ -1341,8 +1341,6 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	dtrace_proginfo_t dpi;
 	int i, n;
 
-	dtrace_dump_actions(pgp);
-
 	if (gpgp == NULL && pgp->dp_vmid != 0) {
 		atomic_store(&g_intr, 1);
 		fprintf(stderr,
@@ -1601,7 +1599,7 @@ again:
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
-		dtrace_dump_actions(dcp->dc_prog);
+		//dtrace_dump_actions(dcp->dc_prog);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable '%s'", dcp->dc_name);
 		} else {
@@ -1841,7 +1839,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
 		fatal("failed to tokenize %s", dcp->dc_arg);
-	
+
 	hostorguest = strtok(NULL, ",");
 	if (hostorguest && strcmp(hostorguest, "host") == 0)
 		host = 1;
@@ -1854,12 +1852,12 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 
 	prog_exec = link_elf(dcp, progpath);
 
-	dtrace_dump_actions(dcp->dc_prog);
+	//dtrace_dump_actions(dcp->dc_prog);
 
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
-	dtrace_dump_actions(dcp->dc_prog);
+	//dtrace_dump_actions(dcp->dc_prog);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
