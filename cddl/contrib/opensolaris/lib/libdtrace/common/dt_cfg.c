@@ -61,7 +61,8 @@ dt_compute_cfg(dtrace_difo_t *difo)
 	opcode = 0;
 	instr = 0;
 
-	for (bb_e1 = dt_list_next(&bb_list); bb_e1; bb_e1 = dt_list_next(bb_e1)) {
+	for (bb_e1 = dt_list_next(&bb_list); bb_e1;
+	    bb_e1 = dt_list_next(bb_e1)) {
 		bb1 = bb_e1->dtbe_bb;
 		if (bb1 == NULL)
 			errx(EXIT_FAILURE, "bb1 should not be NULL");
@@ -111,7 +112,8 @@ dt_compute_cfg(dtrace_difo_t *difo)
 				    bb2->dtbb_start, bb2->dtbb_end);
 			}
 
-			if (bb1->dtbb_end + 1 == bb2->dtbb_start) {
+			if (opcode != DIF_OP_BA &&
+			    bb1->dtbb_end + 1 == bb2->dtbb_start) {
 				bb_new1 = malloc(sizeof(dt_bb_entry_t));
 				if (bb_new1 == NULL)
 					errx(EXIT_FAILURE,

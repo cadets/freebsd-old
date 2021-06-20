@@ -1167,6 +1167,9 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * We need to make sure that we are comparing types in
 			 * the same typefile, otherwise we could have a mismatch
 			 * of ctfids.
+			 *
+			 * XXX(dstolfa): Maybe we should allow for this to be
+			 * different, but then check the layout and so on...?
 			 */
 			if (node->din_tf != onode->din_tf) {
 				fprintf(stderr,
@@ -1179,8 +1182,14 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 
 			/*
 			 * Fail to typecheck if the types don't match 100%.
+			 * We only do this if both types are non-NULL/0 as we
+			 * might be doing some weird zeroing thing where we
+			 * can't infer the correct type in either of the nodes.
+			 * However, we know that any base CTF type can be
+			 * reliably zeroed (non-struct, non-union).
 			 */
-			if (node->din_ctfid != onode->din_ctfid) {
+			if ((node->din_isnull == 0 && onode->din_isnull == 0) &&
+			    node->din_ctfid != onode->din_ctfid) {
 				fprintf(stderr,
 				    "types %s (%zu) and %s (%zu) "
 				    "do not match\n",
@@ -2252,6 +2261,8 @@ dt_infer_type(dt_ifg_node_t *n)
 		n->din_type = dn1->din_type;
 		n->din_mip = dn1->din_mip;
 		n->din_sym = dn1->din_sym;
+		if (opcode == DIF_OP_MOV)
+			n->din_isnull = dn1->din_isnull;
 
 		return (n->din_type);
 
