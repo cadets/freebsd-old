@@ -32,8 +32,6 @@
 #ifndef	_DTRACE_H
 #define	_DTRACE_H
 
-#undef NDEBUG
-
 #include <sys/dtrace.h>
 #include <stdarg.h>
 #include <stdbool.h>

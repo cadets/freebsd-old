@@ -30,8 +30,8 @@ CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 # Optional debugging stuff...
-CFLAGS+=	-DNEED_ERRLOC
-YFLAGS+=	-d
+#CFLAGS+=	-DNEED_ERRLOC
+#YFLAGS+=	-d
 
 LIBADD=	dtrace ctf elf proc pthread spl
 
