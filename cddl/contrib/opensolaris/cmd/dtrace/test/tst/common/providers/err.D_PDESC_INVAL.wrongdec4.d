@@ -44,7 +44,7 @@ BEGIN
 	i = 0;
 }
 
-profile::::tick-1sec
+host:profile::::tick-1sec
 {
 	trace(i);
 }
