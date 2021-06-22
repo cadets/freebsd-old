@@ -2088,7 +2088,8 @@ dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 				continue;
 
 			if (dtrace_casptr((volatile void *)lockp,
-			    (volatile void *)lock, (volatile void *)(lock + 1)) == (void *)lock)
+			    (volatile void *)lock,
+			    (volatile void *)(lock + 1)) == (void *)lock)
 				break;
 		}
 
@@ -2154,7 +2155,7 @@ top:
 				goto next; /* size or type mismatch */
 
 			if (dkey->dttk_size != 0) {
-				if (dtrace_bcmp(mstate,
+				if (dtrace_bcmp(key[i].dttk_vmhdl,
 				    (void *)(uintptr_t)key[i].dttk_value,
 				    (void *)(uintptr_t)dkey->dttk_value,
 				    dkey->dttk_size))
@@ -7515,10 +7516,12 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			id -= DIF_VAR_OTHER_UBASE;
 
 			key[nkeys].dttk_value = (uint64_t)id;
+			key[nkeys].dttk_vmhdl = NULL;
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_LDTAA) {
 				DTRACE_TLS_THRKEY(mstate, key[nkeys].dttk_value);
+				key[nkeys].dttk_vmhdl = NULL;
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];
@@ -7562,10 +7565,12 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			id -= DIF_VAR_OTHER_UBASE;
 
 			key[nkeys].dttk_value = (uint64_t)id;
+			key[nkeys].dttk_vmhdl = NULL;
 			key[nkeys++].dttk_size = 0;
 
 			if (DIF_INSTR_OP(instr) == DIF_OP_STTAA) {
 				DTRACE_TLS_THRKEY(mstate, key[nkeys].dttk_value);
+				key[nkeys].dttk_vmhdl = NULL;
 				key[nkeys++].dttk_size = 0;
 				VERIFY(id < vstate->dtvs_ntlocals);
 				v = &vstate->dtvs_tlocals[id];

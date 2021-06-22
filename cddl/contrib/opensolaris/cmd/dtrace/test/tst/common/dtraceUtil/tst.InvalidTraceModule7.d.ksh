@@ -44,7 +44,7 @@ fi
 
 dtrace=$1
 
-$dtrace -m genunix::'{printf("FOUND");}'
+$dtrace -m genunix:::'{printf("FOUND");}'
 
 status=$?
 
