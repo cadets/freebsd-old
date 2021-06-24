@@ -68,7 +68,7 @@ typedef struct dtrace_ecbdesclist {
 
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
-    dtrace_difo_t *difo)
+    dtrace_actdesc_t *ad, dtrace_difo_t *difo)
 {
 	size_t idx;
 	dt_ifg_list_t *ifgl, *usetx_ifgl;
@@ -171,6 +171,9 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 					    node->din_type, node->din_uidx);
 
 				assert(actkind != DTRACEACT_NONE);
+				if (actkind != DTRACEACT_DIFEXPR)
+					assert(ad != NULL);
+
 				switch (actkind) {
 				case DTRACEACT_DIFEXPR:
 					*rtype = dt_void_rtype;
@@ -178,6 +181,14 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 
 				case DTRACEACT_EXIT:
 					*rtype = dt_int_rtype;
+					break;
+
+				case DTRACEACT_PRINTF:
+					break;
+
+				case DTRACEAGG_QUANTIZE:
+				case DTRACEAGG_LQUANTIZE:
+				case DTRACEAGG_LLQUANTIZE:
 					break;
 
 				default:
@@ -575,10 +586,11 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 }
 
 static int
-process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actkind_t actkind,
+process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
     dtrace_difo_t *difo, dtrace_ecbdesc_t *ecbdesc)
 {
 	int rval;
+	dtrace_actkind_t actkind;
 
 	rval = dt_prog_infer_defns(dtp, ecbdesc, difo);
 	if (rval != 0)
@@ -590,7 +602,8 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actkind_t actkind,
 
 	dt_prog_infer_usetxs(difo);
 
-	rval = dt_prog_relocate(dtp, actkind, difo);
+	actkind = ad == NULL ? DTRACEACT_DIFEXPR : ad->dtad_kind;
+	rval = dt_prog_relocate(dtp, actkind, ad, difo);
 	if (rval != 0)
 		return (rval);
 
@@ -650,7 +663,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (edl == NULL) {
 				dt_populate_varlist(pred->dtpdd_difo);
 
-				rval = process_difo(dtp, pgp, DTRACEACT_DIFEXPR,
+				rval = process_difo(dtp, pgp, NULL,
 				    pred->dtpdd_difo, ecbdesc);
 				if (rval != 0)
 					return (dt_set_errno(dtp, rval));
@@ -709,8 +722,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == NULL)
 				continue;
 
-			rval = process_difo(dtp, pgp, ad->dtad_kind,
-			    ad->dtad_difo, ecbdesc);
+			rval = process_difo(dtp, pgp, ad, ad->dtad_difo,
+			    ecbdesc);
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 		}
