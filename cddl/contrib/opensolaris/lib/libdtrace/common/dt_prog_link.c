@@ -67,7 +67,8 @@ typedef struct dtrace_ecbdesclist {
 } dtrace_ecbdesclist_t;
 
 static int
-dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
+dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
+    dtrace_difo_t *difo)
 {
 	size_t idx;
 	dt_ifg_list_t *ifgl, *usetx_ifgl;
@@ -169,29 +170,48 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 					    "(%x) at location %u",
 					    node->din_type, node->din_uidx);
 
-				if (rtype->dtdt_kind == DIF_TYPE_CTF) {
-					ctf_kind = dt_typefile_typekind(
-					    node->din_tf, node->din_ctfid);
+				assert(actkind != DTRACEACT_NONE);
+				switch (actkind) {
+				case DTRACEACT_DIFEXPR:
+					*rtype = dt_void_rtype;
+					break;
 
-					/*
-					 * Set that we are returning this
-					 * by reference, rather than by value
-					 */
-					if (ctf_kind == CTF_K_ARRAY ||
-					    ctf_kind == CTF_K_POINTER)
+				case DTRACEACT_EXIT:
+					*rtype = dt_int_rtype;
+					break;
+
+				default:
+					if (rtype->dtdt_kind == DIF_TYPE_CTF) {
+						ctf_kind = dt_typefile_typekind(
+						    node->din_tf,
+						    node->din_ctfid);
+
+						/*
+						 * Set that we are returning
+						 * this by reference, rather
+						 * than by value
+						 */
+						if (ctf_kind == CTF_K_ARRAY ||
+						    ctf_kind == CTF_K_POINTER)
+							rtype->dtdt_flags |=
+							    DIF_TF_BYREF;
+
+						rtype->dtdt_size =
+						    dt_typefile_typesize(
+							node->din_tf,
+							node->din_ctfid);
+					} else
 						rtype->dtdt_flags |=
 						    DIF_TF_BYREF;
 
-					rtype->dtdt_size = dt_typefile_typesize(
-					    node->din_tf, node->din_ctfid);
-				} else
-					rtype->dtdt_flags |= DIF_TF_BYREF;
-
+					break;
+				}
 				/*
 				 * Safety guard
 				 */
 				if (node->din_type == DIF_TYPE_STRING)
 					rtype->dtdt_ckind = CTF_ERR;
+				break;
 			}
 
 			/*
@@ -555,8 +575,8 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 }
 
 static int
-process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
-    dtrace_ecbdesc_t *ecbdesc)
+process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actkind_t actkind,
+    dtrace_difo_t *difo, dtrace_ecbdesc_t *ecbdesc)
 {
 	int rval;
 
@@ -570,7 +590,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 
 	dt_prog_infer_usetxs(difo);
 
-	rval = dt_prog_relocate(dtp, difo);
+	rval = dt_prog_relocate(dtp, actkind, difo);
 	if (rval != 0)
 		return (rval);
 
@@ -630,8 +650,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (edl == NULL) {
 				dt_populate_varlist(pred->dtpdd_difo);
 
-				rval = process_difo(dtp, pgp, pred->dtpdd_difo,
-				    ecbdesc);
+				rval = process_difo(dtp, pgp, DTRACEACT_DIFEXPR,
+				    pred->dtpdd_difo, ecbdesc);
 				if (rval != 0)
 					return (dt_set_errno(dtp, rval));
 
@@ -689,16 +709,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (ad->dtad_difo == NULL)
 				continue;
 
-			/*
-			 * FIXME(dstolfa, important): This is not sufficient.
-			 * We actually need to find every action that requires
-			 * further type-checking of DIFOs coming back from it
-			 * (e.g. lquantize needs a few). Need to figure out a
-			 * way to do this. Also need to somehow deal with
-			 * optional arguments.
-			 */
-			//ad->dtad_difo->dtdo_next = ad->dtad_next;
-			rval = process_difo(dtp, pgp, ad->dtad_difo, ecbdesc);
+			rval = process_difo(dtp, pgp, ad->dtad_kind,
+			    ad->dtad_difo, ecbdesc);
 			if (rval != 0)
 				return (dt_set_errno(dtp, rval));
 		}

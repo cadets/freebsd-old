@@ -1003,7 +1003,6 @@ typedef struct dtrace_difo {
 	struct dt_basic_block *dtdo_bb;	/* first basic block */
 	size_t dtdo_idx;		/* difo identifier */
 	struct dt_inttab *dtdo_inthash;	/* integer hash table (userspace only) */
-	struct dtrace_actdesc *dtdo_next; /* next action of a difo */
 #endif
 } dtrace_difo_t;
 

@@ -73,6 +73,8 @@ struct dt_provider;		/* see <dt_provider.h> */
 struct dt_xlator;		/* see <dt_xlator.h> */
 
 extern int dt_subr_h2g[DIF_SUBR_MAX+1];
+extern const dtrace_diftype_t dt_void_rtype;
+extern const dtrace_diftype_t dt_int_rtype;
 
 typedef struct dt_intrinsic {
 	const char *din_name;	/* string name of the intrinsic type */

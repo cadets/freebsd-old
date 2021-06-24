@@ -24,6 +24,7 @@
  * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2013, Joyent Inc. All rights reserved.
  * Copyright 2015 Gary Mills
+ * Copyright (c) 2021, Domagoj Stolfa, All rights reserved.
  */
 
 /*
@@ -109,11 +110,11 @@
 #include <dt_string.h>
 #include <dt_impl.h>
 
-static const dtrace_diftype_t dt_void_rtype = {
+const dtrace_diftype_t dt_void_rtype = {
 	DIF_TYPE_CTF, CTF_K_INTEGER, 0, 0, 0
 };
 
-static const dtrace_diftype_t dt_int_rtype = {
+const dtrace_diftype_t dt_int_rtype = {
 	DIF_TYPE_CTF, CTF_K_INTEGER, 0, 0, sizeof (uint64_t)
 };
 
@@ -1218,11 +1219,6 @@ dt_compile_fun(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		dnerror(dnp->dn_expr, D_UNKNOWN, "tracing function %s( ) is "
 		    "not yet supported\n", dnp->dn_expr->dn_ident->di_name);
 	}
-}
-
-static void
-dt_resolve_symbols(dtrace_actdesc_t *ap)
-{
 }
 
 static void
