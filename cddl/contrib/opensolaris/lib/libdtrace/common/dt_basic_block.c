@@ -130,7 +130,12 @@ dt_compute_bb(dtrace_difo_t *difo)
 			if (i + 1 >= difo->dtdo_len)
 				errx(EXIT_FAILURE, "malformed DIFO");
 
-			leaders[i + 1] = 1;
+			/*
+			 * For a direct branch, i + 1 is not a leader. We are
+			 * skipping it all together.
+			 */
+			if (opcode != DIF_OP_BA)
+				leaders[i + 1] = 1;
 			leaders[lbl] = 1;
 		}
 	}

@@ -156,12 +156,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				rtype->dtdt_kind = node->din_type;
 				if (node->din_type == DIF_TYPE_CTF)
 					rtype->dtdt_ckind = node->din_ctfid;
-				/*
-				 * XXX(dstolfa), MAYBE:
-				 * In the case of din_type == DIF_TYPE_STRING,
-				 * we can't just fill in the DT_STR_TYPE() here
-				 * because the CTF identifier on the guest will
-				 */
+
 				else if (node->din_type == DIF_TYPE_STRING)
 					rtype->dtdt_ckind = DT_STR_TYPE(dtp);
 				else

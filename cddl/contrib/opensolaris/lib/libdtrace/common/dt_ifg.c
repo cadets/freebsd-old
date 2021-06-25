@@ -746,6 +746,17 @@ dt_node_find_bb(dt_basic_block_t *root, uint_t ins_idx)
 {
 	dt_bb_entry_t *chld;
 	dt_basic_block_t *bb;
+	dt_basic_block_t *bb_stack[DT_BB_MAX];
+	int visited[DT_BB_MAX];
+	ssize_t top;
+
+	/*
+	 * Apparently DTrace uses sufficiently large conditionals sometimes.
+	 * This is bad news, as doing this recursively will quickly become
+	 * unreasonably slow. Since C compilers are great, they aren't able
+	 * to properly optimize something that is not quite tail recursion,
+	 * but is essentially a fold on a tail recursion.
+	 */
 
 	if (root == NULL)
 		return (NULL);
@@ -753,11 +764,32 @@ dt_node_find_bb(dt_basic_block_t *root, uint_t ins_idx)
 	if (root->dtbb_start <= ins_idx && root->dtbb_end >= ins_idx)
 		return (root);
 
-	for (chld = dt_list_next(&root->dtbb_children); chld;
-	     chld = dt_list_next(chld)) {
-		bb = dt_node_find_bb(chld->dtbe_bb, ins_idx);
-		if (bb != NULL)
-			return (bb);
+	memset(visited, 0, sizeof(visited));
+	memset(bb_stack, 0, sizeof(bb_stack));
+
+	top = -1;
+
+	bb_stack[++top] = root;
+
+	while (top > -1) {
+		bb = bb_stack[top--];
+		assert(bb != NULL);
+
+		if (visited[bb->dtbb_idx] == 0) {
+			visited[bb->dtbb_idx] = 1;
+			if (bb->dtbb_start <= ins_idx &&
+			    bb->dtbb_end >= ins_idx)
+				return (bb);
+		}
+
+		for (chld = dt_list_next(&bb->dtbb_children); chld;
+		    chld = dt_list_next(chld)) {
+			bb = chld->dtbe_bb;
+			assert(bb != NULL);
+
+			if (visited[bb->dtbb_idx] == 0)
+				bb_stack[++top] = bb;
+		}
 	}
 
 	return (NULL);

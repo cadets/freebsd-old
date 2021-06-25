@@ -75,6 +75,8 @@ dt_compute_cfg(dtrace_difo_t *difo)
 
 		if (opcode >= DIF_OP_BA && opcode <= DIF_OP_BLEU)
 			lbl = DIF_INSTR_LABEL(instr);
+		else
+			lbl = -1;
 
 		for (bb_e2 = dt_list_next(&bb_list); bb_e2;
 		    bb_e2 = dt_list_next(bb_e2)) {

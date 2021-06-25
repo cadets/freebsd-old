@@ -32,6 +32,8 @@
 #ifndef	_DT_IMPL_H
 #define	_DT_IMPL_H
 
+#undef NDEBUG
+
 #include <sys/param.h>
 #include <sys/objfs.h>
 #ifndef illumos
