@@ -777,6 +777,9 @@ static void
 dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 {
 	argcheck_cookie_t cookie;
+	dtrace_probedesc_t *pdesc;
+	size_t argno;
+
 	memset(&cookie, 0, sizeof(cookie));
 
 	switch (var) {
@@ -853,12 +856,60 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ARG7:
 	case DIF_VAR_ARG8:
 	case DIF_VAR_ARG9:
-		cookie.node = n;
-		cookie.varcode = var;
+		pdesc = &n->din_edp->dted_probe;
+		if (strcmp(pdesc->dtpd_name, "ERROR") == 0 &&
+		    strcmp(pdesc->dtpd_provider, "dtrace") == 0) {
+			/*
+			 * arg0 -> nothing
+			 * arg1 -> epid
+			 * arg2 -> index of the action
+			 * arg3 -> DIF offset into the action or -1
+			 * arg4 -> fault type
+			 * arg5 -> value dependent on the fault type
+			 */
+			char *arg_type[] = {
+				[0] = "",
+				[1] = "uint32_t",
+				[2] = "uint32_t",
+				[3] = "int",
+				[4] = "uint32_t",
+				[5] = "uintptr_t"
+			};
 
-		dtrace_probe_iter(
-		    g_dtp, &n->din_edp->dted_probe, dt_infer_type_arg, &cookie);
+			argno = var - DIF_VAR_ARG0;
+
+			if (argno == 0 || argno > 5)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "accessing arg%d in the ERROR probe is "
+				    "not supported", argno);
+
+			n->din_tf = dt_typefile_kernel();
+			assert(n->din_tf != NULL);
+
+			n->din_ctfid = dt_typefile_ctfid(n->din_tf,
+			    arg_type[argno]);
+			if (n->din_ctfid == CTF_ERR)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed to get type %s: %s",
+				    arg_type[argno],
+				    dt_typefile_error(n->din_tf));
+
+			n->din_type = DIF_TYPE_CTF;
+		} else if (strcmp(pdesc->dtpd_provider, "dtrace") == 0) {
+			argno = var - DIF_VAR_ARG0;
+
+			dt_set_progerr(g_dtp, g_pgp,
+			    "accessing arg%d in %s probe is not supported",
+			    argno, pdesc->dtpd_name);
+		} else {
+			cookie.node = n;
+			cookie.varcode = var;
+
+			dtrace_probe_iter(g_dtp, &n->din_edp->dted_probe,
+			    dt_infer_type_arg, &cookie);
+		}
 		break;
+
 	case DIF_VAR_HARG0:
 	case DIF_VAR_HARG1:
 	case DIF_VAR_HARG2:

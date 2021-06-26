@@ -178,7 +178,11 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 					*rtype = dt_int_rtype;
 					break;
 
+				case DTRACEACT_PRINTA:
 				case DTRACEACT_PRINTF:
+				case DTRACEACT_PRINTM:
+				case DTRACEACT_TRACEMEM:
+				case DTRACEACT_TRACEMEM_DYNSIZE:
 					break;
 
 				case DTRACEAGG_QUANTIZE:
