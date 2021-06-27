@@ -331,7 +331,7 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	l = vsnprintf(pgp->dp_err, DT_PROG_ERRLEN, fmt, args);
 	va_end(args);
 	if (l >= DT_PROG_ERRLEN) {
-		warn("l (%zu) >= DT_PROG_ERRLEN (%zu)\n", l, DT_PROG_ERRLEN);
+		warn("l (%zu) >= DT_PROG_ERRLEN (%llu)\n", l, DT_PROG_ERRLEN);
 		return;
 	}
 

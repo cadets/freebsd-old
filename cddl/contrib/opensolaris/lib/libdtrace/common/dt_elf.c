@@ -1045,7 +1045,7 @@ dt_elf_options(Elf *e)
 			if (l >= sizeof(eop->eo_option))
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
-				    op->dteo_option);
+				    (char *)op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
 
@@ -1127,7 +1127,7 @@ dt_elf_options(Elf *e)
 			if (l >= sizeof(eop->eo_option))
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
-				    op->dteo_option);
+				    (char *)op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
 
@@ -1207,7 +1207,7 @@ dt_elf_options(Elf *e)
 			if (l >= sizeof(eop->eo_option))
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
-				    op->dteo_option);
+				    (char *)op->dteo_option);
 		} else
 			eop->eo_option = op->dteo_option;
 

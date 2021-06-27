@@ -1873,6 +1873,7 @@ dt_infer_type(dt_ifg_node_t *n)
 	dt_stack_t *se;
 	dt_list_t *stack;
 	int empty;
+	ctf_id_t varkind;
 
 	empty = 1;
 	se = NULL;
@@ -5198,8 +5199,147 @@ dt_infer_type(dt_ifg_node_t *n)
 	case DIF_OP_NOP:
 		return (DIF_TYPE_NONE);
 
+	case DIF_OP_STB:
+	case DIF_OP_STH:
+	case DIF_OP_STW:
+	case DIF_OP_STX: {
+		int insid;
+		const char *insname[] = {
+			[0] = "stb",
+			[1] = "sth",
+			[2] = "stw",
+			[3] = "stx" };
+
+		insid = opcode - DIF_OP_STB;
+		assert(insid >= 0 && insid <= 3);
+
+		/*
+		 * If we reach a ST instruction, we need to make sure that we
+		 * didn't do so by having a string or an uninitialized node and
+		 * that we have a symbol associated with it.
+		 */
+		if (dn1->din_type == DIF_TYPE_STRING)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s from a string type (loc %zu)", insname[insid],
+			    dn1->din_uidx);
+
+		if (dn1->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s from type none (loc %zu)", insname[insid],
+			    dn1->din_uidx);
+
+		if (dn1->din_sym == NULL)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: register %%r%d (location %zu) has "
+			    "no symbol associated with it",
+			    dt_get_rd_from_node(dn1), dn1->din_uidx);
+
+		/*
+		 * Get the variable and make sure that its type is a CTF type.
+		 */
+		dif_var = dt_get_vardef_from_node(n);
+		if (dif_var == NULL)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: register [%%r%d] at location %zu "
+			    "is not within a variable",
+			    insname[insid], dt_get_rd_from_node(n), n->din_uidx);
+
+		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: variable %zu is not of a CTF type",
+			    insname[insid], dif_var->dtdv_id);
+
+		varkind = dt_typefile_typekind(dif_var->dtdv_tf,
+		    dif_var->dtdv_ctfid);
+
+		/*
+		 * Only accept structs for now -- but we might need to handle
+		 * unions and arrays at some point too.
+		 */
+		if (varkind != CTF_K_STRUCT)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: expected a struct CTF kind, got %d",
+			    insname[insid], varkind);
+
+		/*
+		 * At this point, we should have a membinfo pointer to the field
+		 * that we will be accessing.
+		 */
+		mip = malloc(sizeof(ctf_membinfo_t));
+		if (mip == NULL)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: malloc failed on mip: %s", insname[insid],
+			    strerror(errno));
+
+		memset(mip, 0, sizeof(ctf_membinfo_t));
+
+		if (dt_typefile_membinfo(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
+		    dn1->din_sym, mip) == 0)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "st%s: failed to get member info: %s",
+			    insname[insid],
+			    dt_typefile_error(dif_var->dtdv_tf));
+
+		/*
+		 * If dn1 is a CTF type, we will actually type-check that
+		 * we are storing a meaningful type to the destination. If
+		 * instead it is a bottom type, we will simply accept whatever
+		 * the type is and store it anyway.
+		 */
+		if (dn1->din_type == DIF_TYPE_CTF) {
+			/*
+			 * We will be checking all of the compatible types too,
+			 * but we start with these.
+			 */
+			const char *dst_type[] = {
+				[0] = "uint8_t",
+				[1] = "uint16_t",
+				[2] = "uint32_t",
+				[3] = "uint64_t" };
+			ctf_id_t dst_ctfid;
+
+			if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid,
+			    buf, sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: failed getting typename of %d: %s",
+				    insname[insid], dn1->din_ctfid,
+				    dt_typefile_error(dn1->din_tf));
+
+			if (dt_typefile_typename(dif_var->dtdv_tf,
+			    dif_var->dtdv_ctfid, var_type,
+			    sizeof(var_type)) != (char *)var_type)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: failed getting typename of %d: %s",
+				    insname[insid], dif_var->dtdv_ctfid,
+				    dt_typefile_error(dif_var->dtdv_tf));
+
+			if ((dst_ctfid = dt_typefile_ctfid(dt_typefile_kernel(),
+			    dst_type[insid])) == CTF_ERR)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: failed getting ctfid from %s for %s: %s",
+				    insname[insid],
+				    dt_typefile_stringof(dt_typefile_kernel()),
+				    dst_type[insid],
+				    dt_typefile_error(dt_typefile_kernel()));
+
+			if (dt_typefile_compat(dif_var->dtdv_tf, dst_ctfid,
+			    dn1->din_tf, dn1->din_ctfid) == 0)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: types %s (variable field) and %s "
+				    "(instruction %zu) are not compatible",
+				    insname[insid], var_type, buf,
+				    dn1->din_uidx);
+		}
+
+		n->din_type = DIF_TYPE_CTF;
+		n->din_ctfid = mip->ctm_type;
+		n->din_tf = dif_var->dtdv_tf;
+		return (n->din_type);
+	} /* case DIF_OP_STX */
+
 	default:
-		dt_set_progerr(g_dtp, g_pgp, "unhandled instruction: %u", opcode);
+		dt_set_progerr(g_dtp, g_pgp, "unhandled instruction: %u",
+		    opcode);
 	}
 
 	return (-1);

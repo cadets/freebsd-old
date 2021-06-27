@@ -194,3 +194,22 @@ dt_get_nkind(dif_instr_t instr, dt_node_kind_t *nkind)
 	}
 }
 
+uint8_t
+dt_get_rd_from_node(dt_ifg_node_t *n)
+{
+	assert(n != NULL);
+
+	/*
+	 * TODO(dstolfa): Some sanity checking here.
+	 */
+	return (DIF_INSTR_RD(n->din_difo->dtdo_buf[n->din_uidx]));
+}
+
+dtrace_difv_t *
+dt_get_vardef_from_node(dt_ifg_node_t *n)
+{
+	/*
+	 * TODO: Implement this.
+	 */
+	return (NULL);
+}

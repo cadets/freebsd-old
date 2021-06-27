@@ -34,5 +34,7 @@ extern dt_ifg_list_t *dt_ifgl_alloc(dt_ifg_node_t *);
 extern dt_ifg_node_t *dt_ifg_node_alloc(dtrace_ecbdesc_t *, dtrace_difo_t *,
     dt_basic_block_t *, uint_t);
 extern void dt_get_nkind(dif_instr_t, dt_node_kind_t *);
+extern uint8_t dt_get_rd_from_node(dt_ifg_node_t *);
+extern dtrace_difv_t *dt_get_vardef_from_node(dt_ifg_node_t *);
 
 #endif /* _DT_RELO_H_ */
