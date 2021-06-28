@@ -258,13 +258,13 @@ dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 }
 
 void
-dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
+dt_insert_var(dtrace_difv_t *difv)
 {
 	dt_var_entry_t *ve;
-	dtrace_difv_t *var, *d_var;
+	dtrace_difv_t *var;
 
 	ve = NULL;
-	var = d_var = NULL;
+	var = NULL;
 
 	/*
 	 * Search through the existing variable list looking for
@@ -274,22 +274,14 @@ dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 	 */
 	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
 		var = ve->dtve_var;
-		if (var->dtdv_scope == scope &&
-		    var->dtdv_kind == kind   &&
-		    var->dtdv_id == varid)
+		if (var->dtdv_scope == difv->dtdv_scope &&
+		    var->dtdv_kind == difv->dtdv_kind &&
+		    var->dtdv_id == difv->dtdv_id)
 			break;
 	}
 
 	if (ve != NULL)
 		return;
-
-	/*
-	 * Get the variable we want from the DIFO table.
-	 */
-	d_var = dt_get_variable(difo, varid, scope, kind);
-	if (d_var == NULL)
-		errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
-		    varid, scope, kind);
 
 	/*
 	 * Allocate a new variable to be put into our list and
@@ -300,7 +292,7 @@ dt_insert_var(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 	if (var == NULL)
 		errx(EXIT_FAILURE, "failed to allocate a new variable");
 
-	memcpy(var, d_var, sizeof(dtrace_difv_t));
+	memcpy(var, difv, sizeof(dtrace_difv_t));
 
 	var->dtdv_ctfid = CTF_ERR;
 	var->dtdv_sym = NULL;
@@ -324,7 +316,7 @@ void
 dt_populate_varlist(dtrace_difo_t *difo)
 {
 	dt_var_entry_t *ve;
-	dtrace_difv_t *var;
+	dtrace_difv_t *var, *difv;
 	size_t i;
 	uint8_t opcode;
 	dif_instr_t instr;
@@ -337,41 +329,9 @@ dt_populate_varlist(dtrace_difo_t *difo)
 	instr = 0;
 	varid = 0;
 
-	for (i = 0; i < difo->dtdo_len; i++) {
-		instr = difo->dtdo_buf[i];
-		opcode = DIF_INSTR_OP(instr);
-
-		switch (opcode) {
-		case DIF_OP_STGS:
-			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL,
-			    DIFV_KIND_SCALAR);
-			break;
-
-		case DIF_OP_STLS:
-			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_LOCAL,
-			    DIFV_KIND_SCALAR);
-			break;
-
-		case DIF_OP_STTS:
-			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD,
-			    DIFV_KIND_SCALAR);
-			break;
-
-		case DIF_OP_STGAA:
-			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_GLOBAL,
-			    DIFV_KIND_ARRAY);
-			break;
-
-		case DIF_OP_STTAA:
-			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var(difo, varid, DIFV_SCOPE_THREAD,
-			    DIFV_KIND_ARRAY);
-			break;
-		}
+	for (i = 0; i < difo->dtdo_varlen; i++) {
+		difv = &difo->dtdo_vartab[i];
+		dt_insert_var(difv);
 	}
 }
 

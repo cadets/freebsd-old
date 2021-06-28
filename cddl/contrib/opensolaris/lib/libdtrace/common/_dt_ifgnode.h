@@ -62,6 +62,9 @@ typedef struct dt_ifg_node {
 	dt_list_t          din_r1datadefs; /* data flow list for r1 */
 	dt_list_t          din_r2datadefs; /* data flow list for r2 */
 	dt_list_t          din_vardefs;    /* list of variable defns in DIFO */
+	dt_list_t          din_r1children; /* which r1s do we define */
+	dt_list_t          din_r2children; /* which r2s do we define */
+	dt_list_t          din_varsources; /* variable origin (if exists) */
 	int                din_type;       /* D type */
 	struct dt_typefile *din_tf;        /* type file */
 	dtrace_ecbdesc_t   *din_edp;       /* node's ecbdesc */

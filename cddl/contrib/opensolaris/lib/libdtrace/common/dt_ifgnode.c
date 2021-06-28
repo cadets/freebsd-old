@@ -204,12 +204,3 @@ dt_get_rd_from_node(dt_ifg_node_t *n)
 	 */
 	return (DIF_INSTR_RD(n->din_difo->dtdo_buf[n->din_uidx]));
 }
-
-dtrace_difv_t *
-dt_get_vardef_from_node(dt_ifg_node_t *n)
-{
-	/*
-	 * TODO: Implement this.
-	 */
-	return (NULL);
-}

@@ -162,7 +162,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				else
 					errx(EXIT_FAILURE,
 					    "unexpected node->din_type "
-					    "(%x) at location %u",
+					    "(%x) at location %zu",
 					    node->din_type, node->din_uidx);
 
 				assert(actkind != DTRACEACT_NONE);

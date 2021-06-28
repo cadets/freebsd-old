@@ -119,7 +119,7 @@ dt_compute_bb(dtrace_difo_t *difo)
 			lbl = DIF_INSTR_LABEL(instr);
 			if (lbl >= difo->dtdo_len)
 				errx(EXIT_FAILURE, "lbl (%hu) branching outside"
-				    " of code length (%zu)",
+				    " of code length (%u)",
 				    lbl, difo->dtdo_len);
 
 			/*

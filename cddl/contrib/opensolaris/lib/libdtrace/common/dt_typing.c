@@ -2206,8 +2206,9 @@ dt_infer_type(dt_ifg_node_t *n)
 
 			if (other->din_type == DIF_TYPE_BOTTOM ||
 			    symnode->din_type == DIF_TYPE_BOTTOM)
-				dt_set_progerr(
-				    g_dtp, g_pgp, "unexpected bottom type");
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type(): unexpected bottom type "
+				    "(binary arithmetic operation)");
 
 			if (other->din_tf != symnode->din_tf)
 				dt_set_progerr(g_dtp, g_pgp,
@@ -2228,8 +2229,10 @@ dt_infer_type(dt_ifg_node_t *n)
 				    dt_typefile_error(symnode->din_tf));
 
 			if (strcmp(buf, "uint64_t") != 0)
-				dt_set_progerr(g_dtp, g_pgp, "symbol may not exist if not"
-				    " paired with a uint64_t: %s", buf);
+				dt_set_progerr(g_dtp, g_pgp,
+				    "symbol may not exist if not"
+				    " paired with a uint64_t: %s",
+				    buf);
 
 			/*
 			 * Check which type is "bigger".
@@ -5028,7 +5031,8 @@ dt_infer_type(dt_ifg_node_t *n)
 			 */
 			if ((uintptr_t)dn1->din_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
-				dt_set_progerr(g_dtp, g_pgp, "sym (%p) is out of range: %p",
+				dt_set_progerr(g_dtp, g_pgp,
+				    "sym (%p) is out of range: %p",
 				    dn1->din_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
 				    difo->dtdo_symlen));
@@ -5237,7 +5241,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		/*
 		 * Get the variable and make sure that its type is a CTF type.
 		 */
-		dif_var = dt_get_vardef_from_node(n);
+		dif_var = dt_get_vardef_from_node(n, 1);
 		if (dif_var == NULL)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "st%s: register [%%r%d] at location %zu "
@@ -5336,7 +5340,6 @@ dt_infer_type(dt_ifg_node_t *n)
 		n->din_tf = dif_var->dtdv_tf;
 		return (n->din_type);
 	} /* case DIF_OP_STX */
-
 	default:
 		dt_set_progerr(g_dtp, g_pgp, "unhandled instruction: %u",
 		    opcode);

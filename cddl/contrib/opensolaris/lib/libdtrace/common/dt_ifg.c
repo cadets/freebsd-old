@@ -43,6 +43,7 @@
 #include <err.h>
 #include <stddef.h>
 #include <assert.h>
+#include <errno.h>
 
 static int
 dt_usite_uses_stack(dt_ifg_node_t *n)
@@ -294,36 +295,36 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 
 static int
 dt_update_nodes_bb_var(dtrace_difo_t *difo, dt_basic_block_t *bb,
-    dt_node_kind_t *nkind, dt_ifg_node_t *curnode)
+    dt_node_kind_t *nkind, dt_ifg_list_t *ifgl)
 {
 	dtrace_difo_t *_difo;
 	dt_ifg_node_t *n;
-	dt_ifg_list_t *ifgl;
 	int r1, r2;
 	uint_t idx;
 	dif_instr_t instr;
 	dt_ifg_list_t *curnode_e;
 	int v;
 	uint8_t scope, varkind;
+	dt_ifg_node_t *curnode;
 
 	idx = 0;
 	r1 = 0;
 	r2 = 0;
-	ifgl = NULL;
 	n = NULL;
 	_difo = NULL;
 	instr = 0;
 	curnode_e = NULL;
 	v = 0;
 	scope = varkind = 0;
+	curnode = ifgl->dil_ifgnode;
 
-	assert(curnode != NULL);
+	assert(ifgl != NULL);
 	idx = curnode->din_uidx;
 
 	_difo = bb->dtbb_difo;
 
-	for (ifgl = dt_list_next(&node_list);
-	    ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+	for (; ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+		assert(ifgl != NULL);
 		n = ifgl->dil_ifgnode;
 		instr = n->din_buf[n->din_uidx];
 
@@ -360,18 +361,16 @@ dt_update_nodes_bb_var(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		 */
 		if (dt_clobbers_var(instr, nkind))
 			return (1);
-
 	}
 	return (0);
 }
 
 static int
 dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
-    dt_basic_block_t *bb, dt_ifg_node_t *curnode)
+    dt_basic_block_t *bb, dt_ifg_list_t *ifgl)
 {
 	dtrace_difo_t *_difo;
 	dt_ifg_node_t *n;
-	dt_ifg_list_t *ifgl;
 	int r1, r2;
 	uint_t idx;
 	uint8_t op;
@@ -380,11 +379,11 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 	int n_pushes;
 	dt_stack_t *s_entry;
 	dt_stacklist_t *curstack;
+	dt_ifg_node_t *curnode;
 
 	idx = 0;
 	r1 = 0;
 	r2 = 0;
-	ifgl = NULL;
 	n = NULL;
 	_difo = NULL;
 	instr = 0;
@@ -393,14 +392,15 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 	curstack = NULL;
 	s_entry = NULL;
 	n_pushes = 1;
+	curnode = ifgl->dil_ifgnode;
 
-	assert(curnode != NULL);
+	assert(ifgl != NULL);
 	idx = curnode->din_uidx;
 
 	_difo = bb->dtbb_difo;
 
-	for (ifgl = dt_list_next(&node_list);
-	    ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+	for (; ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+		assert(ifgl != NULL);
 		n = ifgl->dil_ifgnode;
 		instr = n->din_buf[n->din_uidx];
 		op = DIF_INSTR_OP(instr);
@@ -461,20 +461,19 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 
 static int
 dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
-    uint8_t rd, dt_ifg_node_t *curnode)
+    uint8_t rd, dt_ifg_list_t *ifgl)
 {
 	dtrace_difo_t *_difo;
 	dt_ifg_node_t *n;
-	dt_ifg_list_t *ifgl;
 	int r1, r2;
 	dif_instr_t instr, curinstr;
 	uint8_t opcode, curop;
-	dt_ifg_list_t *curnode_e;
+	dt_ifg_node_t *curnode;
+	dt_ifg_list_t *curnode_e, *n_e;
 	int seen_typecast;
 
 	r1 = 0;
 	r2 = 0;
-	ifgl = NULL;
 	n = NULL;
 	_difo = NULL;
 	instr = 0;
@@ -484,7 +483,9 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	curnode_e = NULL;
 	seen_typecast = 0;
 
-	assert(curnode != NULL);
+	assert(ifgl != NULL);
+
+	curnode = ifgl->dil_ifgnode;
 
 	_difo = bb->dtbb_difo;
 
@@ -514,8 +515,8 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	curnode_e = NULL;
 	r1 = r2 = 0;
 
-	for (ifgl = dt_list_next(&node_list);
-	    ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+	for (; ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+		assert(ifgl != NULL);
 		n = ifgl->dil_ifgnode;
 		instr = n->din_buf[n->din_uidx];
 		opcode = DIF_INSTR_OP(instr);
@@ -548,6 +549,15 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					    curnode_e);
 				else
 					free(curnode_e);
+
+				n_e = dt_ifgl_alloc(n);
+				if (dt_in_list(&curnode->din_r1children,
+				    (void *)&n,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&curnode->din_r1children,
+					    n_e);
+				else
+					free(n_e);
 			}
 
 			if (r2 == 1 && seen_typecast == 0) {
@@ -558,6 +568,15 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					    curnode_e);
 				else
 					free(curnode_e);
+
+				n_e = dt_ifgl_alloc(n);
+				if (dt_in_list(&curnode->din_r2children,
+				    (void *)&n,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&curnode->din_r2children,
+					    n_e);
+				else
+					free(n_e);
 			}
 
 			if (r1 == 1 && curop != DIF_OP_TYPECAST) {
@@ -581,6 +600,38 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 				else
 					free(curnode_e);
 			}
+
+#if 0
+			/*
+			 * Place the initial variable source definition to the
+			 * node that we encounter. We will propagate this later.
+			 */
+			if (r1 == 1 && (curop == DIF_OP_LDGS             ||
+			    curop == DIF_OP_LDGA || curop == DIF_OP_LDTS ||
+			    curop == DIF_OP_LDTA || curop == DIF_OP_LDLS)) {
+				curnode_e = dt_ifgl_alloc(curnode);
+				if (dt_in_list(&n->din_varsources,
+				    (void *)curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&n->din_varsources,
+					    curnode_e);
+				else
+					free(curnode_e);
+			}
+
+			if (r2 == 1 && (curop == DIF_OP_LDGS             ||
+			    curop == DIF_OP_LDGA || curop == DIF_OP_LDTS ||
+			    curop == DIF_OP_LDTA || curop == DIF_OP_LDLS)) {
+				curnode_e = dt_ifgl_alloc(curnode);
+				if (dt_in_list(&n->din_varsources,
+				    (void *)curnode,
+				    sizeof(dt_ifg_node_t *)) == NULL)
+					dt_list_append(&n->din_varsources,
+					    curnode_e);
+				else
+					free(curnode_e);
+			}
+#endif
 		}
 
 		/*
@@ -599,74 +650,354 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 }
 
 static void
+dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
+    dt_ifg_node_t *n)
+{
+	dif_instr_t instr, varsrc_instr;
+	uint8_t opcode;
+	uint8_t r1, r2, rd;
+	size_t i;
+
+	instr = n->din_buf[n->din_uidx];
+	opcode = DIF_INSTR_OP(instr);
+
+	/*
+	 * Based on the opcode, we will now compute the new set of active
+	 * registers in the current run of the inference for varsources.
+	 */
+	switch (opcode) {
+	case DIF_OP_OR:
+	case DIF_OP_XOR:
+	case DIF_OP_AND:
+	case DIF_OP_SLL:
+	case DIF_OP_SRL:
+	case DIF_OP_SUB:
+	case DIF_OP_ADD:
+	case DIF_OP_MUL:
+	case DIF_OP_SRA:
+		/*
+		 * If either of r1 and r2 is active, we will activate rd too, as
+		 * this is probably some computation of an offset within a
+		 * variable. However, if both are inactive, then we deactivate
+		 * rd as well.
+		 */
+		r1 = DIF_INSTR_R1(instr);
+		r2 = DIF_INSTR_R2(instr);
+		rd = DIF_INSTR_RD(instr);
+
+		if (active_varregs[r1] == 0 && active_varregs[r2] == 0)
+			active_varregs[rd] = 0;
+
+		if (active_varregs[rd] == 0 && active_varregs[r1] == 1)
+			active_varregs[rd] = 1;
+
+		if (active_varregs[rd] == 0 && active_varregs[r2] == 1)
+			active_varregs[rd] = 1;
+		break;
+
+	case DIF_OP_MOV:
+	case DIF_OP_STB:
+	case DIF_OP_STH:
+	case DIF_OP_STW:
+	case DIF_OP_STX:
+		/*
+		 * For any one of these instructions, we will compute if
+		 * r1 is already an active register. If so, we simply activate
+		 * rd as well.
+		 */
+		rd = DIF_INSTR_RD(instr);
+		r1 = DIF_INSTR_R1(instr);
+
+		active_varregs[rd] = active_varregs[r1];
+		break;
+
+	case DIF_OP_CMP:
+	case DIF_OP_TST:
+	case DIF_OP_BA:
+	case DIF_OP_BE:
+	case DIF_OP_BNE:
+	case DIF_OP_BG:
+	case DIF_OP_BGU:
+	case DIF_OP_BGE:
+	case DIF_OP_BGEU:
+	case DIF_OP_BL:
+	case DIF_OP_BLU:
+	case DIF_OP_BLE:
+	case DIF_OP_BLEU:
+	case DIF_OP_NOP:
+	case DIF_OP_SCMP:
+	case DIF_OP_PUSHTR:
+	case DIF_OP_PUSHTV:
+	case DIF_OP_POPTS:
+		break;
+
+	case DIF_OP_RET:
+		/*
+		 * On a ret instruction, all of the active registers are
+		 * cleared. We are not longer actively looking to figure out
+		 * which registers could be defining a variable, and therefore
+		 * we don't want to keep track of them.
+		 */
+		for (i = 0; i < n_varregs; i++)
+			active_varregs[i] = 0;
+
+	default:
+		rd = DIF_INSTR_RD(instr);
+		active_varregs[rd] = 0;
+	}
+}
+
+static void
+update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
+    dtrace_difo_t *_difo, dt_basic_block_t *bb, dt_ifg_list_t *ifgl)
+{
+	dt_ifg_node_t *curnode, *n;
+	dif_instr_t instr;
+	uint8_t opcode;
+	uint16_t varid;
+	int scope, kind;
+	dt_var_entry_t *ve;
+	dtrace_difv_t *difv;
+	uint8_t curnode_rd, rd, r1;
+	size_t i;
+	int keep_going;
+
+	if (_difo == NULL || bb == NULL || ifgl == NULL)
+		errx(EXIT_FAILURE,
+		    "update_active_varregs(): all three arguments "
+		    "must be non-null (%p, %p, %p)\n",
+		    _difo, bb, ifgl);
+
+	curnode = ifgl->dil_ifgnode;
+	instr = curnode->din_buf[curnode->din_uidx];
+	opcode = DIF_INSTR_OP(instr);
+
+	/*
+	 * This is only really relevant for load instructions -- nothing else
+	 * in DIF can define a register as "containing a variable" that we can
+	 * infer statically -- so we don't allow it.
+	 */
+	if (opcode != DIF_OP_LDGS && opcode != DIF_OP_LDGA &&
+	    opcode != DIF_OP_LDTS && opcode != DIF_OP_LDTA &&
+	    opcode != DIF_OP_LDLS)
+		return;
+
+	varid = DIF_INSTR_VAR(instr);
+
+	/*
+	 * Annoying boilerplate to compute the kind and scope of the variable.
+	 */
+	if (opcode == DIF_OP_LDGS || opcode == DIF_OP_LDTS ||
+	    opcode == DIF_OP_LDLS)
+		kind = DIFV_KIND_SCALAR;
+	else
+		kind = DIFV_KIND_ARRAY;
+
+	if (opcode == DIF_OP_LDGS || opcode == DIF_OP_LDGA)
+		scope = DIFV_SCOPE_GLOBAL;
+	else if (opcode == DIF_OP_LDTS || opcode == DIF_OP_LDTA)
+		scope = DIFV_SCOPE_THREAD;
+	else
+		scope = DIFV_SCOPE_LOCAL;
+
+	curnode_rd = DIF_INSTR_RD(instr);
+
+	/*
+	 * Activate the current node's destination register.
+	 */
+	active_varregs[curnode_rd] = 1;
+
+	/*
+	 * Go through all of the nodes in the current basic block
+	 */
+	for (; ifgl; ifgl = dt_list_next(ifgl)) {
+		assert(ifgl != NULL);
+		n = ifgl->dil_ifgnode;
+		instr = n->din_buf[n->din_uidx];
+		opcode = DIF_INSTR_OP(instr);
+
+		if (n->din_difo != _difo)
+			continue;
+
+		/*
+		 * If the current instruction comes after the one we are looking
+		 * at, we don't even need to look at it because DIF by defn
+		 * has no loops.
+		 */
+		if (curnode->din_uidx >= n->din_uidx)
+			continue;
+
+		if (n->din_uidx < bb->dtbb_start ||
+		    n->din_uidx > bb->dtbb_end)
+			continue;
+
+		if (n == curnode)
+			continue;
+
+		/*
+		 * Compute which registers are being activated or deactivated
+		 * with this node.
+		 */
+		dt_compute_active_varregs(active_varregs, DIF_DIR_NREGS, n);
+
+		keep_going = 0;
+		for (i = 0; i < DIF_DIR_NREGS; i++)
+			if (active_varregs[i] == 1)
+				keep_going = 1;
+
+		/*
+		 * If there's no reason to keep going, that is to say that all
+		 * the active registers have been clobbered, we simply return
+		 * from the subroutine.
+		 */
+		if (keep_going == 0)
+			return;
+
+		if (opcode != DIF_OP_STB && opcode != DIF_OP_STH &&
+		    opcode != DIF_OP_STW && opcode != DIF_OP_STX)
+			continue;
+
+		/*
+		 * If we have STB/STH/STW/STX, we will get its r1 register and
+		 * check if it's active. If so, we will add our varsource to the
+		 * list.
+		 */
+		r1 = DIF_INSTR_R1(instr);
+		if (active_varregs[r1] == 0)
+			continue;
+
+		assert(scope == DIFV_SCOPE_GLOBAL ||
+		    scope == DIFV_SCOPE_THREAD || scope == DIFV_SCOPE_LOCAL);
+		assert(kind == DIFV_KIND_ARRAY || kind == DIFV_KIND_SCALAR);
+
+		difv = dt_get_var_from_varlist(varid, scope, kind);
+		if (difv == NULL)
+			errx(EXIT_FAILURE,
+			    "dt_update_varsources(): failed to get DIF "
+			    "variable from the list (%u, %d, %d)\n",
+			    varid, scope, kind);
+
+		ve = malloc(sizeof(dt_var_entry_t));
+		if (ve == NULL)
+			errx(EXIT_FAILURE,
+			    "dt_update_varsources(): malloc failed with: %s\n",
+			    strerror(errno));
+
+		memset(ve, 0, sizeof(dt_var_entry_t));
+		ve->dtve_var = difv;
+
+		dt_list_append(&n->din_varsources, ve);
+	}
+}
+
+static void
 dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
-    dt_node_kind_t *nkind, dt_ifg_node_t *curnode)
+    dt_node_kind_t *nkind, dt_ifg_list_t *ifgl)
 {
 	dt_bb_entry_t *chld;
 	dt_basic_block_t *chld_bb, *curbb;
-	int redefined;
+	int redefined, var_redefined;
 	uint8_t rd;
 	uint16_t var;
-	static dt_list_t bb_path;
+	dt_list_t bb_path;
 	dt_pathlist_t *bb_path_entry;
+	dt_basic_block_t *bb_stack[DT_BB_MAX];
+	int visited[DT_BB_MAX];
+	ssize_t top;
+	size_t i;
+	uint8_t active_varregs[DIF_DIR_NREGS];
 
-	chld = NULL;
-	chld_bb = NULL;
-	redefined = 0;
-	bb_path_entry = NULL;
+	if (ifgl == NULL || difo == NULL || bb == NULL || nkind == NULL)
+		return;
 
-	bb_path_entry = malloc(sizeof(dt_pathlist_t));
-	if (bb_path_entry == NULL)
-		errx(EXIT_FAILURE, "failed to malloc bb_path_entry");
+	memset(active_varregs, 0, sizeof(active_varregs));
+	memset(visited, 0, sizeof(visited));
+	memset(bb_stack, 0, sizeof(bb_stack));
+	memset(&bb_path, 0, sizeof(bb_path));
 
-	memset(bb_path_entry, 0, sizeof(dt_pathlist_t));
-	bb_path_entry->dtpl_bb = bb;
-	dt_list_append(&bb_path, bb_path_entry);
+	top = -1;
+	bb_stack[++top] = bb;
 
-	if (nkind->dtnk_kind == DT_NKIND_REG)
-		redefined = dt_update_nodes_bb_reg(difo, bb, nkind->dtnk_rd,
-		    curnode);
-	else if (nkind->dtnk_kind == DT_NKIND_VAR)
-		redefined = dt_update_nodes_bb_var(difo, bb, nkind, curnode);
-	else if (nkind->dtnk_kind == DT_NKIND_STACK)
-		redefined = dt_update_nodes_bb_stack(&bb_path, difo, bb,
-		    curnode);
-	else
-		goto end;
+	while (top > -1) {
+		bb = bb_stack[top--];
+		assert(bb != NULL);
 
-	if (redefined)
-		goto end;
+		chld = NULL;
+		chld_bb = NULL;
+		redefined = 0;
+		bb_path_entry = NULL;
 
-	for (chld = dt_list_next(&bb->dtbb_children);
-	     chld; chld = dt_list_next(chld)) {
-		chld_bb = chld->dtbe_bb;
-		if (chld_bb->dtbb_idx >= DT_BB_MAX)
-			errx(EXIT_FAILURE, "too many basic blocks.");
-		dt_update_nodes(difo, chld_bb, nkind, curnode);
+		if (visited[bb->dtbb_idx] == 0) {
+			bb_path_entry = malloc(sizeof(dt_pathlist_t));
+			if (bb_path_entry == NULL)
+				errx(EXIT_FAILURE,
+				    "failed to malloc bb_path_entry");
+
+			memset(bb_path_entry, 0, sizeof(dt_pathlist_t));
+			bb_path_entry->dtpl_bb = bb;
+			dt_list_append(&bb_path, bb_path_entry);
+
+			if (nkind->dtnk_kind == DT_NKIND_REG) {
+				if (redefined == 0)
+					redefined = dt_update_nodes_bb_reg(difo,
+					    bb, nkind->dtnk_rd, ifgl);
+				if (var_redefined == 0) {
+					update_active_varregs(active_varregs,
+					    difo, bb, ifgl);
+					var_redefined = 1;
+					for (i = 0; i < DIF_DIR_NREGS; i++)
+						if (active_varregs[i] == 1)
+							var_redefined = 0;
+				}
+			} else if (nkind->dtnk_kind == DT_NKIND_VAR)
+				redefined = dt_update_nodes_bb_var(difo, bb,
+				    nkind, ifgl);
+			else if (nkind->dtnk_kind == DT_NKIND_STACK)
+				redefined = dt_update_nodes_bb_stack(&bb_path,
+				    difo, bb, ifgl);
+			else
+				goto end;
+		}
+
+		if (var_redefined == 0 || redefined == 0) {
+			for (chld = dt_list_next(&bb->dtbb_children); chld;
+			     chld = dt_list_next(chld)) {
+				bb = chld->dtbe_bb;
+				assert(bb != NULL);
+				if (bb->dtbb_idx >= DT_BB_MAX)
+					errx(EXIT_FAILURE,
+					    "too many basic blocks.");
+
+				if (visited[bb->dtbb_idx] == 0)
+					bb_stack[++top] = bb;
+			}
+		}
 	}
-
 end:
-	dt_list_delete(&bb_path, bb_path_entry);
-	free(bb_path_entry);
+	while (chld = dt_list_next(&bb_path)) {
+		dt_list_delete(&bb_path, chld);
+		free(chld);
+	}
 }
 
 static void
 dt_update_ifg(dtrace_difo_t *difo,
-    dt_node_kind_t *nkind, dt_ifg_node_t *curnode)
+    dt_node_kind_t *nkind, dt_ifg_list_t *ifgl)
 {
 	uint8_t rd;
 	uint16_t var;
 	dt_ifg_node_t *n, *n1;
-	dt_ifg_list_t *ifgl, *r1l;
+	dt_ifg_list_t *r1l;
 	dt_stacklist_t *sl;
 	dt_pathlist_t *il;
 	dt_list_t *stack;
 	dt_stack_t *se;
 	dt_node_kind_t *__nkind;
 	dtrace_difo_t *_difo;
+	dt_ifg_node_t *curnode;
 
 	n = n1 = NULL;
-	ifgl = r1l = NULL;
+	r1l = NULL;
 	sl = NULL;
 	stack = NULL;
 	se = NULL;
@@ -675,12 +1006,13 @@ dt_update_ifg(dtrace_difo_t *difo,
 
 	rd = 0;
 	var = 0;
+	curnode = ifgl->dil_ifgnode;
 
-	dt_update_nodes(_difo, curnode->din_bb, nkind, curnode);
+	dt_update_nodes(difo, curnode->din_bb, nkind, ifgl);
 
+#ifdef NDEBUG
 	DPRINTF("----------------------------------------------\n");
-	for (ifgl = dt_list_next(&node_list);
-	     ifgl != NULL; ifgl = dt_list_next(ifgl)) {
+	for (ifgl != NULL; ifgl = dt_list_next(ifgl)) {
 		n = ifgl->dil_ifgnode;
 
 		for (r1l = dt_list_next(&n->din_r1defs); r1l;
@@ -739,6 +1071,7 @@ dt_update_ifg(dtrace_difo_t *difo,
 		}
 	}
 	DPRINTF("----------------------------------------------\n");
+#endif
 }
 
 static dt_basic_block_t *
@@ -760,9 +1093,6 @@ dt_node_find_bb(dt_basic_block_t *root, uint_t ins_idx)
 
 	if (root == NULL)
 		return (NULL);
-
-	if (root->dtbb_start <= ins_idx && root->dtbb_end >= ins_idx)
-		return (root);
 
 	memset(visited, 0, sizeof(visited));
 	memset(bb_stack, 0, sizeof(bb_stack));
@@ -804,7 +1134,7 @@ dt_prog_infer_defns(
 {
 	uint_t i = 0, idx = 0;
 	dt_ifg_node_t *n = NULL;
-	dt_ifg_list_t *ifgl = NULL;
+	dt_ifg_list_t *ifgl = NULL, *fst;
 	dt_node_kind_t nkind;
 	dif_instr_t instr = 0;
 	uint8_t opcode = 0;
@@ -813,6 +1143,13 @@ dt_prog_infer_defns(
 	dt_basic_block_t *nodebb;
 
 	memset(&nkind, 0, sizeof(dt_node_kind_t));
+
+	/*
+	 * Passing a NULL difo makes no sense.
+	 */
+	if (difo == NULL)
+		return (EDT_DIFINVAL);
+
 	/*
 	 * A DIFO without instructions makes no sense.
 	 */
@@ -849,33 +1186,43 @@ dt_prog_infer_defns(
 	 */
 	dt_compute_cfg(difo);
 
+	fst = NULL;
 	/*
-	 * Go over all the instructions, starting from the last one. For
-	 * simplicity sake, we calculate the index inside the loop instead
-	 * of writing the loop condition which either relies on UB or uses
-	 * a signed integer.
+	 * First pass over the instructions. We build up all of the IFG nodes
+	 * that we are going to need.
 	 */
 	for (i = 0; i < difo->dtdo_len; i++) {
-		idx = difo->dtdo_len - 1 - i;
-		instr = difo->dtdo_buf[idx];
-
-		nodebb = dt_node_find_bb(difo->dtdo_bb, idx);
+		nodebb = dt_node_find_bb(difo->dtdo_bb, i);
 		assert(nodebb != NULL);
 
-		n = dt_ifg_node_alloc(edp, difo, nodebb, idx);
-		ifgl = malloc(sizeof(dt_ifg_list_t));
+		n = dt_ifg_node_alloc(edp, difo, nodebb, i);
+		ifgl = dt_ifgl_alloc(n);
 		if (ifgl == NULL)
 			errx(EXIT_FAILURE, "failed to malloc ifgl");
 
-		memset(ifgl, 0, sizeof(dt_ifg_list_t));
+		if (i == 0) {
+			assert(fst == NULL);
+			fst = ifgl;
+		}
 
-		ifgl->dil_ifgnode = n;
-		if (node_last == NULL)
+		if (i == difo->dtdo_len - 1)
 			node_last = ifgl;
-		dt_list_prepend(&node_list, ifgl);
+
+		dt_list_append(&node_list, ifgl);
+	}
+
+	/*
+	 * Second pass over all the instructions, but this time we actually
+	 * compute the IFG.
+	 */
+	for (ifgl = fst; ifgl; ifgl = dt_list_next(ifgl)) {
+		n = ifgl->dil_ifgnode;
+		idx = n->din_uidx;
+		instr = difo->dtdo_buf[idx];
+
 		dt_get_nkind(instr, &nkind);
 		memcpy(&n->din_kind, &nkind, sizeof(dt_node_kind_t));
-		dt_update_ifg(difo, &nkind, n);
+		dt_update_ifg(difo, &nkind, ifgl);
 	}
 
 	return (0);
