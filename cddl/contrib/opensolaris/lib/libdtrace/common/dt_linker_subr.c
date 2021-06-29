@@ -36,6 +36,7 @@
 #include <dt_list.h>
 #include <dt_ifgnode.h>
 #include <dt_basic_block.h>
+#include <dt_typefile.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -300,6 +301,19 @@ dt_insert_var(dtrace_difv_t *difv)
 	var->dtdv_type.dtdt_size = 0;
 	var->dtdv_stack = NULL;
 	var->dtdv_tf = NULL;
+	memcpy(var->dtdv_typename, difv->dtdv_typename, DT_TYPE_NAMELEN);
+	/*
+	 * We might want to do something like this once we can associate the
+	 * correct typefile with a variable (if exists). We need to send it over
+	 * virtio, and the typefile would essentially be a "typefile from the
+	 * host that contains all of the things that were defined in the script
+	 * itself".
+	 */
+#ifdef notyet
+	var->dtdv_type.dtdt_kind = difv->dtdv_type.dtdt_kind;
+	var->dtdv_tf = dt_typefile_kernel();
+	var->dtdv_ctfid = dt_typefile_ctfid(var->dtdv_tf, var->dtdv_typename);
+#endif
 
 	ve = malloc(sizeof(dt_var_entry_t));
 	if (ve == NULL)

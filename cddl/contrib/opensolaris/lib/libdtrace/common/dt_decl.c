@@ -255,7 +255,6 @@ dt_decl_spec(ushort_t kind, char *name)
 
 	ddp->dd_kind = kind;
 	ddp->dd_name = name;
-
 	return (dt_decl_check(ddp));
 }
 

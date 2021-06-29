@@ -478,6 +478,12 @@ typedef struct dtrace_diftype {
 #define	DIF_TF_BYUREF		0x2	/* user type is passed by reference */
 #define DIF_TF_BMASK		0x3	/* bitmask of relevant flags for variables */
 
+
+/*
+ * Only used in userspace.
+ */
+#define	DT_TYPE_NAMELEN	128	/* reasonable size for ctf_type_name() */
+
 /*
  * A DTrace Intermediate Format variable record is used to describe each of the
  * variables referenced by a given DIF object.  It contains an integer variable
@@ -500,6 +506,7 @@ typedef struct dtrace_difv {
 	char *dtdv_sym;                 /* variable symbol name (if exists) */
 	struct dt_typefile *dtdv_tf;    /* variable's typefile */
 	struct dt_list *dtdv_stack;     /* expected stack (if applicable) */
+	char dtdv_typename[DT_TYPE_NAMELEN]; /* type name */
 #endif
 } dtrace_difv_t;
 
