@@ -5207,6 +5207,8 @@ dt_infer_type(dt_ifg_node_t *n)
 	case DIF_OP_STH:
 	case DIF_OP_STW:
 	case DIF_OP_STX: {
+		dtrace_difv_t *ovar;
+		dt_var_entry_t *ve;
 		int insid;
 		const char *insname[] = {
 			[0] = "stb",
@@ -5239,14 +5241,86 @@ dt_infer_type(dt_ifg_node_t *n)
 			    dt_get_rd_from_node(dn1), dn1->din_uidx);
 
 		/*
-		 * Get the variable and make sure that its type is a CTF type.
+		 * Make sure all of the variable definitions match up, pick one
+		 * and check that it's a CTF type.
 		 */
-		dif_var = dt_get_vardef_from_node(n, 1);
+		dif_var = NULL;
+		for (ve = dt_list_next(&n->din_varsources); ve;
+		     ve = dt_list_next(ve)) {
+			ovar = dif_var;
+			dif_var = ve->dtve_var;
+
+			if (ovar == NULL)
+				continue;
+
+			if (dif_var->dtdv_id != ovar->dtdv_id ||
+			    dif_var->dtdv_scope != ovar->dtdv_scope ||
+			    dif_var->dtdv_kind != ovar->dtdv_kind) {
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: node %zu has a mismatch in "
+				    "varsources: (%u, %u, %u) != (%u, %u, %u)",
+				    insname[insid], n->din_uidx,
+				    dif_var->dtdv_id, dif_var->dtdv_scope,
+				    dif_var->dtdv_kind, ovar->dtdv_id,
+				    ovar->dtdv_scope, ovar->dtdv_kind);
+			}
+
+			if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: instruction only makes sense on CTF "
+				    "variable types, got %d (node %zu)",
+				    insname[insid],
+				    dif_var->dtdv_type.dtdt_kind, n->din_uidx);
+
+			if (dif_var->dtdv_type.dtdt_kind !=
+			    ovar->dtdv_type.dtdt_kind)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: node %zu has a mismatch in variable "
+				    "types: %d != %d",
+				    insname[insid], n->din_uidx,
+				    dif_var->dtdv_type.dtdt_kind,
+				    ovar->dtdv_type.dtdt_kind);
+
+			if (dif_var->dtdv_tf != ovar->dtdv_tf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: node %zu has a mismatch in variable "
+				    "typefiles: %s != %s",
+				    insname[insid], n->din_uidx,
+				    dt_typefile_stringof(dif_var->dtdv_tf),
+				    dt_typefile_stringof(ovar->dtdv_tf));
+
+			if (dt_typefile_typename(dif_var->dtdv_tf,
+			    dif_var->dtdv_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: failed getting type "
+				    "name (node %zu) %ld: %s",
+				    insname[insid], n->din_uidx,
+				    dif_var->dtdv_ctfid,
+				    dt_typefile_error(dif_var->dtdv_tf));
+
+			if (dt_typefile_typename(ovar->dtdv_tf,
+			    ovar->dtdv_ctfid, buf,
+			    sizeof(var_type)) != ((char *)var_type))
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: failed getting type name %ld: %s",
+				    insname[insid], ovar->dtdv_ctfid,
+				    dt_typefile_error(ovar->dtdv_tf));
+
+			if (dif_var->dtdv_ctfid != ovar->dtdv_ctfid) {
+				dt_set_progerr(g_dtp, g_pgp,
+				    "st%s: node %zu has a mismatch in "
+				    "varsource types: %s != %s",
+				    insname[insid], n->din_uidx, buf, var_type);
+			}
+		}
+
 		if (dif_var == NULL)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "st%s: register [%%r%d] at location %zu "
 			    "is not within a variable",
-			    insname[insid], dt_get_rd_from_node(n), n->din_uidx);
+			    insname[insid], dt_get_rd_from_node(n),
+			    n->din_uidx);
 
 		if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_CTF)
 			dt_set_progerr(g_dtp, g_pgp,
