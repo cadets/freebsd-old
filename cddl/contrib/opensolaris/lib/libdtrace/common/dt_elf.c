@@ -421,7 +421,8 @@ dt_elf_new_vartab(Elf *e, dtrace_difo_t *difo)
 	/*
 	 * Populate the temporary buffer that will contain our variable table.
 	 */
-	memcpy(vartab, difo->dtdo_vartab, sizeof(dtrace_difv_t) * difo->dtdo_varlen);
+	memcpy(vartab, difo->dtdo_vartab,
+	    sizeof(dtrace_difv_t) * difo->dtdo_varlen);
 
 	/*
 	 * On both 32 and 64-bit architectures, dtrace_difv_t only requires

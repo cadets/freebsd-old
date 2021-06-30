@@ -506,7 +506,7 @@ typedef struct dtrace_difv {
 	char *dtdv_sym;                 /* variable symbol name (if exists) */
 	struct dt_typefile *dtdv_tf;    /* variable's typefile */
 	struct dt_list *dtdv_stack;     /* expected stack (if applicable) */
-	char dtdv_typename[DT_TYPE_NAMELEN]; /* type name */
+	dtrace_diftype_t dtdv_storedtype; /* variable type (see above) */
 #endif
 } dtrace_difv_t;
 

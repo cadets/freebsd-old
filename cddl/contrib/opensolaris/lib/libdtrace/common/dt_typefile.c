@@ -85,7 +85,9 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 
 			typef = malloc(sizeof(dt_typefile_t));
 			if (typef == NULL)
-				errx(EXIT_FAILURE, "malloc() failed with: %s\n",
+				errx(EXIT_FAILURE,
+				    "dt_typefile_openall(): malloc failed "
+				    "with %s\n",
 				    strerror(errno));
 
 			typef->modhdl = mod;

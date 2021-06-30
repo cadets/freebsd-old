@@ -562,6 +562,7 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	dnp->dn_attr = _dtrace_defattr;
 	dnp->dn_list = NULL;
 	dnp->dn_link = NULL;
+	dnp->dn_dtp = dtp;
 	bzero(&dnp->dn_u, sizeof (dnp->dn_u));
 	bzero(&dnp->dn_target, sizeof (dnp->dn_target));
 
@@ -4147,7 +4148,7 @@ asgn_common:
 		else if (dt_node_is_string(lp) && (dt_node_is_scalar(rp) ||
 		    dt_node_is_pointer(rp) || dt_node_is_strcompat(rp)))
 			/*EMPTY*/;
-        /* XXX TEMPORARY HACK! FIX ME! XXX */
+		/* XXX TEMPORARY HACK! FIX ME! XXX */
 		/* We need to be able to cast arg0-9 to float */
 		else if (dt_node_is_float(lp) && dt_node_is_integer(rp))
 			/*EMPTY*/;

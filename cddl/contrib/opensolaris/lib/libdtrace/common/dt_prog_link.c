@@ -83,8 +83,6 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 	dtrace_diftype_t *rtype;
 	int index, i;
 	int ctf_kind;
-	dt_var_entry_t *ve;
-	dtrace_difv_t *var, *difo_var;
 
 	rtype = NULL;
 	ifgl = NULL;
@@ -115,22 +113,6 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				errx(EXIT_FAILURE,
 				    "failed to insert %lu, got %d (!= %d)\n",
 				    difo->dtdo_inttab[i], index, i);
-		}
-	}
-
-	if (difo->dtdo_vartab != NULL) {
-		for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
-			var = ve->dtve_var;
-			difo_var = dt_get_variable(difo, var->dtdv_id,
-			    var->dtdv_scope, var->dtdv_kind);
-
-			if (difo_var != NULL) {
-				difo_var->dtdv_ctfid = var->dtdv_ctfid;
-				difo_var->dtdv_type.dtdt_kind =
-				    var->dtdv_type.dtdt_kind;
-				difo_var->dtdv_type.dtdt_size =
-				    var->dtdv_type.dtdt_size;
-			}
 		}
 	}
 
@@ -550,7 +532,8 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		}
 
 		otab = difo->dtdo_inttab;
-		difo->dtdo_inttab = dt_alloc(dtp, sizeof(uint64_t) * inthash_size);
+		difo->dtdo_inttab = dt_alloc(dtp,
+		    sizeof(uint64_t) * inthash_size);
 		if (difo->dtdo_inttab == NULL)
 			errx(EXIT_FAILURE, "failed to malloc inttab");
 
@@ -579,8 +562,10 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		    var->dtdv_scope, var->dtdv_kind);
 		assert(vlvar != NULL);
 
-		memcpy(&var->dtdv_type, &vlvar->dtdv_type,
-		    sizeof(dtrace_diftype_t));
+		if (vlvar->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM)
+			var->dtdv_type = vlvar->dtdv_storedtype;
+		else
+			var->dtdv_type = vlvar->dtdv_type;
 	}
 }
 

@@ -1997,8 +1997,10 @@ dt_infer_type(dt_ifg_node_t *n)
 			    "failed at getting type name %ld: %s",
 			    dn1->din_ctfid, dt_typefile_error(dn1->din_tf));
 
-		if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
+		if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT) {
+			fprintf(stderr, "failed to get class\n");
 			return (-1);
+		}
 
 		/*
 		 * Figure out t2 = type_at(t1, symname)
@@ -5219,10 +5221,11 @@ dt_infer_type(dt_ifg_node_t *n)
 		insid = opcode - DIF_OP_STB;
 		assert(insid >= 0 && insid <= 3);
 
+		assert(dn1 != NULL);
+
 		/*
 		 * If we reach a ST instruction, we need to make sure that we
-		 * didn't do so by having a string or an uninitialized node and
-		 * that we have a symbol associated with it.
+		 * didn't do so by having a string or an uninitialized node.
 		 */
 		if (dn1->din_type == DIF_TYPE_STRING)
 			dt_set_progerr(g_dtp, g_pgp,
@@ -5234,11 +5237,18 @@ dt_infer_type(dt_ifg_node_t *n)
 			    "st%s from type none (loc %zu)", insname[insid],
 			    dn1->din_uidx);
 
-		if (dn1->din_sym == NULL)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "st%s: register %%r%d (location %zu) has "
-			    "no symbol associated with it",
-			    dt_get_rd_from_node(dn1), dn1->din_uidx);
+		/*
+		 * If there is no symbol associated with our stx, this might
+		 * have come from a translator which was resolved before this
+		 * step. We just skip this instruction, as nothing will actually
+		 * have this as a source.
+		 */
+		if (dn1->din_sym == NULL) {
+			n->din_type = dn1->din_type;
+			n->din_ctfid = dn1->din_ctfid;
+			n->din_tf = dn1->din_tf;
+			return (n->din_type);
+		}
 
 		/*
 		 * Make sure all of the variable definitions match up, pick one
@@ -5409,9 +5419,9 @@ dt_infer_type(dt_ifg_node_t *n)
 				    dn1->din_uidx);
 		}
 
-		n->din_type = DIF_TYPE_CTF;
-		n->din_ctfid = mip->ctm_type;
-		n->din_tf = dif_var->dtdv_tf;
+		n->din_type = dn1->din_type;
+		n->din_ctfid = dn1->din_ctfid;
+		n->din_tf = dn1->din_tf;
 		return (n->din_type);
 	} /* case DIF_OP_STX */
 	default:
@@ -5495,7 +5505,8 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
 		if (type == -1)
-			dt_set_progerr(g_dtp, g_pgp, "failed to infer a type");
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to infer a type for %zu", node->din_uidx);
 
 		if (type == DIF_TYPE_CTF) {
 			assert(node->din_tf != NULL);
@@ -5514,7 +5525,6 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 			difo->dtdo_types[node->din_uidx] = strdup("bottom");
 		else
 			difo->dtdo_types[node->din_uidx] = strdup("ERROR");
-
 	}
 
 	g_pgp = NULL;

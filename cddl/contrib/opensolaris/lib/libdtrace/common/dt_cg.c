@@ -43,6 +43,7 @@
 #include <dt_grammar.h>
 #include <dt_parser.h>
 #include <dt_provider.h>
+#include <dt_module.h>
 
 static void dt_cg_node(dt_node_t *, dt_irlist_t *, dt_regset_t *);
 
@@ -1564,6 +1565,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 	dif_instr_t instr;
 	dt_ident_t *idp;
+	dt_module_t *mod;
 	ssize_t stroff, symoff;
 	uint_t op;
 
@@ -1919,112 +1921,121 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			break;
 		}
 
+		mod = dt_module_lookup_by_ctf(dnp->dn_dtp, dnp->dn_ctfp);
 		/*
-		 * Generate an USETX instruction with the current symbol
-		 * that we will resolve later on in the linking process.
+		 * We check if this particular node has a type that's defined
+		 * by the current D script. If so, we won't generate any
+		 * relocations, and instead process it fully.
 		 */
-		reg = dt_regset_alloc(drp);
-		dt_cg_usetx(dlp, reg, dnp->dn_right->dn_string);
-		instr = DIF_INSTR_FMT(DIF_OP_ADD,
-		    dnp->dn_left->dn_reg, reg, dnp->dn_left->dn_reg);
-
-		dt_irlist_append(dlp,
-		    dt_cg_node_alloc(DT_LBL_NONE, instr));
-
-		dt_regset_free(drp, reg);
-
-		/*
-		 * In the case that this is specified as a userland _value_,
-		 * we will generate an unresolved load instruction, and leave
-		 * it up to the linker to figure out if this is supposed to be
-		 * an 8/16/32/64-byte signed/unsigned load. In the case of a
-		 * reference, we simply add onto the register in order to have
-		 * a pointer to the data.
-		 *
-		 * An example of a userland value would be:
-		 *                        ((userland type)arg0)->foo.
-		 */
-		if (!(dnp->dn_flags & DT_NF_REF)) {
-			uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
-			dnp->dn_flags |=
-			    (dnp->dn_left->dn_flags & DT_NF_USERLAND);
-
-			instr = DIF_INSTR_LOAD(dt_cg_uload(dnp,
-			    dnp->dn_flags & DT_NF_USERLAND),
-			    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
-
-			dnp->dn_flags &= ~DT_NF_USERLAND;
-			dnp->dn_flags |= ubit;
-
-			dt_irlist_append(dlp,
-			    dt_cg_node_alloc(DT_LBL_NONE, instr));
-
-		}
-
-		dnp->dn_reg = dnp->dn_left->dn_reg;
-		break;
-#ifdef DONOTDOTHIS
-		ctfp = dnp->dn_left->dn_ctfp;
-		type = ctf_type_resolve(ctfp, dnp->dn_left->dn_type);
-
-		if (dnp->dn_op == DT_TOK_PTR) {
-			type = ctf_type_reference(ctfp, type);
-			type = ctf_type_resolve(ctfp, type);
-		}
-
-		if ((ctfp = dt_lib_membinfo(octfp = ctfp, type,
-		    dnp->dn_right->dn_string, &m)) == NULL) {
-			yypcb->pcb_hdl->dt_ctferr = ctf_errno(octfp);
-			longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
-		}
-
-		if (m.ctm_offset != 0) {
-			int reg;
-
+		if (mod != dnp->dn_dtp->dt_ddefs) {
+			/*
+			 * Generate an USETX instruction with the current symbol
+			 * that we will resolve later on in the linking process.
+			 */
 			reg = dt_regset_alloc(drp);
-
-			/*
-			 * If the offset is not aligned on a byte boundary, it
-			 * is a bit-field member and we will extract the value
-			 * bits below after we generate the appropriate load.
-			 */
-			dt_cg_setx(dlp, reg, m.ctm_offset / NBBY);
-
-			instr = DIF_INSTR_FMT(DIF_OP_ADD,
-			    dnp->dn_left->dn_reg, reg, dnp->dn_left->dn_reg);
+			dt_cg_usetx(dlp, reg, dnp->dn_right->dn_string);
+			instr = DIF_INSTR_FMT(DIF_OP_ADD, dnp->dn_left->dn_reg,
+			    reg, dnp->dn_left->dn_reg);
 
 			dt_irlist_append(dlp,
 			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
 			dt_regset_free(drp, reg);
-		}
-
-		if (!(dnp->dn_flags & DT_NF_REF)) {
-			uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
 
 			/*
-			 * Save and restore DT_NF_USERLAND across dt_cg_load():
-			 * we need the sign bit from dnp and the user bit from
-			 * dnp->dn_left in order to get the proper opcode.
+			 * In the case that this is specified as a userland
+			 * _value_, we will generate an unresolved load
+			 * instruction, and leave it up to the linker to figure
+			 * out if this is supposed to be an 8/16/32/64-byte
+			 * signed/unsigned load. In the case of a reference, we
+			 * simply add onto the register in order to have a
+			 * pointer to the data.
+			 *
+			 * An example of a userland value would be:
+			 *                        ((userland type)arg0)->foo.
 			 */
-			dnp->dn_flags |=
-			    (dnp->dn_left->dn_flags & DT_NF_USERLAND);
+			if (!(dnp->dn_flags & DT_NF_REF)) {
+				uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
+				dnp->dn_flags |= (dnp->dn_left->dn_flags &
+				    DT_NF_USERLAND);
 
-			instr = DIF_INSTR_LOAD(dt_cg_load(dnp,
-			    ctfp, m.ctm_type), dnp->dn_left->dn_reg,
-			    dnp->dn_left->dn_reg);
+				instr = DIF_INSTR_LOAD(dt_cg_uload(dnp,
+							   dnp->dn_flags &
+							       DT_NF_USERLAND),
+				    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
 
-			dnp->dn_flags &= ~DT_NF_USERLAND;
-			dnp->dn_flags |= ubit;
+				dnp->dn_flags &= ~DT_NF_USERLAND;
+				dnp->dn_flags |= ubit;
 
-			dt_irlist_append(dlp,
-			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+			}
+		} else {
+			ctfp = dnp->dn_left->dn_ctfp;
+			type = ctf_type_resolve(ctfp, dnp->dn_left->dn_type);
 
-			if (dnp->dn_flags & DT_NF_BITFIELD)
-				dt_cg_field_get(dnp, dlp, drp, ctfp, &m);
+			if (dnp->dn_op == DT_TOK_PTR) {
+				type = ctf_type_reference(ctfp, type);
+				type = ctf_type_resolve(ctfp, type);
+			}
+
+			if ((ctfp = dt_lib_membinfo(octfp = ctfp, type,
+				 dnp->dn_right->dn_string, &m)) == NULL) {
+				yypcb->pcb_hdl->dt_ctferr = ctf_errno(octfp);
+				longjmp(yypcb->pcb_jmpbuf, EDT_CTF);
+			}
+
+			if (m.ctm_offset != 0) {
+				int reg;
+
+				reg = dt_regset_alloc(drp);
+
+				/*
+				 * If the offset is not aligned on a byte
+				 * boundary, it is a bit-field member and we
+				 * will extract the value bits below after we
+				 * generate the appropriate load.
+				 */
+				dt_cg_setx(dlp, reg, m.ctm_offset / NBBY);
+
+				instr = DIF_INSTR_FMT(DIF_OP_ADD,
+				    dnp->dn_left->dn_reg, reg,
+				    dnp->dn_left->dn_reg);
+
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+				dt_regset_free(drp, reg);
+			}
+
+			if (!(dnp->dn_flags & DT_NF_REF)) {
+				uint_t ubit = dnp->dn_flags & DT_NF_USERLAND;
+
+				/*
+				 * Save and restore DT_NF_USERLAND across
+				 * dt_cg_load(): we need the sign bit from dnp
+				 * and the user bit from dnp->dn_left in order
+				 * to get the proper opcode.
+				 */
+				dnp->dn_flags |= (dnp->dn_left->dn_flags &
+				    DT_NF_USERLAND);
+
+				instr = DIF_INSTR_LOAD(dt_cg_load(dnp, ctfp,
+							   m.ctm_type),
+				    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
+
+				dnp->dn_flags &= ~DT_NF_USERLAND;
+				dnp->dn_flags |= ubit;
+
+				dt_irlist_append(dlp,
+				    dt_cg_node_alloc(DT_LBL_NONE, instr));
+
+				if (dnp->dn_flags & DT_NF_BITFIELD)
+					dt_cg_field_get(dnp, dlp, drp, ctfp,
+					    &m);
+			}
 		}
 
 		dnp->dn_reg = dnp->dn_left->dn_reg;
-#endif
 		break;
 	}
 	case DT_TOK_STRING:

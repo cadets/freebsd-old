@@ -41,6 +41,8 @@
 extern "C" {
 #endif
 
+#include <dtrace.h>
+
 #include <dt_errtags.h>
 #include <dt_ident.h>
 #include <dt_decl.h>
@@ -58,6 +60,7 @@ typedef struct dt_node {
 	dtrace_attribute_t dn_attr; /* node stability attributes */
 
 	char dn_target[DTRACE_TARGETNAMELEN]; /* what target is this node for? */
+	dtrace_hdl_t *dn_dtp;	/* backpointer to the handle */
 
 	/*
 	 * D compiler nodes, as is the usual style, contain a union of the

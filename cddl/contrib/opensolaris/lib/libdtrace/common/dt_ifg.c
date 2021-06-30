@@ -253,6 +253,10 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 
 	case DIF_OP_NOT:
 	case DIF_OP_MOV:
+	case DIF_OP_STB:
+	case DIF_OP_STH:
+	case DIF_OP_STW:
+	case DIF_OP_STX:
 		_r1 = DIF_INSTR_R1(instr);
 
 		if (_r1 == rd)
@@ -696,10 +700,6 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 		break;
 
 	case DIF_OP_MOV:
-	case DIF_OP_STB:
-	case DIF_OP_STH:
-	case DIF_OP_STW:
-	case DIF_OP_STX:
 		/*
 		 * For any one of these instructions, we will compute if
 		 * r1 is already an active register. If so, we simply activate
@@ -711,6 +711,10 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 		active_varregs[rd] = active_varregs[r1];
 		break;
 
+	case DIF_OP_STB:
+	case DIF_OP_STH:
+	case DIF_OP_STW:
+	case DIF_OP_STX:
 	case DIF_OP_CMP:
 	case DIF_OP_TST:
 	case DIF_OP_BA:
@@ -862,8 +866,8 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 		 * check if it's active. If so, we will add our varsource to the
 		 * list.
 		 */
-		r1 = DIF_INSTR_R1(instr);
-		if (active_varregs[r1] == 0)
+		rd = DIF_INSTR_RD(instr);
+		if (active_varregs[rd] == 0)
 			continue;
 
 		assert(scope == DIFV_SCOPE_GLOBAL ||
@@ -925,6 +929,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		chld = NULL;
 		chld_bb = NULL;
 		redefined = 0;
+		var_redefined = 0;
 		bb_path_entry = NULL;
 
 		if (visited[bb->dtbb_idx] == 0) {
