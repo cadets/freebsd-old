@@ -858,7 +858,6 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ARG9:
 		pdesc = &n->din_edp->dted_probe;
 		if (strcmp(pdesc->dtpd_name, "ERROR") == 0) {
-			printf("error probe\n");
 			/*
 			 * arg0 -> nothing
 			 * arg1 -> epid
@@ -2672,7 +2671,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		var = DIF_INSTR_VAR(instr);
 
 		dif_var = dt_get_var_from_varlist(var,
-		    DIFV_SCOPE_LOCAL, DIFV_KIND_SCALAR);
+		    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 		if (dif_var == NULL)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed to find variable (%u, %d, %d)", var,

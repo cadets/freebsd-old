@@ -259,7 +259,68 @@ dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 }
 
 void
-dt_insert_var(dtrace_difv_t *difv)
+dt_insert_var_by_tup(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
+    uint8_t kind)
+{
+	dt_var_entry_t *ve;
+	dtrace_difv_t *var;
+	dtrace_difv_t *difv;
+
+	ve = NULL;
+	var = NULL;
+
+	/*
+	 * Search through the existing variable list looking for
+	 * the variable being currently defined. If we find it,
+	 * we will simply break out of the loop and move onto
+	 * the next instruction.
+	 */
+	for (ve = dt_list_next(&var_list); ve; ve = dt_list_next(ve)) {
+		var = ve->dtve_var;
+		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
+		    var->dtdv_id == varid)
+			break;
+	}
+
+	if (ve != NULL)
+		return;
+
+	difv = dt_get_variable(difo, varid, scope, kind);
+	if (difv == NULL)
+		errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
+		    varid, scope, kind);
+
+	/*
+	 * Allocate a new variable to be put into our list and
+	 * copy the contents of the variable in the DIFO table
+	 * into the newly allocated region.
+	 */
+	var = malloc(sizeof(dtrace_difv_t));
+	if (var == NULL)
+		errx(EXIT_FAILURE, "failed to allocate a new variable");
+
+	memcpy(var, difv, sizeof(dtrace_difv_t));
+
+	var->dtdv_ctfid = CTF_ERR;
+	var->dtdv_sym = NULL;
+	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
+	var->dtdv_type.dtdt_size = 0;
+	var->dtdv_stack = NULL;
+	var->dtdv_tf = NULL;
+
+	ve = malloc(sizeof(dt_var_entry_t));
+	if (ve == NULL)
+		errx(EXIT_FAILURE,
+		    "failed to allocate a new varlist entry");
+
+	memset(ve, 0, sizeof(dt_var_entry_t));
+	ve->dtve_var = var;
+
+	dt_list_append(&var_list, ve);
+}
+
+void
+dt_insert_var_by_difv(dtrace_difv_t *difv)
 {
 	dt_var_entry_t *ve;
 	dtrace_difv_t *var;
@@ -333,10 +394,54 @@ dt_populate_varlist(dtrace_difo_t *difo)
 
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		difv = &difo->dtdo_vartab[i];
-		dt_insert_var(difv);
+		dt_insert_var_by_difv(difv);
+	}
+
+	for (i = 0; i < difo->dtdo_len; i++) {
+		instr = difo->dtdo_buf[i];
+		opcode = DIF_INSTR_OP(instr);
+
+		switch (opcode) {
+		case DIF_OP_STGS:
+		case DIF_OP_LDGS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_GLOBAL,
+			    DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_LDLS:
+		case DIF_OP_STLS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_LOCAL,
+			    DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_LDTS:
+		case DIF_OP_STTS:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_SCALAR);
+			break;
+
+		case DIF_OP_LDGAA:
+		case DIF_OP_STGAA:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_GLOBAL,
+			    DIFV_KIND_ARRAY);
+			break;
+
+		case DIF_OP_LDTAA:
+		case DIF_OP_STTAA:
+			varid = DIF_INSTR_VAR(instr);
+			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_THREAD,
+			    DIFV_KIND_ARRAY);
+			break;
+
+		default:
+			break;
+		}
 	}
 }
-
 
 dt_stacklist_t *
 dt_get_stack(dt_list_t *bb_path, dt_ifg_node_t *n)
