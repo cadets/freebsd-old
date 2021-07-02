@@ -857,8 +857,8 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_ARG8:
 	case DIF_VAR_ARG9:
 		pdesc = &n->din_edp->dted_probe;
-		if (strcmp(pdesc->dtpd_name, "ERROR") == 0 &&
-		    strcmp(pdesc->dtpd_provider, "dtrace") == 0) {
+		if (strcmp(pdesc->dtpd_name, "ERROR") == 0) {
+			printf("error probe\n");
 			/*
 			 * arg0 -> nothing
 			 * arg1 -> epid
