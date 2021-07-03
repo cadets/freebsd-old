@@ -790,10 +790,10 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	case DIF_VAR_HCURTHREAD:
 		n->din_tf = dt_typefile_kernel();
 		assert(n->din_tf != NULL);
-		n->din_ctfid = dt_typefile_ctfid(n->din_tf, thread_str);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, t_thread);
 		if (n->din_ctfid == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed to get type %s: %s", thread_str,
+			    "failed to get type %s: %s", t_thread,
 			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
@@ -1846,6 +1846,1975 @@ dt_setx_value(dtrace_difo_t *difo, dif_instr_t instr)
 	return (difo->dtdo_inttab[index]);
 }
 
+static int
+dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
+{
+	uint16_t subr;
+	dif_instr_t instr;
+	dt_ifg_node_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7,
+	    *arg8;
+	dt_stack_t *se;
+	dt_stacklist_t *sl;
+	char buf[4096] = { 0 }, var_type[4096] = { 0 };
+	ctf_id_t arg_ctfid;
+
+	instr = n->din_buf[n->din_uidx];
+	subr = DIF_INSTR_SUBR(instr);
+
+	/*
+	 * The return typefile of a call instruction will always be the
+	 * kernel itself, so we just do it ahead of time.
+	 */
+	n->din_tf = dt_typefile_kernel();
+	assert(n->din_tf != NULL);
+
+	/*
+	 * We don't care if there are more things on the stack than
+	 * the arguments we need, because they will simply not be used.
+	 *
+	 * Therefore, the transformation where we have
+	 *
+	 *     foo(a, b);
+	 *     bar(a, b, c);
+	 *
+	 * which results in
+	 *
+	 *     push a
+	 *     push b
+	 *     push c
+	 *     call foo
+	 *     call bar
+	 *
+	 * is perfectly valid, so we shouldn't fail to type check this.
+	 */
+	switch (subr) {
+	case DIF_SUBR_RAND:
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint64_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_MUTEX_OWNED:
+	case DIF_SUBR_MUTEX_TYPE_ADAPTIVE:
+	case DIF_SUBR_MUTEX_TYPE_SPIN:
+		/*
+		 * We expect a "struct mtx *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "mutex_owned/type() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (arg0->din_tf != dt_typefile_kernel())
+			dt_set_progerr(g_dtp, g_pgp,
+			    "mutex_owned/type(): arg0's typefile "
+			    "is %s, expected %s",
+			    dt_typefile_stringof(arg0->din_tf),
+			    dt_typefile_stringof(dt_typefile_kernel()));
+
+		if (dt_typefile_typename(arg0->din_tf, arg0->din_ctfid, buf,
+		    sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		arg_ctfid = dt_typefile_ctfid(dt_typefile_kernel(), t_mtx);
+		if (arg_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type %s: %s", t_mtx,
+			    dt_typefile_error(dt_typefile_kernel()));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (arg_ctfid != arg0->din_ctfid) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_mtx);
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_MUTEX_OWNER:
+		/*
+		 * We expect a "struct mtx *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "mutex_owner() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, t_mtx) != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_mtx);
+			return (-1);
+		}
+
+#ifdef __FreeBSD__
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, t_thread);
+#elif defined(illumos)
+		/*
+		 * illumos not quite supported yet.
+		 */
+		return (-1);
+#endif
+		if (n->din_ctfid == CTF_ERR)
+			errx(EXIT_FAILURE,
+			    "failed to get thread type: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_RW_READ_HELD:
+		/*
+		 * We expect a "struct rwlock *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "rw_read_held() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, t_rw) != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_rw);
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_RW_WRITE_HELD:
+		/*
+		 * We expect a "struct rwlock *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "rw_write_held() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, t_rw) != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_rw);
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_RW_ISWRITER:
+		/*
+		 * We expect a "struct rwlock *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "rw_iswriter() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, t_rw) != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_rw);
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_COPYIN:
+		/*
+		 * We expect a "uintptr_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyin() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as the second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyin() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type void *: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_COPYINSTR:
+		/*
+		 * We expect a "uintptr_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyinstr() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		/*
+		 * Check if the second (optional) argument is present
+		 */
+		se = dt_list_next(se);
+		if (sl != NULL) {
+			if (se->ds_ifgnode == NULL)
+				errx(EXIT_FAILURE,
+				    "copyinstr() ds_ifgnode is NULL");
+
+			arg1 = se->ds_ifgnode;
+			assert(arg1->din_tf != NULL);
+
+			if (dt_typefile_typename(arg1->din_tf,
+				arg1->din_ctfid, buf,
+				sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s",
+				    arg1->din_ctfid,
+				    dt_typefile_error(arg1->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "size_t") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "size_t");
+				return (-1);
+			}
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_SPECULATION:
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_PROGENYOF:
+		/*
+		 * We expect a "pid_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "progenyof() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "pid_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "pid_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_STRLEN:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "strlen() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type size_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_COPYOUT:
+		/*
+		 * We expect a "void *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyout() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "uintptr_t" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyout() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a third argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyout() third argument is NULL");
+
+		arg2 = se->ds_ifgnode;
+		assert(arg2->din_tf != NULL);
+
+		if (dt_typefile_typename(arg2->din_tf,
+			arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg2->din_ctfid,
+			    dt_typefile_error(arg2->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_NONE;
+		break;
+
+	case DIF_SUBR_COPYOUTSTR:
+		/*
+		 * We expect a "char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyoutstr() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "char *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "uintptr_t" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyoutstr() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a third argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyoutstr() third argument is NULL");
+
+		arg2 = se->ds_ifgnode;
+		assert(arg2->din_tf != NULL);
+
+		if (dt_typefile_typename(arg2->din_tf,
+			arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg2->din_ctfid,
+			    dt_typefile_error(arg2->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_NONE;
+		break;
+
+	case DIF_SUBR_ALLOCA:
+		/*
+		 * We expect a "size_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "alloca() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type void *: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_BCOPY:
+		/*
+		 * We expect a "void *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "bcopy() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "void *" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "bcopy() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a third argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "bcopy() third argument is NULL");
+
+		arg2 = se->ds_ifgnode;
+		assert(arg2->din_tf != NULL);
+
+		if (dt_typefile_typename(arg2->din_tf,
+			arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg2->din_ctfid,
+			    dt_typefile_error(arg2->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_NONE;
+		break;
+
+	case DIF_SUBR_COPYINTO:
+		/*
+		 * We expect a "uintptr_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyinto() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyinto() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "void *" as a third argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "copyinto() third argument is NULL");
+
+		arg2 = se->ds_ifgnode;
+		assert(arg2->din_tf != NULL);
+
+		if (dt_typefile_typename(arg2->din_tf,
+			arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg2->din_ctfid,
+			    dt_typefile_error(arg2->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_NONE;
+		break;
+
+	case DIF_SUBR_MSGDSIZE:
+	case DIF_SUBR_MSGSIZE:
+		/*
+		 * We expect a "mblk_t *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "msg(d)size() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "mblk_t *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "mblk_t *");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type size_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_GETMAJOR:
+		break;
+	case DIF_SUBR_GETMINOR:
+		break;
+
+	case DIF_SUBR_DDI_PATHNAME:
+		/*
+		 * We expect a "void *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ddi_pathname() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "int64_t" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ddi_pathname() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "int64_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "int64_t");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_LLTOSTR:
+		/*
+		 * We expect a "int64_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "lltostr() second argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "int64_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "int64_t");
+			return (-1);
+		}
+
+		/*
+		 * Check if the second (optional) argument is present
+		 */
+		se = dt_list_next(se);
+		if (sl != NULL) {
+			if (se->ds_ifgnode == NULL)
+				errx(EXIT_FAILURE,
+				    "lltostr() ds_ifgnode is NULL");
+
+			arg1 = se->ds_ifgnode;
+			assert(arg1->din_tf != NULL);
+
+			if (dt_typefile_typename(arg1->din_tf,
+				arg1->din_ctfid,
+				buf, sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg1->din_ctfid,
+				    dt_typefile_error(arg1->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "int") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "int");
+				return (-1);
+			}
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_CLEANPATH:
+	case DIF_SUBR_DIRNAME:
+	case DIF_SUBR_BASENAME:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "basename/dirname/cleanpath() "
+			    "first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_STRRCHR:
+	case DIF_SUBR_STRCHR:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "strchr() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+		/*
+		 * We expect a "char" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "strchr() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "char") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "char");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_SUBSTR:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "substr() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+		/*
+		 * We expect a "int" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "substr() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "int") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "int");
+			return (-1);
+		}
+
+		/*
+		 * Check if the third (optional) argument is present
+		 */
+		if (sl != NULL) {
+			if (se->ds_ifgnode == NULL)
+				errx(EXIT_FAILURE,
+				    "substr() ds_ifgnode is NULL");
+
+			arg2 = se->ds_ifgnode;
+			assert(arg2->din_tf != NULL);
+
+			if (dt_typefile_typename(arg2->din_tf,
+				arg2->din_ctfid,
+				buf, sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg2->din_ctfid,
+				    dt_typefile_error(arg2->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "int") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "int");
+				return (-1);
+			}
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_RINDEX:
+	case DIF_SUBR_INDEX:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "(r)index() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "const char *" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "(r)index() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		/*
+		 * Check if the third (optional) argument is present
+		 */
+		if (sl != NULL) {
+			if (se->ds_ifgnode == NULL)
+				errx(EXIT_FAILURE,
+				    "(r)index() ds_ifgnode is NULL");
+
+			arg2 = se->ds_ifgnode;
+			assert(arg2->din_tf != NULL);
+
+			if (dt_typefile_typename(arg2->din_tf,
+				arg2->din_ctfid,
+				buf, sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg2->din_ctfid,
+				    dt_typefile_error(arg2->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "int") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "int");
+				return (-1);
+			}
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_NTOHS:
+	case DIF_SUBR_HTONS:
+		/*
+		 * We expect a "uint16_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ntohs/htons() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uint16_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uint16_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint16_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_NTOHL:
+	case DIF_SUBR_HTONL:
+		/*
+		 * We expect a "uint32_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ntohl/htonl() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uint32_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uint32_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint32_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_NTOHLL:
+	case DIF_SUBR_HTONLL:
+		/*
+		 * We expect a "uint64_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ntohll/htonll() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uint64_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uint64_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint64_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_INET_NTOP:
+		/*
+		 * We expect a "int" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "inet_ntop() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "int") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "int");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "void *" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ddi_pathname() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_INET_NTOA:
+		/*
+		 * We expect a "in_addr_t *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "inet_ntoa() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "in_addr_t *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "in_addr_t *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_INET_NTOA6:
+		/*
+		 * We expect a "struct in6_addr *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "inet_ntoa6() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "struct in6_addr *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "struct in6_addr *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_TOLOWER:
+	case DIF_SUBR_TOUPPER:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "toupper/tolower() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_MEMREF:
+		/*
+		 * We expect a "void *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "memref() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "memref() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+		n->din_ctfid =
+		    dt_typefile_ctfid(n->din_tf, "uintptr_t *");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uintptr_t *: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_SX_SHARED_HELD:
+	case DIF_SUBR_SX_EXCLUSIVE_HELD:
+	case DIF_SUBR_SX_ISEXCLUSIVE:
+		/*
+		 * We expect a sx_str as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "sx_*() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, t_sx) != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, t_sx);
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_MEMSTR:
+		/*
+		 * We expect a "void *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "memstr() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "void *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "void *");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "char" as a second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "memstr() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (dt_typefile_typename(arg1->din_tf,
+			arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg1->din_ctfid,
+			    dt_typefile_error(arg1->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "char") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "char");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "size_t" as a third argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "memstr() second argument is NULL");
+
+		arg2 = se->ds_ifgnode;
+		assert(arg2->din_tf != NULL);
+
+		if (dt_typefile_typename(arg2->din_tf,
+			arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg2->din_ctfid,
+			    dt_typefile_error(arg2->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "size_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "size_t");
+			return (-1);
+		}
+
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+
+	case DIF_SUBR_GETF:
+		/*
+		 * We expect a "int" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "getf() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "int") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "int");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "file_t *");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type file_t *: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_STRTOLL:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "strtoll() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "const char *") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "const char *");
+			return (-1);
+		}
+
+		/*
+		 * Check if the second (optional) argument is present
+		 */
+		se = dt_list_next(se);
+		if (sl != NULL) {
+			if (se->ds_ifgnode == NULL)
+				errx(EXIT_FAILURE,
+				    "strtoll() ds_ifgnode is NULL");
+
+			arg1 = se->ds_ifgnode;
+			assert(arg1->din_tf != NULL);
+
+			if (dt_typefile_typename(arg1->din_tf,
+				arg1->din_ctfid,
+				buf, sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg1->din_ctfid,
+				    dt_typefile_error(arg1->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "int") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "int");
+				return (-1);
+			}
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int64_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type int64_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_RANDOM:
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uint64_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_PTINFO:
+		/*
+		 * We expect a "uintptr_t" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "ptinfo() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (dt_typefile_typename(arg0->din_tf,
+			arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed at getting type name %ld: %s",
+			    arg0->din_ctfid,
+			    dt_typefile_error(arg0->din_tf));
+
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (strcmp(buf, "uintptr_t") != 0) {
+			fprintf(stderr, "%s and %s are not the same",
+			    buf, "uintptr_t");
+			return (-1);
+		}
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type void *: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
+	case DIF_SUBR_STRTOK:
+	case DIF_SUBR_STRSTR:
+	case DIF_SUBR_STRJOIN:
+	case DIF_SUBR_JSON:
+		/*
+		 * We expect a "const char *" as an argument.
+		 */
+		se = dt_list_next(stack);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "str/json() first argument is NULL");
+
+		arg0 = se->ds_ifgnode;
+		assert(arg0->din_tf != NULL);
+
+		if (arg0->din_type == DIF_TYPE_CTF) {
+			if (dt_typefile_typename(arg0->din_tf,
+				arg0->din_ctfid, buf,
+				sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg0->din_ctfid,
+				    dt_typefile_error(arg0->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type
+			 * check.
+			 */
+			if (strcmp(buf, "const char *") != 0 &&
+			    strcmp(buf, "char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char */char *");
+				return (-1);
+			}
+		} else if (arg0->din_type == DIF_TYPE_NONE) {
+			fprintf(stderr, "str/json arg0 type is NONE\n");
+			return (-1);
+		}
+
+		/*
+		 * We expect a "const char *" as the second argument.
+		 */
+		se = dt_list_next(se);
+		if (se == NULL || se->ds_ifgnode == NULL)
+			errx(EXIT_FAILURE,
+			    "str/json() second argument is NULL");
+
+		arg1 = se->ds_ifgnode;
+		assert(arg1->din_tf != NULL);
+
+		if (arg1->din_type == DIF_TYPE_CTF) {
+			if (dt_typefile_typename(arg1->din_tf,
+				arg1->din_ctfid, buf,
+				sizeof(buf)) != (char *)buf)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "failed at getting type name"
+				    " %ld: %s", arg1->din_ctfid,
+				    dt_typefile_error(arg1->din_tf));
+
+			/*
+			 * If the argument type is wrong, fail to type check.
+			 */
+			if (strcmp(buf, "const char *") != 0 &&
+			    strcmp(buf, "char *") != 0) {
+				fprintf(stderr, "%s and %s are not the same",
+				    buf, "const char *");
+				return (-1);
+			}
+		} else if (arg0->din_type == DIF_TYPE_NONE) {
+			fprintf(stderr, "str/json arg0 type is NONE\n");
+			return (-1);
+		}
+
+		n->din_type = DIF_TYPE_STRING;
+		break;
+	default:
+		return (-1);
+	}
+
+	return (n->din_type);
+}
+
 /*
  * This is the main part of the type inference algorithm.
  */
@@ -1856,32 +3825,27 @@ dt_infer_type(dt_ifg_node_t *n)
 	    *symnode, *other, *var_stacknode, *node,
 	    *data_dn1, *data_dn2;
 	int type1, type2, res, i, t;
-	char buf[4096] = {0}, symname[4096] = {0}, var_type[4096] = {0};
+	char buf[4096] = { 0 }, symname[4096] = { 0 }, var_type[4096] = { 0 };
 	ctf_membinfo_t *mip;
 	size_t l;
 	uint16_t var;
 	dtrace_difo_t *difo;
 	dif_instr_t instr, dn1_instr;
 	uint8_t opcode, dn1_op;
-	uint16_t sym, subr;
-	dt_stacklist_t *sl;
-	dt_ifg_node_t *arg0, *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8;
+	uint16_t sym;
 	ctf_id_t type = 0;
 	dtrace_difv_t *dif_var;
 	dt_pathlist_t *il;
-	dt_stack_t *se;
 	dt_list_t *stack;
 	int empty;
 	ctf_id_t varkind;
 
 	empty = 1;
-	se = NULL;
 	il = NULL;
 	dn1 = dn2 = dnv = var_stacknode = node = NULL;
 	type1 = -1;
 	type2 = -1;
 	mip = NULL;
-	sl = NULL;
 	l = 0;
 	difo = n->din_difo;
 	instr = dn1_instr = 0;
@@ -1893,8 +3857,6 @@ dt_infer_type(dt_ifg_node_t *n)
 	other = NULL;
 	var = 0;
 	i = 0;
-	subr = 0;
-	arg0 = arg1 = arg2 = arg3 = arg4 = arg5 = arg6 = arg7 = arg8 = NULL;
 	t = 0;
 	dif_var = NULL;
 	stack = NULL;
@@ -2894,1954 +4856,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * ----------------------------------------
 		 *       call subr, %r1 => %r1 : t
 		 */
-
-		subr = DIF_INSTR_SUBR(instr);
-
-		/*
-		 * The return typefile of a call instruction will always be the
-		 * kernel itself, so we just do it ahead of time.
-		 */
-		n->din_tf = dt_typefile_kernel();
-		assert(n->din_tf != NULL);
-
-		/*
-		 * We don't care if there are more things on the stack than
-		 * the arguments we need, because they will simply not be used.
-		 *
-		 * Therefore, the transformation where we have
-		 *
-		 *     foo(a, b);
-		 *     bar(a, b, c);
-		 *
-		 * which results in
-		 *
-		 *     push a
-		 *     push b
-		 *     push c
-		 *     call foo
-		 *     call bar
-		 *
-		 * is perfectly valid, so we shouldn't fail to type check this.
-		 */
-		switch (subr) {
-		case DIF_SUBR_RAND:
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uint64_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_MUTEX_OWNED:
-		case DIF_SUBR_MUTEX_TYPE_ADAPTIVE:
-		case DIF_SUBR_MUTEX_TYPE_SPIN:
-			/*
-			 * We expect a "struct mtx *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "mutex_owned/type() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, mtx_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, mtx_str);
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_MUTEX_OWNER:
-			/*
-			 * We expect a "struct mtx *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "mutex_owner() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, mtx_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, mtx_str);
-				return (-1);
-			}
-
-#ifdef __FreeBSD__
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, thread_str);
-#elif defined(illumos)
-			/*
-			 * illumos not quite supported yet.
-			 */
-			return (-1);
-#endif
-			if (n->din_ctfid == CTF_ERR)
-				errx(EXIT_FAILURE,
-				    "failed to get thread type: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_RW_READ_HELD:
-			/*
-			 * We expect a "struct rwlock *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "rw_read_held() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, rw_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, rw_str);
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_RW_WRITE_HELD:
-			/*
-			 * We expect a "struct rwlock *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "rw_write_held() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, rw_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, rw_str);
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_RW_ISWRITER:
-			/*
-			 * We expect a "struct rwlock *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "rw_iswriter() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, rw_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, rw_str);
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_COPYIN:
-			/*
-			 * We expect a "uintptr_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyin() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as the second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyin() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type void *: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_COPYINSTR:
-			/*
-			 * We expect a "uintptr_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyinstr() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			/*
-			 * Check if the second (optional) argument is present
-			 */
-			se = dt_list_next(se);
-			if (sl != NULL) {
-				if (se->ds_ifgnode == NULL)
-					errx(EXIT_FAILURE,
-					    "copyinstr() ds_ifgnode is NULL");
-
-				arg1 = se->ds_ifgnode;
-				assert(arg1->din_tf != NULL);
-
-				if (dt_typefile_typename(arg1->din_tf,
-				    arg1->din_ctfid, buf,
-				    sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s",
-					    arg1->din_ctfid,
-					    dt_typefile_error(arg1->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "size_t") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "size_t");
-					return (-1);
-				}
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_SPECULATION:
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_PROGENYOF:
-			/*
-			 * We expect a "pid_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "progenyof() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "pid_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "pid_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_STRLEN:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "strlen() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type size_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_COPYOUT:
-			/*
-			 * We expect a "void *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyout() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "uintptr_t" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyout() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a third argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyout() third argument is NULL");
-
-			arg2 = se->ds_ifgnode;
-			assert(arg2->din_tf != NULL);
-
-			if (dt_typefile_typename(arg2->din_tf,
-			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg2->din_ctfid,
-				    dt_typefile_error(arg2->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			/*
-			 * copyout returns void, so there is no point in setting
-			 * the type to anything.
-			 */
-			break;
-
-		case DIF_SUBR_COPYOUTSTR:
-			/*
-			 * We expect a "char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyoutstr() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "char *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "uintptr_t" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyoutstr() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a third argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyoutstr() third argument is NULL");
-
-			arg2 = se->ds_ifgnode;
-			assert(arg2->din_tf != NULL);
-
-			if (dt_typefile_typename(arg2->din_tf,
-			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg2->din_ctfid,
-				    dt_typefile_error(arg2->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			/*
-			 * copyout returns void, so there is no point in setting
-			 * the type to anything.
-			 */
-
-			break;
-
-		case DIF_SUBR_ALLOCA:
-			/*
-			 * We expect a "size_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "alloca() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type void *: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_BCOPY:
-			/*
-			 * We expect a "void *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "bcopy() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "void *" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "bcopy() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a third argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "bcopy() third argument is NULL");
-
-			arg2 = se->ds_ifgnode;
-			assert(arg2->din_tf != NULL);
-
-			if (dt_typefile_typename(arg2->din_tf,
-			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg2->din_ctfid,
-				    dt_typefile_error(arg2->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			break;
-
-		case DIF_SUBR_COPYINTO:
-			/*
-			 * We expect a "uintptr_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyinto() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyinto() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "void *" as a third argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "copyinto() third argument is NULL");
-
-			arg2 = se->ds_ifgnode;
-			assert(arg2->din_tf != NULL);
-
-			if (dt_typefile_typename(arg2->din_tf,
-			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg2->din_ctfid,
-				    dt_typefile_error(arg2->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-
-			break;
-
-		case DIF_SUBR_MSGDSIZE:
-		case DIF_SUBR_MSGSIZE:
-			/*
-			 * We expect a "mblk_t *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "msg(d)size() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "mblk_t *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "mblk_t *");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type size_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_GETMAJOR:
-			break;
-		case DIF_SUBR_GETMINOR:
-			break;
-
-		case DIF_SUBR_DDI_PATHNAME:
-			/*
-			 * We expect a "void *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ddi_pathname() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "int64_t" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ddi_pathname() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "int64_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "int64_t");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_LLTOSTR:
-			/*
-			 * We expect a "int64_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "lltostr() second argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "int64_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "int64_t");
-				return (-1);
-			}
-
-			/*
-			 * Check if the second (optional) argument is present
-			 */
-			se = dt_list_next(se);
-			if (sl != NULL) {
-				if (se->ds_ifgnode == NULL)
-					errx(EXIT_FAILURE,
-					    "lltostr() ds_ifgnode is NULL");
-
-				arg1 = se->ds_ifgnode;
-				assert(arg1->din_tf != NULL);
-
-				if (dt_typefile_typename(arg1->din_tf,
-				    arg1->din_ctfid,
-				    buf, sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg1->din_ctfid,
-					    dt_typefile_error(arg1->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "int") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "int");
-					return (-1);
-				}
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_CLEANPATH:
-		case DIF_SUBR_DIRNAME:
-		case DIF_SUBR_BASENAME:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "basename/dirname/cleanpath() "
-				    "first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_STRRCHR:
-		case DIF_SUBR_STRCHR:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "strchr() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-			/*
-			 * We expect a "char" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "strchr() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "char") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "char");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_SUBSTR:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "substr() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-			/*
-			 * We expect a "int" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "substr() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "int") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "int");
-				return (-1);
-			}
-
-			/*
-			 * Check if the third (optional) argument is present
-			 */
-			if (sl != NULL) {
-				if (se->ds_ifgnode == NULL)
-					errx(EXIT_FAILURE,
-					    "substr() ds_ifgnode is NULL");
-
-				arg2 = se->ds_ifgnode;
-				assert(arg2->din_tf != NULL);
-
-				if (dt_typefile_typename(arg2->din_tf,
-				    arg2->din_ctfid,
-				    buf, sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg2->din_ctfid,
-					    dt_typefile_error(arg2->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "int") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "int");
-					return (-1);
-				}
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_RINDEX:
-		case DIF_SUBR_INDEX:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "(r)index() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "const char *" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "(r)index() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			/*
-			 * Check if the third (optional) argument is present
-			 */
-			if (sl != NULL) {
-				if (se->ds_ifgnode == NULL)
-					errx(EXIT_FAILURE,
-					    "(r)index() ds_ifgnode is NULL");
-
-				arg2 = se->ds_ifgnode;
-				assert(arg2->din_tf != NULL);
-
-				if (dt_typefile_typename(arg2->din_tf,
-				    arg2->din_ctfid,
-				    buf, sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg2->din_ctfid,
-					    dt_typefile_error(arg2->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "int") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "int");
-					return (-1);
-				}
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_NTOHS:
-		case DIF_SUBR_HTONS:
-			/*
-			 * We expect a "uint16_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ntohs/htons() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uint16_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uint16_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uint16_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_NTOHL:
-		case DIF_SUBR_HTONL:
-			/*
-			 * We expect a "uint32_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ntohl/htonl() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uint32_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uint32_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uint32_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_NTOHLL:
-		case DIF_SUBR_HTONLL:
-			/*
-			 * We expect a "uint64_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ntohll/htonll() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uint64_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uint64_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uint64_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_INET_NTOP:
-			/*
-			 * We expect a "int" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "inet_ntop() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "int") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "int");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "void *" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ddi_pathname() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_INET_NTOA:
-			/*
-			 * We expect a "in_addr_t *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "inet_ntoa() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "in_addr_t *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "in_addr_t *");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_INET_NTOA6:
-			/*
-			 * We expect a "struct in6_addr *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "inet_ntoa6() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "struct in6_addr *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "struct in6_addr *");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_TOLOWER:
-		case DIF_SUBR_TOUPPER:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "toupper/tolower() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_MEMREF:
-			/*
-			 * We expect a "void *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "memref() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "memref() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-			n->din_ctfid =
-			    dt_typefile_ctfid(n->din_tf, "uintptr_t *");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uintptr_t *: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_SX_SHARED_HELD:
-		case DIF_SUBR_SX_EXCLUSIVE_HELD:
-		case DIF_SUBR_SX_ISEXCLUSIVE:
-			/*
-			 * We expect a sx_str as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "sx_*() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, sx_str) != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, sx_str);
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_MEMSTR:
-			/*
-			 * We expect a "void *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "memstr() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "void *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "void *");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "char" as a second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "memstr() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (dt_typefile_typename(arg1->din_tf,
-			    arg1->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg1->din_ctfid,
-				    dt_typefile_error(arg1->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "char") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "char");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "size_t" as a third argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "memstr() second argument is NULL");
-
-			arg2 = se->ds_ifgnode;
-			assert(arg2->din_tf != NULL);
-
-			if (dt_typefile_typename(arg2->din_tf,
-			    arg2->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg2->din_ctfid,
-				    dt_typefile_error(arg2->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "size_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "size_t");
-				return (-1);
-			}
-
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-
-		case DIF_SUBR_GETF:
-			/*
-			 * We expect a "int" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "getf() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "int") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "int");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "file_t *");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type file_t *: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_STRTOLL:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "strtoll() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "const char *") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "const char *");
-				return (-1);
-			}
-
-			/*
-			 * Check if the second (optional) argument is present
-			 */
-			se = dt_list_next(se);
-			if (sl != NULL) {
-				if (se->ds_ifgnode == NULL)
-					errx(EXIT_FAILURE,
-					    "strtoll() ds_ifgnode is NULL");
-
-				arg1 = se->ds_ifgnode;
-				assert(arg1->din_tf != NULL);
-
-				if (dt_typefile_typename(arg1->din_tf,
-				    arg1->din_ctfid,
-				    buf, sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg1->din_ctfid,
-					    dt_typefile_error(arg1->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "int") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "int");
-					return (-1);
-				}
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int64_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type int64_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_RANDOM:
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type uint64_t: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_PTINFO:
-			/*
-			 * We expect a "uintptr_t" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "ptinfo() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (dt_typefile_typename(arg0->din_tf,
-			    arg0->din_ctfid, buf, sizeof(buf)) != (char *)buf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
-				    arg0->din_ctfid,
-				    dt_typefile_error(arg0->din_tf));
-
-			/*
-			 * If the argument type is wrong, fail to type check.
-			 */
-			if (strcmp(buf, "uintptr_t") != 0) {
-				fprintf(stderr, "%s and %s are not the same",
-				    buf, "uintptr_t");
-				return (-1);
-			}
-
-			n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "failed to get type void *: %s",
-				    dt_typefile_error(n->din_tf));
-
-			n->din_type = DIF_TYPE_CTF;
-			break;
-
-		case DIF_SUBR_STRTOK:
-		case DIF_SUBR_STRSTR:
-		case DIF_SUBR_STRJOIN:
-		case DIF_SUBR_JSON:
-			/*
-			 * We expect a "const char *" as an argument.
-			 */
-			se = dt_list_next(stack);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "str/json() first argument is NULL");
-
-			arg0 = se->ds_ifgnode;
-			assert(arg0->din_tf != NULL);
-
-			if (arg0->din_type == DIF_TYPE_CTF) {
-				if (dt_typefile_typename(arg0->din_tf,
-				    arg0->din_ctfid, buf,
-				    sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg0->din_ctfid,
-					    dt_typefile_error(arg0->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type
-				 * check.
-				 */
-				if (strcmp(buf, "const char *") != 0 &&
-				    strcmp(buf, "char *") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "const char */char *");
-					return (-1);
-				}
-			} else if (arg0->din_type == DIF_TYPE_NONE) {
-				fprintf(stderr, "str/json arg0 type is NONE\n");
-				return (-1);
-			}
-
-			/*
-			 * We expect a "const char *" as the second argument.
-			 */
-			se = dt_list_next(se);
-			if (se == NULL || se->ds_ifgnode == NULL)
-				errx(EXIT_FAILURE,
-				    "str/json() second argument is NULL");
-
-			arg1 = se->ds_ifgnode;
-			assert(arg1->din_tf != NULL);
-
-			if (arg1->din_type == DIF_TYPE_CTF) {
-				if (dt_typefile_typename(arg1->din_tf,
-				    arg1->din_ctfid, buf,
-				    sizeof(buf)) != (char *)buf)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting type name"
-					    " %ld: %s", arg1->din_ctfid,
-					    dt_typefile_error(arg1->din_tf));
-
-				/*
-				 * If the argument type is wrong, fail to type check.
-				 */
-				if (strcmp(buf, "const char *") != 0 &&
-				    strcmp(buf, "char *") != 0) {
-					fprintf(stderr, "%s and %s are not the same",
-					    buf, "const char *");
-					return (-1);
-				}
-			} else if (arg0->din_type == DIF_TYPE_NONE) {
-				fprintf(stderr, "str/json arg0 type is NONE\n");
-				return (-1);
-			}
-
-			n->din_type = DIF_TYPE_STRING;
-			break;
-		default:
-			return (-1);
-		}
-
-		return (n->din_type);
+		return (dt_infer_type_subr(n, stack));
 
 	case DIF_OP_LDGAA:
 		var = DIF_INSTR_VAR(instr);
@@ -4891,7 +4906,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 		if (dif_var == NULL)
 			dt_set_progerr(g_dtp, g_pgp, "failed to find variable (%u, %d, %d)",
-			    var, DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+			    var, DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 
 		/*
 		 * If the stack is empty, this instruction makes no sense.

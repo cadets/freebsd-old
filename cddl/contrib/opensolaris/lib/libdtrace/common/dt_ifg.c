@@ -185,17 +185,29 @@ dt_usite_contains_var(dt_ifg_node_t *n, dt_node_kind_t *nkind, int *v)
 	return (*v);
 }
 
-
 static int
-dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
+dt_usite_contains_reg(dt_ifg_node_t *n, dt_ifg_node_t *curnode, uint8_t rd,
+    int *r1, int *r2)
 {
 	dif_instr_t instr = 0;
 	uint8_t rs = 0, _rd = 0, _r1 = 0, _r2 = 0, opcode = 0;
+	dif_instr_t curinstr;
+	uint8_t curop;
+	int check;
 
+	curinstr = curnode->din_buf[curnode->din_uidx];
 	instr = n->din_buf[n->din_uidx];
+
 	*r1 = 0;
 	*r2 = 0;
+
 	opcode = DIF_INSTR_OP(instr);
+	curop = DIF_INSTR_OP(curinstr);
+
+	if (curop == DIF_OP_CALL)
+		check = dt_subr_clobbers(DIF_INSTR_SUBR(curinstr));
+	else
+		check = 1;
 
 	switch (opcode) {
 	case DIF_OP_ULOAD:
@@ -224,7 +236,7 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_PUSHTR:
 	case DIF_OP_PUSHTV:
 		rs = DIF_INSTR_RS(instr);
-		if (rd == rs)
+		if (check && rd == rs)
 			*r1 = 1;
 		break;
 
@@ -245,9 +257,9 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 		_r1 = DIF_INSTR_R1(instr);
 		_r2 = DIF_INSTR_R2(instr);
 
-		if (_r1 == rd)
+		if (check && _r1 == rd)
 			*r1 = 1;
-		if (_r2 == rd)
+		if (check && _r2 == rd)
 			*r2 = 1;
 		break;
 
@@ -259,7 +271,7 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_STX:
 		_r1 = DIF_INSTR_R1(instr);
 
-		if (_r1 == rd)
+		if (check && _r1 == rd)
 			*r1 = 1;
 		break;
 
@@ -268,7 +280,7 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_ALLOCS:
 		_r2 = DIF_INSTR_R2(instr);
 
-		if (_r2 == rd)
+		if (check && _r2 == rd)
 			*r2 = 1;
 		break;
 
@@ -279,14 +291,14 @@ dt_usite_contains_reg(dt_ifg_node_t *n, uint8_t rd, int *r1, int *r2)
 	case DIF_OP_STLS:
 		_r2 = DIF_INSTR_RS(instr);
 
-		if (_r2 == rd)
+		if (check && _r2 == rd)
 			*r2 = 1;
 		break;
 
 	case DIF_OP_RET:
 		_rd = DIF_INSTR_RD(instr);
 
-		if (_rd == rd)
+		if (check && _rd == rd)
 			*r1 = 1;
 		break;
 
@@ -499,7 +511,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	curinstr = curnode->din_buf[curnode->din_uidx];
 	curop = DIF_INSTR_OP(curinstr);
 
-	if (dt_usite_contains_reg(curnode, 0, &r1, &r2)) {
+	if (dt_usite_contains_reg(curnode, curnode, 0, &r1, &r2)) {
 		assert(r1 == 1 || r2 == 1);
 		if (r1 == 1) {
 			curnode_e = dt_ifgl_alloc(r0node);
@@ -543,7 +555,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		if (n == curnode)
 			continue;
 
-		if (dt_usite_contains_reg(n, rd, &r1, &r2)) {
+		if (dt_usite_contains_reg(n, curnode, rd, &r1, &r2)) {
 			assert(r1 == 1 || r2 == 1);
 			if (r1 == 1 && seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
@@ -604,38 +616,6 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 				else
 					free(curnode_e);
 			}
-
-#if 0
-			/*
-			 * Place the initial variable source definition to the
-			 * node that we encounter. We will propagate this later.
-			 */
-			if (r1 == 1 && (curop == DIF_OP_LDGS             ||
-			    curop == DIF_OP_LDGA || curop == DIF_OP_LDTS ||
-			    curop == DIF_OP_LDTA || curop == DIF_OP_LDLS)) {
-				curnode_e = dt_ifgl_alloc(curnode);
-				if (dt_in_list(&n->din_varsources,
-				    (void *)curnode,
-				    sizeof(dt_ifg_node_t *)) == NULL)
-					dt_list_append(&n->din_varsources,
-					    curnode_e);
-				else
-					free(curnode_e);
-			}
-
-			if (r2 == 1 && (curop == DIF_OP_LDGS             ||
-			    curop == DIF_OP_LDGA || curop == DIF_OP_LDTS ||
-			    curop == DIF_OP_LDTA || curop == DIF_OP_LDLS)) {
-				curnode_e = dt_ifgl_alloc(curnode);
-				if (dt_in_list(&n->din_varsources,
-				    (void *)curnode,
-				    sizeof(dt_ifg_node_t *)) == NULL)
-					dt_list_append(&n->din_varsources,
-					    curnode_e);
-				else
-					free(curnode_e);
-			}
-#endif
 		}
 
 		/*

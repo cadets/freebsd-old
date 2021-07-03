@@ -74,7 +74,10 @@ struct dt_arg;			/* see below */
 struct dt_provider;		/* see <dt_provider.h> */
 struct dt_xlator;		/* see <dt_xlator.h> */
 
-extern int dt_subr_h2g[DIF_SUBR_MAX+1];
+extern char t_mtx[MAXPATHLEN];
+extern char t_rw[MAXPATHLEN];
+extern char t_sx[MAXPATHLEN];
+extern char t_thread[MAXPATHLEN];
 extern const dtrace_diftype_t dt_void_rtype;
 extern const dtrace_diftype_t dt_int_rtype;
 

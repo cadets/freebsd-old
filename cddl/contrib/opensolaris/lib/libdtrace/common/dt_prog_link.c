@@ -66,6 +66,35 @@ typedef struct dtrace_ecbdesclist {
 	dtrace_ecbdesc_t *ecbdesc;
 } dtrace_ecbdesclist_t;
 
+char t_mtx[MAXPATHLEN];
+char t_rw[MAXPATHLEN];
+char t_sx[MAXPATHLEN];
+char t_thread[MAXPATHLEN];
+
+static void
+dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	char __kernel[] = "kernel`";
+	size_t __kernel_len = strlen(__kernel);
+
+	if (strncmp(mtx_str, __kernel, __kernel_len) != 0)
+		dt_set_progerr(dtp, pgp,
+		    "mtx_str does not start with \"kernel`\" (%s)", mtx_str);
+
+	if (strncmp(rw_str, __kernel, __kernel_len) != 0)
+		dt_set_progerr(dtp, pgp,
+		    "rw_str does not start with \"kernel`\" (%s)", rw_str);
+
+	if (strncmp(sx_str, __kernel, __kernel_len) != 0)
+		dt_set_progerr(dtp, pgp,
+		    "sx_str does not start with \"kernel`\" (%s)", sx_str);
+
+	memcpy(t_mtx, mtx_str + __kernel_len, MAXPATHLEN - __kernel_len);
+	memcpy(t_rw, rw_str + __kernel_len, MAXPATHLEN - __kernel_len);
+	memcpy(t_sx, sx_str + __kernel_len, MAXPATHLEN - __kernel_len);
+	memcpy(t_thread, thread_str, MAXPATHLEN);
+}
+
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_difo_t *difo)
@@ -612,6 +641,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	if (err)
 		errx(EXIT_FAILURE, "failed to open CTF files: %s\n",
 		    strerror(errno));
+
+	dt_prepare_typestrings(dtp, pgp);
 
 	/*
 	 * Zero out the node list and basic block list.

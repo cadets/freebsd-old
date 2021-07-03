@@ -52,6 +52,7 @@ extern dt_ifg_list_t *node_last;
 extern dt_list_t var_list;
 extern dt_ifg_node_t *r0node;
 
+extern int dt_subr_clobbers(uint16_t);
 extern int dt_clobbers_reg(dif_instr_t, uint8_t);
 extern int dt_var_is_builtin(uint16_t);
 extern int dt_clobbers_var(dif_instr_t, dt_node_kind_t *);

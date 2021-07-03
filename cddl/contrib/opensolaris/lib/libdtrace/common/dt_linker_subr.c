@@ -45,10 +45,26 @@
 #include <stddef.h>
 
 int
+dt_subr_clobbers(uint16_t subr)
+{
+	switch(subr) {
+	case DIF_SUBR_BCOPY:
+	case DIF_SUBR_COPYOUT:
+	case DIF_SUBR_COPYOUTSTR:
+	case DIF_SUBR_COPYINTO:
+		return (0);
+
+	default:
+		return (1);
+	}
+}
+
+int
 dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 {
 	uint8_t opcode;
 	uint8_t rd;
+	uint16_t subr;
 
 	opcode = DIF_INSTR_OP(instr);
 
@@ -85,7 +101,6 @@ dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 	case DIF_OP_LDTA:
 	case DIF_OP_LDTS:
 	case DIF_OP_SRA:
-	case DIF_OP_CALL:
 	case DIF_OP_LDGAA:
 	case DIF_OP_LDTAA:
 	case DIF_OP_LDLS:
@@ -107,6 +122,14 @@ dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 	case DIF_OP_RLDX:
 		rd = DIF_INSTR_RD(instr);
 		return (r == rd);
+
+	case DIF_OP_CALL:
+		rd = DIF_INSTR_RD(instr);
+		subr = DIF_INSTR_SUBR(instr);
+
+		if (dt_subr_clobbers(subr))
+			return (r == rd);
+		return (0);
 	}
 
 	return (0);
