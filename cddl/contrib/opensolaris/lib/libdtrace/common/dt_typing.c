@@ -2280,10 +2280,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -2350,10 +2353,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s :first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(), "char *",
+			    buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * We expect a "uintptr_t" as a second argument.
@@ -2610,10 +2616,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -2629,10 +2638,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * We expect a "char" as a second argument.
@@ -2661,10 +2673,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * We expect a "int" as a second argument.
@@ -2709,10 +2724,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * We expect a "const char *" as a second argument.
@@ -2723,10 +2741,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: second argument is NULL", subr_name[subr]);
 
 		arg1 = se->ds_ifgnode;
-		assert(arg1->din_tf != NULL);
 
-		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg1, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * Check if the third (optional) argument is present
@@ -2906,10 +2927,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -3060,10 +3084,13 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    "%s: first argument is NULL", subr_name[subr]);
 
 		arg0 = se->ds_ifgnode;
-		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "const char *", buf,
-		    sizeof(buf), subr_name[subr]);
+		if (arg0->din_type == DIF_TYPE_CTF)
+			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
+			    "const char *", buf, sizeof(buf), subr_name[subr]);
+		else if (arg0->din_type == DIF_TYPE_NONE)
+			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
+			    subr_name[subr]);
 
 		/*
 		 * Check if the second (optional) argument is present
