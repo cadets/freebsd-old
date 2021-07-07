@@ -66,14 +66,16 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 	assert(n_stars != NULL);
 	assert(orig_id != NULL);
 
-	kind = dt_typefile_typekind(tf, id);
+	kind = dt_typefile_typekind(tf, *orig_id);
 
 	*n_stars = 0;
 
 	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER)
 		return (kind);
 
+	id = *orig_id;
 	n_redirects = 0;
+
 	while (kind == CTF_K_TYPEDEF || kind == CTF_K_POINTER) {
 		id = dt_typefile_reference(tf, id);
 		if (id == CTF_ERR) {
@@ -104,10 +106,12 @@ dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
 
 	assert(orig_id != NULL);
 
-	kind = dt_typefile_typekind(tf, id);
+	kind = dt_typefile_typekind(tf, *orig_id);
 
 	if (kind != CTF_K_TYPEDEF)
 		return (kind);
+
+	id = *orig_id;
 
 	while (kind == CTF_K_TYPEDEF) {
 		id = dt_typefile_reference(tf, id);
@@ -361,14 +365,6 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 
 		*which = size1 > size2 ? 1 : 2;
 		return (0);
-
-#if 0
-		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
-			fprintf(stderr, "%s and %s are incompatible integers\n",
-			    type1_name, type2_name);
-			return (-1);
-		}
-#endif
 	}
 
 	/*
@@ -383,14 +379,6 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		 */
 		*which = 1;
 		return (0);
-
-#if 0
-		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
-			fprintf(stderr, "%s and %s are incompatible arrays\n",
-			    type1_name, type2_name);
-			return (-1);
-		}
-#endif
 	}
 
 	/*
@@ -778,8 +766,6 @@ dt_infer_type_arg(
 		    ctfid == n->din_ctfid)
 			return (0);
 
-		assert(n->din_tf != tf);
-
 		if (dt_type_subtype(
 		    n->din_tf, n->din_ctfid, tf, ctfid, &which) == 0) {
 			assert(which == 0 || which == 1 || which == 2);
@@ -810,6 +796,9 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 	argcheck_cookie_t cookie;
 	dtrace_probedesc_t *pdesc;
 	size_t argno;
+	dt_ifg_list_t *c_node;
+	dt_ifg_node_t *child;
+	int check_types;
 
 	memset(&cookie, 0, sizeof(cookie));
 
@@ -932,11 +921,46 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var)
 			    "accessing arg%d in %s probe is not supported",
 			    argno, pdesc->dtpd_name);
 		} else {
+			uint8_t child_op;
 			cookie.node = n;
 			cookie.varcode = var;
 
-			dtrace_probe_iter(g_dtp, &n->din_edp->dted_probe,
-			    dt_infer_type_arg, &cookie);
+			check_types = 0;
+			for (c_node = dt_list_next(&n->din_r1children); c_node;
+			     c_node = dt_list_next(c_node)) {
+				child = c_node->dil_ifgnode;
+				assert(child->din_difo == n->din_difo);
+
+				child_op = DIF_INSTR_OP(
+				    child->din_buf[child->din_uidx]);
+
+				if (child_op != DIF_OP_RET &&
+				    child_op != DIF_OP_TYPECAST)
+					check_types = 1;
+			}
+
+			for (c_node = dt_list_next(&n->din_r2children); c_node;
+			     c_node = dt_list_next(c_node)) {
+				child = c_node->dil_ifgnode;
+				assert(child->din_difo == n->din_difo);
+
+				child_op = DIF_INSTR_OP(
+				    child->din_buf[child->din_uidx]);
+
+				if (child_op != DIF_OP_RET &&
+				    child_op != DIF_OP_TYPECAST)
+					check_types = 1;
+			}
+
+			if (check_types == 1)
+				dtrace_probe_iter(g_dtp, &n->din_edp->dted_probe,
+				    dt_infer_type_arg, &cookie);
+			else {
+				n->din_type = DIF_TYPE_CTF;
+				n->din_tf = dt_typefile_kernel();
+				n->din_ctfid = dt_typefile_ctfid(n->din_tf,
+				    "uint64_t");
+			}
 		}
 		break;
 
@@ -1906,6 +1930,10 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 {
 	ctf_id_t arg_ctfid;
 	ctf_id_t arg_kind;
+	int which, rv;
+	ctf_id_t passed_arg_ctfid;
+	ctf_id_t passed_arg_kind;
+
 
 	dt_get_typename_tfcheck(arg, tf, buf, bufsize, loc);
 
@@ -1917,11 +1945,32 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	arg_kind = dt_type_strip_typedef(tf, &arg_ctfid);
 	assert(arg_kind != CTF_K_TYPEDEF);
 
-	/*
-	 * If the argument type is wrong, fail to type check.
-	 */
-	if (arg_ctfid != arg->din_ctfid)
-		dt_set_progerr(g_dtp, g_pgp, "%s: %s != %s", loc, type, buf);
+	passed_arg_ctfid = arg->din_ctfid;
+	passed_arg_kind = dt_type_strip_typedef(arg->din_tf, &passed_arg_ctfid);
+	assert(passed_arg_kind != CTF_K_TYPEDEF);
+
+	if (arg_kind != passed_arg_kind)
+		dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)", loc,
+		    type, dt_typefile_stringof(tf), buf,
+		    dt_typefile_stringof(arg->din_tf));
+
+	if (arg_kind == CTF_K_INTEGER) {
+		rv = dt_type_subtype(arg->din_tf, arg->din_ctfid, tf, arg_ctfid,
+		    &which);
+		if (rv != 0 || which == 1)
+			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
+			    loc, type, dt_typefile_stringof(tf), buf,
+			    dt_typefile_stringof(arg->din_tf));
+	} else {
+		/*
+		 * If the argument type is wrong, fail to type check.
+		 */
+		if (dt_typefile_compat(
+		    arg->din_tf, arg->din_ctfid, tf, arg_ctfid) == 0)
+			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
+			    loc, type, dt_typefile_stringof(tf), buf,
+			    dt_typefile_stringof(arg->din_tf));
+	}
 }
 
 static int
