@@ -354,16 +354,36 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	 * pick the one that is larger as the one to use for our storage.
 	 */
 	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
-		/*
-		 * dt_ctf_type_compare will do the error reporting for us.
-		 */
-		if (dt_ctf_type_compare(tf1, id1, tf2, id2))
+		ctf_encoding_t enc1, enc2;
+
+		if (dt_typefile_encoding(tf1, id1, &enc1) != 0) {
+			fprintf(stderr,
+			    "dt_type_subtype(): failed getting encoding "
+			    "with %s: %s\n",
+			    dt_typefile_stringof(tf1), dt_typefile_error(tf1));
 			return (-1);
+		}
+
+		if (dt_typefile_encoding(tf2, id2, &enc2) != 0) {
+			fprintf(stderr,
+			    "dt_type_subtype(): failed getting encoding "
+			    "with %s: %s\n",
+			    dt_typefile_stringof(tf2), dt_typefile_error(tf2));
+			return (-1);
+		}
+
+		if (enc1.cte_format != enc2.cte_format) {
+			fprintf(stderr,
+			    "dt_type_subtype(): both arguments types"
+			    "need to have same signedness");
+			return (-1);
+		}
+
 
 		size1 = dt_typefile_typesize(tf1, id1);
 		size2 = dt_typefile_typesize(tf2, id2);
 
-		*which = size1 > size2 ? 1 : 2;
+		*which = size1 >= size2 ? 1 : 2;
 		return (0);
 	}
 
@@ -612,7 +632,8 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf1,
 		    sizeof(buf1)) != ((char *)buf1))
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed at getting type name %ld: %s",
+			    "dt_type_compare(): failed at getting type "
+			    "name %ld: %s",
 			    dn1->din_ctfid, dt_typefile_error(dn1->din_tf));
 	}
 
@@ -620,7 +641,8 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 		if (dt_typefile_typename(dn2->din_tf, dn2->din_ctfid, buf2,
 		    sizeof(buf2)) != ((char *)buf2))
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed at getting type name %ld: %s",
+			    "dt_type_compare(): failed at getting type "
+			    "name %ld: %s",
 			    dn2->din_ctfid, dt_typefile_error(dn2->din_tf));
 	}
 
@@ -1241,7 +1263,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			if (dt_typefile_typename(node->din_tf, node->din_ctfid,
 			    buf1, sizeof(buf1)) != ((char *)buf1))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name node %ld: %s",
+				    "dt_typecheck_regdefs(): failed at "
+				    "getting type name node %ld: %s",
 				    node->din_ctfid,
 				    dt_typefile_error(node->din_tf));
 
@@ -1264,7 +1287,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			    onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type onode name %ld: %s",
+				    "dt_typecheck_regdefs(): failed at "
+				    "getting type onode name %ld: %s",
 				    onode->din_ctfid,
 				    dt_typefile_error(onode->din_tf));
 
@@ -1278,7 +1302,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (node->din_tf != onode->din_tf) {
 				fprintf(stderr,
-				    "typefiles %s and %s do not match\n",
+				    "dt_typecheck_regdefs(): typefiles %s and "
+				    "%s do not match\n",
 				    dt_typefile_stringof(node->din_tf),
 				    dt_typefile_stringof(onode->din_tf));
 
@@ -1296,8 +1321,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			if ((node->din_isnull == 0 && onode->din_isnull == 0) &&
 			    node->din_ctfid != onode->din_ctfid) {
 				fprintf(stderr,
-				    "types %s (%zu) and %s (%zu) "
-				    "do not match\n",
+				    "dt_typecheck_regdefs(): types %s (%zu) "
+				    "and %s (%zu) do not match\n",
 				    buf1, node->din_uidx, buf2,
 				    onode->din_uidx);
 				return (NULL);
@@ -1306,7 +1331,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			if ((node->din_sym == NULL && onode->din_sym != NULL) ||
 			    (node->din_sym != NULL && onode->din_sym == NULL)) {
 				fprintf(stderr,
-				    "symbol is missing in a node\n");
+				    "dt_typecheck_regdefs(): symbol is "
+				    "missing in a node\n");
 				return (NULL);
 			}
 
@@ -1316,9 +1342,10 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 */
 			if (node->din_sym &&
 			    strcmp(node->din_sym, onode->din_sym) != 0) {
-				fprintf(stderr, "nodes have different "
-				    "symbols: %s != %s\n", node->din_sym,
-				    onode->din_sym);
+				fprintf(stderr,
+				    "dt_typecheck_regdefs(): nodes have "
+				    "different symbols: %s != %s\n",
+				    node->din_sym, onode->din_sym);
 				return (NULL);
 			}
 		}
@@ -1441,7 +1468,8 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			if (dt_typefile_typename(node->din_tf, node->din_ctfid,
 			    buf1, sizeof(buf1)) != ((char *)buf1))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
+				    "dt_typecheck_vardefs(): failed at getting "
+				    "type name %ld: %s",
 				    node->din_ctfid,
 				    dt_typefile_error(node->din_tf));
 
@@ -1455,16 +1483,16 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			    node->din_ctfid != var->dtdv_ctfid) {
 				if (var->dtdv_name >= difo->dtdo_strlen)
 					dt_set_progerr(g_dtp, g_pgp,
-					    "variable name outside strtab "
-					    "(%zu, %zu)", var->dtdv_name,
-					    difo->dtdo_strlen);
+					    "dt_typecheck_vardefs(): variable "
+					    "name outside strtab (%zu, %zu)",
+					    var->dtdv_name, difo->dtdo_strlen);
 
 				if (dt_typefile_typename(var->dtdv_tf,
 				    var->dtdv_ctfid, buf2,
 				    sizeof(buf2)) != ((char *)buf2))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting"
-					    "type name %ld: %s",
+					    "dt_typecheck_vardefs(): failed at "
+					    "getting type name %ld: %s",
 					    var->dtdv_ctfid,
 					    dt_typefile_error(var->dtdv_tf));
 
@@ -1490,7 +1518,8 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			    onode->din_ctfid, buf2,
 			    sizeof(buf2)) != ((char *)buf2))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
+				    "dt_typecheck_vardefs(): failed at getting "
+				    "type name %ld: %s",
 				    onode->din_ctfid,
 				    dt_typefile_error(onode->din_tf));
 
@@ -1499,8 +1528,8 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (node->din_tf != onode->din_tf) {
 				fprintf(stderr,
-				    "node has typefile %s "
-				    "but typefile %s is expected\n",
+				    "dt_typecheck_vardefs(): node has typefile "
+				    "%s but typefile %s is expected\n",
 				    dt_typefile_stringof(node->din_tf),
 				    dt_typefile_stringof(onode->din_tf));
 				return (NULL);
@@ -1511,22 +1540,25 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (node->din_ctfid != onode->din_ctfid) {
 				fprintf(stderr,
-				    "types %s and %s do not match\n", buf1,
-				    buf2);
+				    "dt_typecheck_vardefs(): types %s and "
+				    "%s do not match\n",
+				    buf1, buf2);
 				return (NULL);
 			}
 
 			if ((node->din_sym == NULL && onode->din_sym != NULL) ||
 			    (node->din_sym != NULL && onode->din_sym == NULL)) {
 				fprintf(stderr,
-				    "node or onode is missing a symbol\n");
+				    "dt_typecheck_vardefs(): node or onode "
+				    "is missing a symbol\n");
 				return (NULL);
 			}
 
 			if ((node->din_sym == NULL && var->dtdv_sym != NULL) ||
 			    (node->din_sym != NULL && var->dtdv_sym == NULL)) {
 				fprintf(stderr,
-				    "node or dif_var is missing a symbol\n");
+				    "dt_typecheck_vardefs(): node or dif_var "
+				    "is missing a symbol\n");
 				return (NULL);
 			}
 
@@ -1536,15 +1568,17 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			 */
 			if (node->din_sym &&
 			    strcmp(node->din_sym, onode->din_sym) != 0) {
-				fprintf(stderr, "nodes have different "
-				    "symbols: %s != %s\n", node->din_sym,
-				    onode->din_sym);
+				fprintf(stderr,
+				    "dt_typecheck_vardefs(): nodes have "
+				    "different symbols: %s != %s\n",
+				    node->din_sym, onode->din_sym);
 				return (NULL);
 			}
 
 			if (node->din_sym &&
 			    strcmp(node->din_sym, var->dtdv_sym) != 0) {
-				fprintf(stderr, "node and var "
+				fprintf(stderr,
+				    "dt_typecheck_vardefs(): node and var "
 				    "have different symbols: %s != %s\n",
 				    node->din_sym, onode->din_sym);
 				return (NULL);
@@ -1569,7 +1603,8 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	difovar = NULL;
 
 	if (dr == NULL && dif_var == NULL) {
-		fprintf(stderr, "both dr and dif_var are NULL\n");
+		fprintf(stderr,
+		    "dt_infer_type_var(): both dr and dif_var are NULL\n");
 		return (-1);
 	}
 
@@ -1577,7 +1612,9 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		return (dif_var->dtdv_type.dtdt_kind);
 
 	if (dif_var == NULL) {
-		fprintf(stderr, "dif_var is NULL, this makes no sense\n");
+		fprintf(stderr,
+		    "dt_infer_type_var(): dif_var is NULL, this makes "
+		    "no sense\n");
 		return (-1);
 	}
 
@@ -1599,15 +1636,17 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 
 	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
 	    dif_var->dtdv_type.dtdt_kind != dr->din_type) {
-		fprintf(stderr, "dif_var and dr have different types: %d != %d",
+		fprintf(stderr,
+		    "dt_infer_type_var(): dif_var and dr have different "
+		    "types: %d != %d",
 		    dif_var->dtdv_type.dtdt_kind, dr->din_type);
 
 		return (-1);
 	}
 
 	if (dr->din_type == DIF_TYPE_NONE || dr->din_type == DIF_TYPE_BOTTOM)
-		dt_set_progerr(
-		    g_dtp, g_pgp, "unexpected type %d", dr->din_type);
+		dt_set_progerr(g_dtp, g_pgp,
+		    "dt_infer_type_var(): unexpected type %d", dr->din_type);
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
 		return (DIF_TYPE_STRING);
@@ -1615,8 +1654,8 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	if (dif_var->dtdv_ctfid != CTF_ERR) {
 		if (dif_var->dtdv_tf != dr->din_tf) {
 			fprintf(stderr,
-			    "variable %d has typefile %s, but the "
-			    "node we are compearing it to has "
+			    "dt_infer_type_var(): variable %d has typefile "
+			    "%s, but the node we are compearing it to has "
 			    "typefile %s\n",
 			    dif_var->dtdv_id,
 			    dt_typefile_stringof(dif_var->dtdv_tf),
@@ -1629,18 +1668,22 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			    dif_var->dtdv_ctfid, var_type,
 			    sizeof(var_type)) != ((char *)var_type))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
+				    "dt_infer_type_var(): failed at getting "
+				    "type name %ld: %s",
 				    dif_var->dtdv_ctfid,
 				    dt_typefile_error(dif_var->dtdv_tf));
 
 			if (dt_typefile_typename(dr->din_tf, dr->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
+				    "dt_infer_type_var(): failed at getting "
+				    "type name %ld: %s",
 				    dr->din_ctfid,
 				    dt_typefile_error(dr->din_tf));
 
-			fprintf(stderr, "type mismatch in STTS: %s != %s\n",
+			fprintf(stderr,
+			    "dt_infer_type_var(): type mismatch "
+			    "in STTS: %s != %s\n",
 			    var_type, buf);
 
 			return (-1);
@@ -1650,12 +1693,14 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			if (dr->din_sym && strcmp(
 				dif_var->dtdv_sym, dr->din_sym) != 0) {
 				fprintf(stderr,
-				    "symbol name mismatch: %s != %s\n",
+				    "dt_infer_type_var(): symbol name "
+				    "mismatch: %s != %s\n",
 				    dif_var->dtdv_sym, dr->din_sym);
 
 				return (-1);
 			} else if (dr->din_sym == NULL) {
-				fprintf(stderr, "din_sym is NULL\n");
+				fprintf(stderr,
+				    "dt_infer_type_var(): din_sym is NULL\n");
 				return (-1);
 			}
 		}
@@ -1821,22 +1866,27 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 		for (se = dt_list_next(stack); se; se = dt_list_next(se)) {
 			n = se->ds_ifgnode;
 			if (dt_infer_type(n) == -1)
-				dt_set_progerr(g_dtp, g_pgp, "failed to infer type for"
-				    "opcode %d at %zu\n",
-				    n->din_buf[n->din_uidx], n->din_uidx);
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_typecheck_stack(): failed to infer "
+				    "type for opcode %d at %zu (%p)\n",
+				    n->din_buf[n->din_uidx], n->din_uidx,
+				    n->din_difo);
 		}
 
 		if (ostack == NULL)
 			continue;
 
 		for (se = dt_list_next(stack), ose = dt_list_next(ostack);
-		     se && ose; se = dt_list_next(se), ose = dt_list_next(ose)) {
+		     se && ose;
+		     se = dt_list_next(se), ose = dt_list_next(ose)) {
 			n = se->ds_ifgnode;
 			on = ose->ds_ifgnode;
 
 			if (n->din_type != on->din_type) {
 				fprintf(stderr,
-				    "stack type mismatch: %d != %d\n",
+				    "dt_typecheck_stack(): stack type "
+				    "mismatch at %zu and %zu (%p): %d != %d\n",
+				    n->din_uidx, on->din_uidx, n->din_difo,
 				    n->din_type, on->din_type);
 
 				return (NULL);
@@ -1854,8 +1904,8 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 				    n->din_ctfid, buf1,
 				    sizeof(buf1)) != ((char *)buf1))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting "
-					    "type name %ld: %s",
+					    "dt_typecheck_stack(): failed at "
+					    "getting type name %ld: %s",
 					    n->din_ctfid,
 					    dt_typefile_error(n->din_tf));
 
@@ -1863,20 +1913,26 @@ dt_typecheck_stack(dt_list_t *stacklist, int *empty)
 				    on->din_ctfid, buf2,
 				    sizeof(buf2)) != ((char *)buf2))
 					dt_set_progerr(g_dtp, g_pgp,
-					    "failed at getting "
-					    "type name %ld: %s",
+					    "dt_typecheck_stack(): failed at"
+					    "getting type name %ld: %s",
 					    on->din_ctfid,
 					    dt_typefile_error(on->din_tf));
 
 				fprintf(stderr,
-				    "stack ctf type mismatch: %s != %s\n",
+				    "dt_typecheck_stack(): stack ctf type "
+				    "mismatch at %zu and %zu (%p): %s != %s\n",
+				    n->din_uidx, on->din_uidx, n->din_difo,
 				    buf1, buf2);
 
 				return (NULL);
 			}
 
 			if (n->din_sym || on->din_sym) {
-				fprintf(stderr, "symbol found on stack\n");
+				fprintf(stderr,
+				    "dt_typecheck_stack(): symbol found "
+				    "on stack at %zu (%p)\n",
+				    n->din_sym ? n->din_uidx : on->din_uidx,
+				    n->din_difo);
 				return (NULL);
 			}
 		}
@@ -1950,14 +2006,14 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	assert(passed_arg_kind != CTF_K_TYPEDEF);
 
 	if (arg_kind != passed_arg_kind)
-		dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)", loc,
-		    type, dt_typefile_stringof(tf), buf,
+		dt_set_progerr(g_dtp, g_pgp, "%s (argkind): %s (%s) != %s (%s)",
+		    loc, type, dt_typefile_stringof(tf), buf,
 		    dt_typefile_stringof(arg->din_tf));
 
 	if (arg_kind == CTF_K_INTEGER) {
 		rv = dt_type_subtype(arg->din_tf, arg->din_ctfid, tf, arg_ctfid,
 		    &which);
-		if (rv != 0 || which == 1)
+		if (rv != 0 || which == 2)
 			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
 			    loc, type, dt_typefile_stringof(tf), buf,
 			    dt_typefile_stringof(arg->din_tf));
@@ -4698,7 +4754,7 @@ dt_infer_type(dt_ifg_node_t *n)
 	case DIF_OP_ALLOCS:
 		n->din_ctfid = 0;
 		n->din_tf = dt_typefile_kernel();
-		n->din_type = DIF_TYPE_CTF;
+		n->din_type = DIF_TYPE_STRING;
 		n->din_mip = NULL;
 		n->din_sym = NULL;
 
@@ -5237,9 +5293,11 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 			if (dt_typefile_typename(node->din_tf,
 			    node->din_ctfid, buf, sizeof(buf)) != (char *)buf)
 				dt_set_progerr(g_dtp, g_pgp,
-				    "failed at getting type name %ld: %s",
+				    "dt_prog_infer_types(): failed at getting "
+				    "type name %ld: %s (DIFO %p, node %zu)",
 				    node->din_ctfid,
-				    dt_typefile_error(node->din_tf));
+				    dt_typefile_error(node->din_tf),
+				    node->din_difo, node->din_uidx);
 			difo->dtdo_types[node->din_uidx] = strdup(buf);
 		} else if (type == DIF_TYPE_STRING)
 			difo->dtdo_types[node->din_uidx] = strdup("string");
