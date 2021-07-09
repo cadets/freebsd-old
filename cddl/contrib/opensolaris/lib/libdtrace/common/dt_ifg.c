@@ -672,6 +672,11 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 		r2 = DIF_INSTR_R2(instr);
 		rd = DIF_INSTR_RD(instr);
 
+		assert(rd < DIF_DIR_NREGS + 2);
+		assert(r1 < DIF_DIR_NREGS + 2);
+		assert(r2 < DIF_DIR_NREGS + 2);
+
+
 		if (active_varregs[r1] == 0 && active_varregs[r2] == 0)
 			active_varregs[rd] = 0;
 
@@ -690,6 +695,8 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 		 */
 		rd = DIF_INSTR_RD(instr);
 		r1 = DIF_INSTR_R1(instr);
+		assert(rd < DIF_DIR_NREGS + 2);
+		assert(r1 < DIF_DIR_NREGS + 2);
 
 		active_varregs[rd] = active_varregs[r1];
 		break;
@@ -730,6 +737,8 @@ dt_compute_active_varregs(uint8_t *active_varregs, size_t n_varregs,
 
 	default:
 		rd = DIF_INSTR_RD(instr);
+		assert(rd < DIF_DIR_NREGS + 2);
+
 		active_varregs[rd] = 0;
 	}
 }
@@ -788,6 +797,7 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 		scope = DIFV_SCOPE_LOCAL;
 
 	curnode_rd = DIF_INSTR_RD(instr);
+	assert(curnode_rd < DIF_DIR_NREGS + 2);
 
 	/*
 	 * Activate the current node's destination register.
@@ -828,7 +838,7 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 		dt_compute_active_varregs(active_varregs, DIF_DIR_NREGS, n);
 
 		keep_going = 0;
-		for (i = 0; i < DIF_DIR_NREGS; i++)
+		for (i = 0; i < DIF_DIR_NREGS + 2; i++)
 			if (active_varregs[i] == 1)
 				keep_going = 1;
 
@@ -850,6 +860,8 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 		 * list.
 		 */
 		rd = DIF_INSTR_RD(instr);
+		assert(rd < DIF_DIR_NREGS + 2);
+
 		if (active_varregs[rd] == 0)
 			continue;
 
@@ -878,6 +890,68 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 }
 
 static void
+remove_basic_blocks(dt_basic_block_t *bb, dt_basic_block_t **bb_path,
+    ssize_t *bb_last, int *bb_in_path, int *to_visit)
+{
+	dt_bb_entry_t *parent, *child;
+	dt_basic_block_t *parent_bb, *child_bb;
+	int iterated, remove;
+
+	/*
+	 * Start by removing the current basic block from the path. Since
+	 * this will always be the last element in bb_path, we just need to
+	 * decrement bb_last and we can consider it to be out of bb_path.
+	 */
+	bb_in_path[bb->dtbb_idx] = 0;
+	*bb_last--;
+
+	/*
+	 * Find the parent that's in the path.
+	 */
+	iterated = 0;
+	parent_bb = NULL;
+	for (parent = dt_list_next(&bb->dtbb_parents); parent;
+	     parent = dt_list_next(parent)) {
+		iterated = 1;
+		parent_bb = parent->dtbe_bb;
+
+		if (bb_in_path[parent_bb->dtbb_idx])
+			break;
+	}
+
+	/*
+	 * There's only one case when we won't have a parent. That case is when
+	 * we are in the root node. In that case, we will simply assert a few
+	 * things and break out of the function.
+	 */
+	assert((iterated == 0 && parent_bb == NULL) ||
+	    (iterated == 1 && parent_bb != NULL));
+
+	if (parent_bb == NULL) {
+		assert(bb->dtbb_start == 0);
+		return;
+	}
+
+	remove = 1;
+	for (child = dt_list_next(&parent_bb->dtbb_children); child;
+	     child = dt_list_next(child)) {
+		child_bb = child->dtbe_bb;
+
+		if (to_visit[child_bb->dtbb_idx]) {
+			remove = 0;
+			break;
+		}
+	}
+	/*
+	 * Given that this is tail-recursive, the compiler should be able to
+	 * optimize it away, and we don't need to unroll anything.
+	 */
+	if (remove)
+		remove_basic_blocks(parent_bb, bb_path, bb_last, bb_in_path,
+		    to_visit);
+}
+
+static void
 dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
     dt_node_kind_t *nkind, dt_ifg_list_t *ifgl)
 {
@@ -888,21 +962,25 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	uint16_t var;
 	dt_basic_block_t *bb_path[DT_BB_MAX];
 	ssize_t bb_last;
-	int bb_in_path[DT_BB_MAX]; /* Needed for a DP approach */
+	int bb_in_path[DT_BB_MAX]; /* Quick lookup */
+	int to_visit[DT_BB_MAX]; /* Quick lookup */
 	dt_basic_block_t *bb_stack[DT_BB_MAX];
-	int visited[DT_BB_MAX];
 	ssize_t top;
 	size_t i;
-	uint8_t active_varregs[DIF_DIR_NREGS];
+	uint8_t active_varregs[DIF_DIR_NREGS + 2];
 
 	if (ifgl == NULL || difo == NULL || bb == NULL || nkind == NULL)
 		return;
 
 	memset(active_varregs, 0, sizeof(active_varregs));
-	memset(visited, 0, sizeof(visited));
 	memset(bb_stack, 0, sizeof(bb_stack));
 	memset(bb_path, 0, sizeof(bb_path));
 	memset(bb_in_path, 0, sizeof(bb_in_path));
+
+	/*
+	 * We need to visit everything to start with.
+	 */
+	memset(to_visit, 1, sizeof(to_visit));
 
 	bb_last = -1;
 
@@ -918,31 +996,34 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		redefined = 0;
 		var_redefined = 0;
 
-		if (visited[bb->dtbb_idx] == 0) {
-			bb_path[++bb_last] = bb;
-			bb_in_path[bb->dtbb_idx] = 1;
+		bb_path[++bb_last] = bb;
+		bb_in_path[bb->dtbb_idx] = 1;
+		to_visit[bb->dtbb_idx] = 0;
 
-			if (nkind->dtnk_kind == DT_NKIND_REG) {
-				if (redefined == 0)
-					redefined = dt_update_nodes_bb_reg(difo,
-					    bb, nkind->dtnk_rd, ifgl);
-				if (var_redefined == 0) {
-					update_active_varregs(active_varregs,
-					    difo, bb, ifgl);
-					var_redefined = 1;
-					for (i = 0; i < DIF_DIR_NREGS; i++)
-						if (active_varregs[i] == 1)
-							var_redefined = 0;
-				}
-			} else if (nkind->dtnk_kind == DT_NKIND_VAR)
-				redefined = dt_update_nodes_bb_var(difo, bb,
-				    nkind, ifgl);
-			else if (nkind->dtnk_kind == DT_NKIND_STACK) {
-				redefined = dt_update_nodes_bb_stack(bb_path,
-				    bb_last + 1, difo, bb, ifgl);
-			} else
-				return;
-		}
+		if (nkind->dtnk_kind == DT_NKIND_REG) {
+			if (redefined == 0)
+				redefined = dt_update_nodes_bb_reg(difo, bb,
+				    nkind->dtnk_rd, ifgl);
+			if (var_redefined == 0) {
+				update_active_varregs(active_varregs, difo, bb,
+				    ifgl);
+				var_redefined = 1;
+				for (i = 0; i < DIF_DIR_NREGS + 2; i++)
+					if (active_varregs[i] == 1)
+						var_redefined = 0;
+			}
+		} else if (nkind->dtnk_kind == DT_NKIND_VAR)
+			redefined = dt_update_nodes_bb_var(difo, bb, nkind,
+			    ifgl);
+		else if (nkind->dtnk_kind == DT_NKIND_STACK)
+			redefined = dt_update_nodes_bb_stack(bb_path,
+			    bb_last + 1, difo, bb, ifgl);
+		else
+			return;
+
+		if (redefined || dt_list_next(&bb->dtbb_children) == NULL)
+			remove_basic_blocks(bb, bb_path, &bb_last, bb_in_path,
+			    to_visit);
 
 		if (var_redefined == 0 || redefined == 0) {
 			for (chld = dt_list_next(&bb->dtbb_children); chld;
@@ -954,8 +1035,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					    "dt_update_nodes(): too many basic "
 					    "blocks.");
 
-				if (visited[bb->dtbb_idx] == 0)
-					bb_stack[++top] = bb;
+				bb_stack[++top] = bb;
 			}
 		}
 	}
