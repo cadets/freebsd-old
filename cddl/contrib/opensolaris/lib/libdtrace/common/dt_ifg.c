@@ -382,8 +382,8 @@ dt_update_nodes_bb_var(dtrace_difo_t *difo, dt_basic_block_t *bb,
 }
 
 static int
-dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
-    dt_basic_block_t *bb, dt_ifg_list_t *ifgl)
+dt_update_nodes_bb_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len,
+    dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_list_t *ifgl)
 {
 	dtrace_difo_t *_difo;
 	dt_ifg_node_t *n;
@@ -428,7 +428,10 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 			continue;
 
 		if (n_pushes < 1)
-			errx(EXIT_FAILURE, "n_pushes is %d", n_pushes);
+			errx(EXIT_FAILURE,
+			    "dt_update_nodes_bb_stack(): n_pushes (%d) < 0 on "
+			    "DIFO %p (node %zu)",
+			    n_pushes, n->din_difo, n->din_uidx);
 
 		if (n->din_uidx <= curnode->din_uidx)
 			continue;
@@ -462,7 +465,7 @@ dt_update_nodes_bb_stack(dt_list_t *bb_path, dtrace_difo_t *difo,
 
 			s_entry->ds_ifgnode = curnode;
 
-			curstack = dt_get_stack(bb_path, n);
+			curstack = dt_get_stack(bb_path, bb_path_len, n);
 			if (curstack == NULL)
 				errx(EXIT_FAILURE, "curstack should not be NULL");
 
@@ -883,8 +886,9 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	int redefined, var_redefined;
 	uint8_t rd;
 	uint16_t var;
-	dt_list_t bb_path;
-	dt_pathlist_t *bb_path_entry;
+	dt_basic_block_t *bb_path[DT_BB_MAX];
+	ssize_t bb_last;
+	int bb_in_path[DT_BB_MAX]; /* Needed for a DP approach */
 	dt_basic_block_t *bb_stack[DT_BB_MAX];
 	int visited[DT_BB_MAX];
 	ssize_t top;
@@ -897,7 +901,10 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	memset(active_varregs, 0, sizeof(active_varregs));
 	memset(visited, 0, sizeof(visited));
 	memset(bb_stack, 0, sizeof(bb_stack));
-	memset(&bb_path, 0, sizeof(bb_path));
+	memset(bb_path, 0, sizeof(bb_path));
+	memset(bb_in_path, 0, sizeof(bb_in_path));
+
+	bb_last = -1;
 
 	top = -1;
 	bb_stack[++top] = bb;
@@ -910,17 +917,10 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		chld_bb = NULL;
 		redefined = 0;
 		var_redefined = 0;
-		bb_path_entry = NULL;
 
 		if (visited[bb->dtbb_idx] == 0) {
-			bb_path_entry = malloc(sizeof(dt_pathlist_t));
-			if (bb_path_entry == NULL)
-				errx(EXIT_FAILURE,
-				    "failed to malloc bb_path_entry");
-
-			memset(bb_path_entry, 0, sizeof(dt_pathlist_t));
-			bb_path_entry->dtpl_bb = bb;
-			dt_list_append(&bb_path, bb_path_entry);
+			bb_path[++bb_last] = bb;
+			bb_in_path[bb->dtbb_idx] = 1;
 
 			if (nkind->dtnk_kind == DT_NKIND_REG) {
 				if (redefined == 0)
@@ -937,11 +937,11 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			} else if (nkind->dtnk_kind == DT_NKIND_VAR)
 				redefined = dt_update_nodes_bb_var(difo, bb,
 				    nkind, ifgl);
-			else if (nkind->dtnk_kind == DT_NKIND_STACK)
-				redefined = dt_update_nodes_bb_stack(&bb_path,
-				    difo, bb, ifgl);
-			else
-				goto end;
+			else if (nkind->dtnk_kind == DT_NKIND_STACK) {
+				redefined = dt_update_nodes_bb_stack(bb_path,
+				    bb_last + 1, difo, bb, ifgl);
+			} else
+				return;
 		}
 
 		if (var_redefined == 0 || redefined == 0) {
@@ -951,17 +951,13 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 				assert(bb != NULL);
 				if (bb->dtbb_idx >= DT_BB_MAX)
 					errx(EXIT_FAILURE,
-					    "too many basic blocks.");
+					    "dt_update_nodes(): too many basic "
+					    "blocks.");
 
 				if (visited[bb->dtbb_idx] == 0)
 					bb_stack[++top] = bb;
 			}
 		}
-	}
-end:
-	while (chld = dt_list_next(&bb_path)) {
-		dt_list_delete(&bb_path, chld);
-		free(chld);
 	}
 }
 

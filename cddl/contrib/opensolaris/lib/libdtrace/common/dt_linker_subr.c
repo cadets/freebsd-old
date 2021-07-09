@@ -467,15 +467,32 @@ dt_populate_varlist(dtrace_difo_t *difo)
 }
 
 dt_stacklist_t *
-dt_get_stack(dt_list_t *bb_path, dt_ifg_node_t *n)
+dt_get_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len, dt_ifg_node_t *n)
 {
 	dt_stacklist_t *sl;
+	dt_bb_entry_t *bb_l;
+	dt_basic_block_t *bb;
+	ssize_t i;
 
 	sl = NULL;
 
+	if (bb_path_len <= 0)
+		return (NULL);
+
 	for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
-		if (dt_list_equal(bb_path,
-		    &sl->dsl_identifier, sizeof(dt_pathlist_t)))
+		int equal;
+
+		equal = 1;
+		for (i = 0; i < bb_path_len; i++) {
+			for (bb_l = dt_list_next(&sl->dsl_identifier); bb_l;
+			     bb_l = dt_list_next(bb_l)) {
+				bb = bb_l->dtbe_bb;
+				if (bb != bb_path[i])
+					equal = 0;
+			}
+		}
+
+		if (equal != 0)
 			break;
 	}
 
@@ -485,8 +502,18 @@ dt_get_stack(dt_list_t *bb_path, dt_ifg_node_t *n)
 			errx(EXIT_FAILURE, "failed to malloc sl");
 
 		memset(sl, 0, sizeof(dt_stacklist_t));
-		dt_list_copy((dt_list_t *)&sl->dsl_identifier,
-		    bb_path, sizeof(dt_pathlist_t));
+
+		for (i = 0; i < bb_path_len; i++) {
+			dt_bb_entry_t *bb_path_entry;
+			bb_path_entry = malloc(sizeof(dt_bb_entry_t));
+			if (bb_path_entry == NULL)
+				errx(EXIT_FAILURE,
+				    "dt_get_stack(): malloc failed for "
+				    "bb_path_entry");
+
+			bb_path_entry->dtbe_bb = bb_path[i];
+			dt_list_append(&sl->dsl_identifier, bb_path_entry);
+		}
 
 		dt_list_append(&n->din_stacklist, sl);
 	}

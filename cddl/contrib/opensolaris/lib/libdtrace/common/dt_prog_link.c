@@ -541,7 +541,7 @@ dt_prog_infer_usetxs(dtrace_difo_t *difo)
 }
 
 static void
-dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
+dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 {
 	size_t inthash_size;
 	uint64_t *otab;
@@ -584,6 +584,9 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		var = &difo->dtdo_vartab[i];
 
+		/*
+		 * XXX(dstolfa): This might not be needed?
+		 */
 		if (dt_var_is_builtin(var->dtdv_id))
 			continue;
 
@@ -620,7 +623,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	if (rval != 0)
 		return (rval);
 
-	dt_prog_assemble(dtp, difo);
+	dt_prog_assemble(dtp, pgp, difo);
 	return (0);
 }
 
