@@ -756,8 +756,8 @@ dtrace_program_header(dtrace_hdl_t *dtp, FILE *out, const char *fname)
 }
 
 int
-dt_prog_verify_difo(dtrace_hdl_t *dtp,
-    dtrace_difo_t *dbase, dtrace_difo_t *dnew)
+dt_prog_verify_difo(dtrace_hdl_t *dtp, dtrace_difo_t *dbase,
+    dtrace_difo_t *dnew)
 {
 	size_t i;
 	dif_instr_t ibase, inew;
@@ -847,8 +847,7 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp,
 }
 
 int
-dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase,
-    dtrace_prog_t *pnew)
+dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 {
 	dt_stmt_t *sbase, *snew;
 	dtrace_stmtdesc_t *sdbase, *sdnew;
