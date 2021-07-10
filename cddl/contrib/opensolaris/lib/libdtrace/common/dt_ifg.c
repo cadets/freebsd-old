@@ -1025,7 +1025,8 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			remove_basic_blocks(bb, bb_path, &bb_last, bb_in_path,
 			    to_visit);
 
-		if (var_redefined == 0 || redefined == 0) {
+		if ((nkind->dtnk_kind == DT_NKIND_REG && var_redefined == 0) ||
+		    redefined == 0) {
 			for (chld = dt_list_next(&bb->dtbb_children); chld;
 			     chld = dt_list_next(chld)) {
 				bb = chld->dtbe_bb;
