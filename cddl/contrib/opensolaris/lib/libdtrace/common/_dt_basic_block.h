@@ -48,6 +48,7 @@ typedef struct dt_basic_block {
 typedef struct dt_bb_entry {
 	dt_list_t		dtbe_list;
 	dt_basic_block_t	*dtbe_bb;
+	int			dtbe_tovisit;
 } dt_bb_entry_t;
 
 #endif /* __DT_BASIC_BLOCK_H_ */

@@ -891,7 +891,7 @@ update_active_varregs(uint8_t active_varregs[DIF_DIR_NREGS],
 
 static void
 remove_basic_blocks(dt_basic_block_t *bb, dt_basic_block_t **bb_path,
-    ssize_t *bb_last, int *bb_in_path, int *to_visit)
+    ssize_t *bb_last, int *bb_in_path)
 {
 	dt_bb_entry_t *parent, *child;
 	dt_basic_block_t *parent_bb, *child_bb;
@@ -937,7 +937,7 @@ remove_basic_blocks(dt_basic_block_t *bb, dt_basic_block_t **bb_path,
 	     child = dt_list_next(child)) {
 		child_bb = child->dtbe_bb;
 
-		if (to_visit[child_bb->dtbb_idx]) {
+		if (child->dtbe_tovisit == 1) {
 			remove = 0;
 			break;
 		}
@@ -947,8 +947,7 @@ remove_basic_blocks(dt_basic_block_t *bb, dt_basic_block_t **bb_path,
 	 * optimize it away, and we don't need to unroll anything.
 	 */
 	if (remove)
-		remove_basic_blocks(parent_bb, bb_path, bb_last, bb_in_path,
-		    to_visit);
+		remove_basic_blocks(parent_bb, bb_path, bb_last, bb_in_path);
 }
 
 static void
@@ -963,7 +962,6 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	dt_basic_block_t *bb_path[DT_BB_MAX];
 	ssize_t bb_last;
 	int bb_in_path[DT_BB_MAX]; /* Quick lookup */
-	int to_visit[DT_BB_MAX]; /* Quick lookup */
 	dt_basic_block_t *bb_stack[DT_BB_MAX];
 	ssize_t top;
 	size_t i;
@@ -976,11 +974,6 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	memset(bb_stack, 0, sizeof(bb_stack));
 	memset(bb_path, 0, sizeof(bb_path));
 	memset(bb_in_path, 0, sizeof(bb_in_path));
-
-	/*
-	 * We need to visit everything to start with.
-	 */
-	memset(to_visit, 1, sizeof(to_visit));
 
 	bb_last = -1;
 
@@ -998,7 +991,6 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 
 		bb_path[++bb_last] = bb;
 		bb_in_path[bb->dtbb_idx] = 1;
-		to_visit[bb->dtbb_idx] = 0;
 
 		if (nkind->dtnk_kind == DT_NKIND_REG) {
 			if (redefined == 0)
@@ -1022,8 +1014,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			return;
 
 		if (redefined || dt_list_next(&bb->dtbb_children) == NULL)
-			remove_basic_blocks(bb, bb_path, &bb_last, bb_in_path,
-			    to_visit);
+			remove_basic_blocks(bb, bb_path, &bb_last, bb_in_path);
 
 		if ((nkind->dtnk_kind == DT_NKIND_REG && var_redefined == 0) ||
 		    redefined == 0) {
@@ -1037,6 +1028,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					    "blocks.");
 
 				bb_stack[++top] = bb;
+				chld->dtbe_tovisit = 0;
 			}
 		}
 	}

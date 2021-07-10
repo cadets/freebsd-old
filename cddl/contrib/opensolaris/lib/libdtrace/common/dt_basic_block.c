@@ -72,6 +72,7 @@ dt_alloc_bb_e(dtrace_difo_t *difo)
 	memset(bb_e, 0, sizeof(dt_bb_entry_t));
 
 	bb_e->dtbe_bb = dt_alloc_bb(difo);
+	bb_e->dtbe_tovisit = 1;
 	if (bb_e->dtbe_bb == NULL)
 		errx(EXIT_FAILURE, "failed to allocate the basic block");
 
