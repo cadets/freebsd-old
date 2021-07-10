@@ -39,8 +39,6 @@
 #include <dt_ifgnode.h>
 #include <dt_typefile.h>
 #include <dt_typing_helpers.h>
-#include <dt_typing_subr.h>
-#include <dt_typing_var.h>
 
 #include <stdio.h>
 #include <stdlib.h>
