@@ -25,12 +25,24 @@
  * $FreeBSD$
  */
 
-#ifndef _DT_TYPING_SUBR_H_
-#define _DT_TYPING_SUBR_H_
+#ifndef _DT_TYPING_VAR_H_
+#define _DT_TYPING_VAR_H_
 
-#include <dt_list.h>
+#include <sys/types.h>
+#include <sys/dtrace.h>
+
 #include <_dt_ifgnode.h>
+#include <dtrace.h>
 
-extern int dt_infer_type_subr(dt_ifg_node_t *, dt_list_t *);
+typedef struct argcheck_cookie {
+	dt_ifg_node_t *node;
+	uint16_t varcode;
+} argcheck_cookie_t;
 
-#endif /* _DT_TYPING_SUBR_H_ */
+extern void dt_builtin_type(dt_ifg_node_t *n, uint16_t var);
+extern int dt_infer_type_arg(dtrace_hdl_t *, const dtrace_probedesc_t *,
+    void *);
+extern int dt_infer_type_var(dtrace_difo_t *, dt_ifg_node_t *, dtrace_difv_t *);
+extern dt_ifg_node_t *dt_typecheck_vardefs(dtrace_difo_t *, dt_list_t *, int *);
+
+#endif /* _DT_TYPING_VAR_H_ */
