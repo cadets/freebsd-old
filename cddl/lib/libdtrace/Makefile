@@ -55,6 +55,7 @@ SRCS=		dt_aggregate.c \
 		dt_typefile.c \
 		dt_typing.c \
 		dt_typing_helpers.c \
+		dt_typing_subr.c \
 		dt_work.c \
 		dt_xlator.c \
 		gmatch.c

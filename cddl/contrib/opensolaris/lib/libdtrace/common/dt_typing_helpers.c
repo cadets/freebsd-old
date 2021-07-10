@@ -652,3 +652,25 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	return (-1);
 }
 
+void
+dt_get_typename_tfcheck(dt_ifg_node_t *n, dt_typefile_t *tf, char *buf,
+    size_t bufsize, const char *loc)
+{
+	if (n->din_tf != tf)
+		dt_set_progerr(g_dtp, g_pgp,
+		    "%s: node %zu' typefile is %s, expected %s", loc,
+		    n->din_uidx, dt_typefile_stringof(n->din_tf),
+		    dt_typefile_stringof(tf));
+
+	if (dt_typefile_typename(n->din_tf, n->din_ctfid, buf, bufsize) != buf)
+		dt_set_progerr(g_dtp, g_pgp,
+		    "%s: (%zu) failed getting type name %ld: %s", loc,
+		    n->din_uidx, n->din_ctfid, dt_typefile_error(n->din_tf));
+}
+
+void
+dt_get_typename(dt_ifg_node_t *n, char *buf, size_t bufsize, const char *loc)
+{
+
+	dt_get_typename_tfcheck(n, n->din_tf, buf, bufsize, loc);
+}
