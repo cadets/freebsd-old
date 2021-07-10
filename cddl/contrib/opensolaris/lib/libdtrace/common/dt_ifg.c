@@ -1028,6 +1028,16 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					    "blocks.");
 
 				bb_stack[++top] = bb;
+				/*
+				 * This is a little more subtle than it looks.
+				 * dtbe_tovisit here is not per basic-block.
+				 * It is in fact per individual child of each
+				 * basic block -- which differs for different
+				 * basic blocks. This ensures that we have a
+				 * way to say "have we visited the children
+				 * of *this particular basic block*" rather than
+				 * "have we visited this basic block".
+				 */
 				chld->dtbe_tovisit = 0;
 			}
 		}
