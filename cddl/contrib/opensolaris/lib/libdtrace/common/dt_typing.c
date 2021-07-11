@@ -94,6 +94,7 @@ dt_infer_type(dt_ifg_node_t *n)
 	dt_list_t *stack;
 	int empty;
 	ctf_id_t varkind;
+	size_t userland_len = strlen("userland ");
 
 	const char *insname[] = {
 		[DIF_OP_OR]        = "or",
@@ -416,6 +417,22 @@ dt_infer_type(dt_ifg_node_t *n)
 			    "dt_infer_type(%s, %zu): "
 			    "length (%zu) >= %zu when copying type name",
 			    insname[opcode], n->din_uidx, l, sizeof(symname));
+
+		if (strncmp(symname, "userland ", userland_len) == 0) {
+			char *tmpbuf;
+
+			tmpbuf = malloc(sizeof(symname));
+			if (tmpbuf == NULL)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type(%s, %zu): "
+				    "malloc() failed: %s",
+				    insname[opcode], n->din_uidx,
+				    strerror(errno));
+
+			memcpy(tmpbuf, symname + userland_len,
+			    sizeof(symname) - userland_len);
+			memcpy(symname, tmpbuf, sizeof(symname));
+		}
 
 		/*
 		 * We kind of have to guess here. We start by getting the
