@@ -76,10 +76,12 @@ extern void dt_program_destroy(dtrace_hdl_t *, dtrace_prog_t *);
 extern dtrace_ecbdesc_t *dt_ecbdesc_create(dtrace_hdl_t *,
     const dtrace_probedesc_t *);
 extern void dt_ecbdesc_release(dtrace_hdl_t *, dtrace_ecbdesc_t *);
-extern int dt_prog_verify(dtrace_hdl_t *, dtrace_prog_t *,
-    dtrace_prog_t *);
+extern void *dt_verictx_init(dtrace_hdl_t *);
+extern void dt_verictx_teardown(void *);
+extern int dt_prog_verify(void *, dtrace_prog_t *, dtrace_prog_t *);
 extern void dt_prog_generate_ident(dtrace_prog_t *);
-extern dtrace_prog_t *dt_vprog_from(dtrace_hdl_t *, dtrace_prog_t *, int);
+extern dtrace_prog_t *dt_vprog_from(dtrace_hdl_t *, dtrace_prog_t *,
+    int);
 #ifdef	__cplusplus
 }
 #endif

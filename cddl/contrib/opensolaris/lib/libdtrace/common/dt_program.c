@@ -37,10 +37,23 @@
 #endif
 
 #include <dt_impl.h>
+#include <dt_linker_subr.h>
 #include <dt_program.h>
 #include <dt_printf.h>
 #include <dt_provider.h>
 
+#define VERICTX_DEFAULT_VECSIZE 256 /* We expect around 256 DIFOs by default. */
+
+typedef struct dt_verictx {
+	dtrace_hdl_t *dtp;
+
+	/*
+	 * Vector
+	 */
+	dtrace_difo_t **difovec;
+	size_t num_difos;
+	size_t difovec_size;
+} dt_verictx_t;
 void dt_prog_generate_ident(dtrace_prog_t *);
 
 dtrace_prog_t *
@@ -756,18 +769,46 @@ dtrace_program_header(dtrace_hdl_t *dtp, FILE *out, const char *fname)
 }
 
 int
-dt_prog_verify_difo(dtrace_hdl_t *dtp, dtrace_difo_t *dbase,
+dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
     dtrace_difo_t *dnew)
 {
-	size_t i;
+	size_t i, j;
 	dif_instr_t ibase, inew;
 	uint8_t opbase, opnew;
+	dt_verictx_t *ctx = _ctx;
+	dtrace_hdl_t *dtp;
+	dtrace_difv_t *difv, *curdifo_var;
+	dtrace_difo_t *difo;
 
 	i = 0;
 	ibase = 0;
 	inew = 0;
 	opbase = 0;
 	opnew = 0;
+	dtp = ctx->dtp;
+	for (i = 0; i < ctx->num_difos; i++) {
+		difo = ctx->difovec[i];
+		assert(difo != NULL);
+
+		for (j = 0; j < dnew->dtdo_varlen; j++) {
+			difv = &dnew->dtdo_vartab[j];
+
+			curdifo_var = dt_get_variable(difo, difv->dtdv_id,
+			    difv->dtdv_scope, difv->dtdv_kind);
+			if (curdifo_var == NULL)
+				continue;
+
+			/*
+			 * FIXME(dstolfa, important): Do some type-checking to
+			 * make sure that this is sensible.
+			 */
+			if (difv->dtdv_type.dtdt_size >
+			    curdifo_var->dtdv_type.dtdt_size)
+				curdifo_var->dtdv_type = difv->dtdv_type;
+			else
+				difv->dtdv_type = curdifo_var->dtdv_type;
+		}
+	}
 
 	/*
 	 * Go through all of the base instructions and compare it to the new
@@ -846,8 +887,75 @@ dt_prog_verify_difo(dtrace_hdl_t *dtp, dtrace_difo_t *dbase,
 	return (0);
 }
 
+static dt_verictx_t *
+dt_verictx_alloc(dtrace_hdl_t *dtp)
+{
+	dt_verictx_t *ctx;
+
+	ctx = dt_alloc(dtp, sizeof(dt_verictx_t));
+	if (ctx == NULL)
+		return (NULL);
+
+	/*
+	 * Set the handle that we are working on.
+	 */
+	ctx->dtp = dtp;
+
+	/*
+	 * Allocate the vector of DIFOs we need to check.
+	 */
+	ctx->difovec = dt_alloc(dtp,
+	    sizeof(dtrace_difo_t *) * VERICTX_DEFAULT_VECSIZE);
+	ctx->num_difos = 0;
+	ctx->difovec_size = VERICTX_DEFAULT_VECSIZE;
+	return (ctx);
+}
+
+void
+dt_verictx_teardown(void *_ctx)
+{
+	dt_verictx_t *ctx = _ctx;
+
+	dt_free(ctx->dtp, ctx->difovec);
+	dt_free(ctx->dtp, ctx);
+}
+
+void *
+dt_verictx_init(dtrace_hdl_t *dtp)
+{
+
+	return (dt_verictx_alloc(dtp));
+}
+
+static void
+dt_verictx_add(dt_verictx_t *ctx, dtrace_difo_t *difo)
+{
+
+	assert(ctx->difovec != NULL);
+	assert(ctx->num_difos <= ctx->difovec_size);
+	if (ctx->num_difos == ctx->difovec_size) {
+		size_t osize;
+		dtrace_difo_t **new;
+
+		osize = ctx->difovec_size;
+		ctx->difovec_size <<= 1;
+		new = dt_alloc(ctx->dtp,
+		    ctx->difovec_size * sizeof(dtrace_difo_t *));
+		if (new == NULL)
+			errx(EXIT_FAILURE,
+			    "dt_verictx_add(%p, %p): malloc failed: %s\n", ctx,
+			    difo, strerror(errno));
+
+		memcpy(new, ctx->difovec, osize * sizeof(dtrace_difo_t *));
+		dt_free(ctx->dtp, ctx->difovec);
+		ctx->difovec = new;
+	}
+
+	ctx->difovec[ctx->num_difos++] = difo;
+}
+
 int
-dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
+dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 {
 	dt_stmt_t *sbase, *snew;
 	dtrace_stmtdesc_t *sdbase, *sdnew;
@@ -855,6 +963,9 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 	dtrace_ecbdesc_t *enew;
 	dtrace_probedesc_t *pdnew;
 	static const char testbuf[DT_PROG_IDENTLEN];
+	dt_verictx_t *ctx = _ctx;
+	dtrace_hdl_t *dtp;
+	int self_ref;
 
 	sbase = NULL;
 	snew = NULL;
@@ -865,11 +976,31 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 	enew = NULL;
 	pdnew = NULL;
 
-	if (pnew == NULL || pbase == NULL) {
-		fprintf(stderr, "pbase = %p, pnew = %p (NULL err)\n",
-		    pbase, pnew);
+	if (ctx == NULL) {
+		fprintf(stderr, "dt_prog_verify(%p): context is NULL\n", ctx);
 		return (1);
 	}
+
+	dtp = ctx->dtp;
+	if (dtp == NULL) {
+		fprintf(stderr, "dt_prog_verify(): dtp == NULL\n");
+		return (1);
+
+	}
+
+	if (pbase == NULL) {
+		fprintf(stderr, "dt_prog_verify(): pbase == NULL\n");
+		return (1);
+	}
+
+	if (pnew == NULL) {
+		fprintf(stderr, "dt_prog_verify(): pnew == NULL\n");
+		return (1);
+	}
+
+	self_ref = 0;
+	if (pbase == pnew)
+		self_ref = 1;
 
 	/*
 	 * In case this is just a list of probes to enable, we don't need to
@@ -909,9 +1040,11 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 				return (1);
 			}
 
-			if (dt_prog_verify_difo(dtp,
-			    adbase->dtad_difo, adnew->dtad_difo))
+			if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
+			    adnew->dtad_difo))
 				return (1);
+
+			dt_verictx_add(ctx, adnew->dtad_difo);
 		}
 
 		enew = sdnew->dtsd_ecbdesc;
@@ -923,7 +1056,9 @@ dt_prog_verify(dtrace_hdl_t *dtp, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 		 * Copy over the old fmtdata so that we get the printf strings
 		 * right. We don't ever need to actually pass to the guest.
 		 */
-		sdnew->dtsd_fmtdata = dt_printf_dup(sdbase->dtsd_fmtdata);
+		if (self_ref == 0)
+			sdnew->dtsd_fmtdata = dt_printf_dup(
+			    sdbase->dtsd_fmtdata);
 		assert(sdnew != NULL);
 	}
 
@@ -967,7 +1102,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			errx(EXIT_FAILURE,
 			    "failed to allocate a new dtrace_ecbdesc_t: %s\n",
 			    strerror(errno));
-		
+
 		newstmtdesc = dtrace_stmt_create(dtp, newecb);
 		if (newstmtdesc == NULL)
 			errx(EXIT_FAILURE,

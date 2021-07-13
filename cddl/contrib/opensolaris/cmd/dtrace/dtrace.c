@@ -878,6 +878,7 @@ listen_dtdaemon(void *arg)
 	uintptr_t elf_ptr;
 	size_t len_to_recv;
 	dtdaemon_hdr_t header;
+	void *verictx;
 
 	rx_sockfd = 0;
 	elflen = 0;
@@ -899,6 +900,8 @@ listen_dtdaemon(void *arg)
 	hostpgp = dtd_arg->hostpgp;
 	guestpgp = NULL;
 
+	verictx = dt_verictx_init(g_dtp);
+
 	do {
 		/*
 		 * Now that we have created an ELF file, we wait for dtdaemon
@@ -911,6 +914,7 @@ listen_dtdaemon(void *arg)
 		    ((r = recv(rx_sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
 		    errno != EINTR) {
 			fprintf(stderr, "failed to read elf length");
+			dt_verictx_teardown(verictx);
 			pthread_exit(NULL);
 		}
 
@@ -922,6 +926,7 @@ listen_dtdaemon(void *arg)
 		if (r != sizeof(elflen)) {
 			fprintf(stderr, "received %zu bytes, expected %zu\n", r,
 			    sizeof(elflen));
+			dt_verictx_teardown(verictx);
 			pthread_exit(NULL);
 		}
 
@@ -1028,7 +1033,7 @@ process_prog:
 		}
 
 		newprog->dp_vmid = vmid;
-		if (dt_prog_verify(g_dtp, hostpgp, newprog)) {
+		if (dt_prog_verify(verictx, hostpgp, newprog)) {
 			fprintf(stderr, "failed to verify DIF from %s (%u)\n",
 			    vm_name == NULL ? "host" : vm_name, vmid);
 			continue;
@@ -1092,17 +1097,20 @@ process_prog:
 			if (fsync(tmpfd)) {
 				fprintf(stderr, "failed to sync file: %s\n",
 				    strerror(errno));
+				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
 
 			if (lseek(tmpfd, 0, SEEK_SET)) {
 				fprintf(stderr, "lseek() failed: %s\n",
 				    strerror(errno));
+				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
 
 			if (send_elf(tmpfd, wx_sockfd, "outbound")) {
 				fprintf(stderr, "failed to send_elf()\n");
+				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
 
@@ -1130,6 +1138,7 @@ process_prog:
 
 	} while (!done);
 
+	dt_verictx_teardown(verictx);
 	return (arg);
 }
 
@@ -1414,6 +1423,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	int again = 0;
 	int tmpfd;
 	uint64_t subs = 0;
+	void *verictx;
 
 	dcp->dc_prog->dp_rflags = rslv;
 
@@ -1599,7 +1609,11 @@ again:
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
-		//dtrace_dump_actions(dcp->dc_prog);
+		verictx = dt_verictx_init(g_dtp);
+		if (dt_prog_verify(verictx, dcp->dc_prog, dcp->dc_prog) != 0)
+			dfatal("failed to verify %p", dcp->dc_prog);
+
+		dt_verictx_teardown(verictx);
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable '%s'", dcp->dc_name);
 		} else {
