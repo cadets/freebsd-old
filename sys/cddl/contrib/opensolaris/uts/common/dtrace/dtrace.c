@@ -11513,9 +11513,23 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 		}
 
 		if (vt->dtdt_size != 0 && vt->dtdt_size != et->dtdt_size) {
+			char scope[32], kind[32];
+
+			if (v->dtdv_scope == DIFV_SCOPE_THREAD)
+				strcpy(scope, "thread-local");
+			else if (v->dtdv_scope == DIFV_SCOPE_LOCAL)
+				strcpy(scope, "clause-local");
+			else
+				strcpy(scope, "global");
+
+			if (v->dtdv_kind == DIFV_KIND_SCALAR)
+				strcpy(kind, "scalar");
+			else
+				strcpy(kind, "array");
+
 			err += efunc(i,
-			    "%d changed variable type size (%u != %u)\n", id,
-			    vt->dtdt_size, et->dtdt_size);
+"%s variable %d of kind %s changed variable type size (%u != %u)\n",
+			    scope, id, kind, vt->dtdt_size, et->dtdt_size);
 			break;
 		}
 	}
