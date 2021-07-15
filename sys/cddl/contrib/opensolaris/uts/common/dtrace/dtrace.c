@@ -6799,8 +6799,9 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 		case DIF_OP_ADD:
 			vh1 = regs[r1].dttr_vmhdl;
 			vh2 = regs[r2].dttr_vmhdl;
-			regs[rd].dttr_value =
-			    regs[r1].dttr_value + regs[r2].dttr_value;
+
+			regs[rd].dttr_value = regs[r1].dttr_value +
+			    regs[r2].dttr_value;
 
 			ASSERT(vh1 == NULL || vh2 == NULL);
 			if (vh1 == NULL)
@@ -7635,6 +7636,13 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 		}
 
 		case DIF_OP_COPYS:
+			/*
+			 * XXX(dstolfa): If the guest crashes, it's probably one
+			 * of these instructions that check if they can store,
+			 * and then do it anyway even if it's guest memory. We
+			 * should never really end up in a situation like this
+			 * but if it happens, that's definitely the reason.
+			 */
 			if (!dtrace_canstore(regs[rd].dttr_value,
 			    regs[r2].dttr_value, mstate, vstate)) {
 				*flags |= CPU_DTRACE_BADADDR;

@@ -786,6 +786,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 	opbase = 0;
 	opnew = 0;
 	dtp = ctx->dtp;
+
 	for (i = 0; i < ctx->num_difos; i++) {
 		difo = ctx->difovec[i];
 		assert(difo != NULL);
@@ -801,6 +802,8 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 			/*
 			 * FIXME(dstolfa, important): Do some type-checking to
 			 * make sure that this is sensible.
+			 *
+			 * Maybe also change the DIFO rtype if needed?
 			 */
 			if (difv->dtdv_type.dtdt_size >
 			    curdifo_var->dtdv_type.dtdt_size)
@@ -1028,23 +1031,38 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			return (1);
 		}
 
+		/*
+		 * FIXME(dstolfa): This is a bit of a mess and might not even work.
+		 */
+		if (sdnew->dtsd_action == sdnew->dtsd_action_last &&
+		    sdbase->dtsd_action == sdbase->dtsd_action_last) {
+			adbase = sdbase->dtsd_action;
+			adnew = sdnew->dtsd_action;
+
+			if (adbase && adnew && adbase->dtad_difo &&
+			    adnew->dtad_difo) {
+				if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
+					adnew->dtad_difo))
+					return (1);
+
+				dt_verictx_add(ctx, adnew->dtad_difo);
+			}
+		}
+
 		for (adbase = sdbase->dtsd_action,
 		    adnew = sdnew->dtsd_action;
 		    adbase != sdbase->dtsd_action_last &&
 		    adnew != sdnew->dtsd_action_last;
 		    adbase = adbase->dtad_next,
 		    adnew = adnew->dtad_next) {
-			if (adnew == NULL || adbase == NULL) {
-				fprintf(stderr, "adbase = %p, adnew = %p "
-				    "(NULL) err)\n", adbase, adnew);
-				return (1);
+			if (adbase && adnew && adbase->dtad_difo &&
+			    adnew->dtad_difo) {
+				if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
+					adnew->dtad_difo))
+					return (1);
+
+				dt_verictx_add(ctx, adnew->dtad_difo);
 			}
-
-			if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
-			    adnew->dtad_difo))
-				return (1);
-
-			dt_verictx_add(ctx, adnew->dtad_difo);
 		}
 
 		enew = sdnew->dtsd_ecbdesc;

@@ -224,7 +224,7 @@ typedef struct dtrace_kdifv {
 } dtrace_kdifv_t;
 
 static dtrace_kdifv_t *
-dof_construct_kvartab(dtrace_difo_t *dp)
+dof_construct_kvartab(const dtrace_difo_t *dp)
 {
 	dtrace_kdifv_t *kvt;
 	dtrace_difv_t *vt;

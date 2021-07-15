@@ -594,6 +594,11 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		    var->dtdv_scope, var->dtdv_kind);
 		assert(vlvar != NULL);
 
+		/*
+		 * FIXME(dstolfa): The problem is here or in dt_typing.c.
+		 * It gets inferred as DIF_TYPE_STRING with size 0, we want
+		 * it to recognise STGAAs to struct members.
+		 */
 		if (vlvar->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM)
 			var->dtdv_type = vlvar->dtdv_storedtype;
 		else

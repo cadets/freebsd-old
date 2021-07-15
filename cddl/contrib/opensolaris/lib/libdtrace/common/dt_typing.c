@@ -1804,6 +1804,11 @@ dt_infer_type(dt_ifg_node_t *n)
 		/*
 		 * Make sure all of the variable definitions match up, pick one
 		 * and check that it's a CTF type.
+		 *
+		 * FIXME(dstolfa): Doing something like foo[0].snd = foo->bar;
+		 * can cause the "not within a variable" if a stx happens on
+		 * something that had an `add` instruction later on, e.g. giving
+		 * an offset into the variable. This needs to be fixed.
 		 */
 		dif_var = NULL;
 		for (ve = dt_list_next(&n->din_varsources); ve;

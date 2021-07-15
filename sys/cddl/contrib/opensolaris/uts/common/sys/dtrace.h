@@ -142,89 +142,86 @@ typedef enum dtrace_probespec {
 #define	DIF_DIR_NREGS	8		/* number of DIF integer registers */
 #define	DIF_DTR_NREGS	8		/* number of DIF tuple registers */
 
-#define	DIF_OP_OR	1		/* or	r1, r2, rd */
-#define	DIF_OP_XOR	2		/* xor	r1, r2, rd */
-#define	DIF_OP_AND	3		/* and	r1, r2, rd */
-#define	DIF_OP_SLL	4		/* sll	r1, r2, rd */
-#define	DIF_OP_SRL	5		/* srl	r1, r2, rd */
-#define	DIF_OP_SUB	6		/* sub	r1, r2, rd */
-#define	DIF_OP_ADD	7		/* add	r1, r2, rd */
-#define	DIF_OP_MUL	8		/* mul	r1, r2, rd */
-#define	DIF_OP_SDIV	9		/* sdiv	r1, r2, rd */
-#define	DIF_OP_UDIV	10		/* udiv r1, r2, rd */
-#define	DIF_OP_SREM	11		/* srem r1, r2, rd */
-#define	DIF_OP_UREM	12		/* urem r1, r2, rd */
-#define	DIF_OP_NOT	13		/* not	r1, rd */
-#define	DIF_OP_MOV	14		/* mov	r1, rd */
-#define	DIF_OP_CMP	15		/* cmp	r1, r2 */
-#define	DIF_OP_TST	16		/* tst  r1 */
-#define	DIF_OP_BA	17		/* ba	label */
-#define	DIF_OP_BE	18		/* be	label */
-#define	DIF_OP_BNE	19		/* bne	label */
-#define	DIF_OP_BG	20		/* bg	label */
-#define	DIF_OP_BGU	21		/* bgu	label */
-#define	DIF_OP_BGE	22		/* bge	label */
-#define	DIF_OP_BGEU	23		/* bgeu	label */
-#define	DIF_OP_BL	24		/* bl	label */
-#define	DIF_OP_BLU	25		/* blu	label */
-#define	DIF_OP_BLE	26		/* ble	label */
-#define	DIF_OP_BLEU	27		/* bleu	label */
-#define	DIF_OP_LDSB	28		/* ldsb	[r1], rd */
-#define	DIF_OP_LDSH	29		/* ldsh	[r1], rd */
-#define	DIF_OP_LDSW	30		/* ldsw [r1], rd */
-#define	DIF_OP_LDUB	31		/* ldub	[r1], rd */
-#define	DIF_OP_LDUH	32		/* lduh	[r1], rd */
-#define	DIF_OP_LDUW	33		/* lduw	[r1], rd */
-#define	DIF_OP_LDX	34		/* ldx	[r1], rd */
-#define	DIF_OP_RET	35		/* ret	rd */
-#define	DIF_OP_NOP	36		/* nop */
-#define	DIF_OP_SETX	37		/* setx	intindex, rd */
-#define	DIF_OP_SETS	38		/* sets strindex, rd */
-#define	DIF_OP_SCMP	39		/* scmp	r1, r2 */
-#define	DIF_OP_LDGA	40		/* ldga	var, ri, rd */
-#define	DIF_OP_LDGS	41		/* ldgs var, rd */
-#define	DIF_OP_STGS	42		/* stgs var, rs */
-#define	DIF_OP_LDTA	43		/* ldta var, ri, rd */
-#define	DIF_OP_LDTS	44		/* ldts var, rd */
-#define	DIF_OP_STTS	45		/* stts var, rs */
-#define	DIF_OP_SRA	46		/* sra	r1, r2, rd */
-#define	DIF_OP_CALL	47		/* call	subr, rd */
-#define	DIF_OP_PUSHTR	48		/* pushtr type, rs, rr */
-#define	DIF_OP_PUSHTV	49		/* pushtv type, rs, rv */
-#define	DIF_OP_POPTS	50		/* popts */
-#define	DIF_OP_FLUSHTS	51		/* flushts */
-#define	DIF_OP_LDGAA	52		/* ldgaa var, rd */
-#define	DIF_OP_LDTAA	53		/* ldtaa var, rd */
-#define	DIF_OP_STGAA	54		/* stgaa var, rs */
-#define	DIF_OP_STTAA	55		/* sttaa var, rs */
-#define	DIF_OP_LDLS	56		/* ldls	var, rd */
-#define	DIF_OP_STLS	57		/* stls	var, rs */
-#define	DIF_OP_ALLOCS	58		/* allocs r1, rd */
-#define	DIF_OP_COPYS	59		/* copys  r1, r2, rd */
-#define	DIF_OP_STB	60		/* stb	r1, [rd] */
-#define	DIF_OP_STH	61		/* sth	r1, [rd] */
-#define	DIF_OP_STW	62		/* stw	r1, [rd] */
-#define	DIF_OP_STX	63		/* stx	r1, [rd] */
-#define	DIF_OP_ULDSB	64		/* uldsb [r1], rd */
-#define	DIF_OP_ULDSH	65		/* uldsh [r1], rd */
-#define	DIF_OP_ULDSW	66		/* uldsw [r1], rd */
-#define	DIF_OP_ULDUB	67		/* uldub [r1], rd */
-#define	DIF_OP_ULDUH	68		/* ulduh [r1], rd */
-#define	DIF_OP_ULDUW	69		/* ulduw [r1], rd */
-#define	DIF_OP_ULDX	70		/* uldx  [r1], rd */
-#define	DIF_OP_RLDSB	71		/* rldsb [r1], rd */
-#define	DIF_OP_RLDSH	72		/* rldsh [r1], rd */
-#define	DIF_OP_RLDSW	73		/* rldsw [r1], rd */
-#define	DIF_OP_RLDUB	74		/* rldub [r1], rd */
-#define	DIF_OP_RLDUH	75		/* rlduh [r1], rd */
-#define	DIF_OP_RLDUW	76		/* rlduw [r1], rd */
-#define	DIF_OP_RLDX	77		/* rldx  [r1], rd */
-#define	DIF_OP_XLATE	78		/* xlate xlrindex, rd */
-#define	DIF_OP_XLARG	79		/* xlarg xlrindex, rd */
-/*
- * XXX(dstolfa): Should we be passing in which hypercall?
- */
-#define DIF_OP_HYPERCALL 80		/* hcall */
+#define	DIF_OP_OR		1		/* or	r1, r2, rd */
+#define	DIF_OP_XOR		2		/* xor	r1, r2, rd */
+#define	DIF_OP_AND		3		/* and	r1, r2, rd */
+#define	DIF_OP_SLL		4		/* sll	r1, r2, rd */
+#define	DIF_OP_SRL		5		/* srl	r1, r2, rd */
+#define	DIF_OP_SUB		6		/* sub	r1, r2, rd */
+#define	DIF_OP_ADD		7		/* add	r1, r2, rd */
+#define	DIF_OP_MUL		8		/* mul	r1, r2, rd */
+#define	DIF_OP_SDIV		9		/* sdiv	r1, r2, rd */
+#define	DIF_OP_UDIV		10		/* udiv r1, r2, rd */
+#define	DIF_OP_SREM		11		/* srem r1, r2, rd */
+#define	DIF_OP_UREM		12		/* urem r1, r2, rd */
+#define	DIF_OP_NOT		13		/* not	r1, rd */
+#define	DIF_OP_MOV		14		/* mov	r1, rd */
+#define	DIF_OP_CMP		15		/* cmp	r1, r2 */
+#define	DIF_OP_TST		16		/* tst  r1 */
+#define	DIF_OP_BA		17		/* ba	label */
+#define	DIF_OP_BE		18		/* be	label */
+#define	DIF_OP_BNE		19		/* bne	label */
+#define	DIF_OP_BG		20		/* bg	label */
+#define	DIF_OP_BGU		21		/* bgu	label */
+#define	DIF_OP_BGE		22		/* bge	label */
+#define	DIF_OP_BGEU		23		/* bgeu	label */
+#define	DIF_OP_BL		24		/* bl	label */
+#define	DIF_OP_BLU		25		/* blu	label */
+#define	DIF_OP_BLE		26		/* ble	label */
+#define	DIF_OP_BLEU		27		/* bleu	label */
+#define	DIF_OP_LDSB		28		/* ldsb	[r1], rd */
+#define	DIF_OP_LDSH		29		/* ldsh	[r1], rd */
+#define	DIF_OP_LDSW		30		/* ldsw [r1], rd */
+#define	DIF_OP_LDUB		31		/* ldub	[r1], rd */
+#define	DIF_OP_LDUH		32		/* lduh	[r1], rd */
+#define	DIF_OP_LDUW		33		/* lduw	[r1], rd */
+#define	DIF_OP_LDX		34		/* ldx	[r1], rd */
+#define	DIF_OP_RET		35		/* ret	rd */
+#define	DIF_OP_NOP		36		/* nop */
+#define	DIF_OP_SETX		37		/* setx	intindex, rd */
+#define	DIF_OP_SETS		38		/* sets strindex, rd */
+#define	DIF_OP_SCMP		39		/* scmp	r1, r2 */
+#define	DIF_OP_LDGA		40		/* ldga	var, ri, rd */
+#define	DIF_OP_LDGS		41		/* ldgs var, rd */
+#define	DIF_OP_STGS		42		/* stgs var, rs */
+#define	DIF_OP_LDTA		43		/* ldta var, ri, rd */
+#define	DIF_OP_LDTS		44		/* ldts var, rd */
+#define	DIF_OP_STTS		45		/* stts var, rs */
+#define	DIF_OP_SRA		46		/* sra	r1, r2, rd */
+#define	DIF_OP_CALL		47		/* call	subr, rd */
+#define	DIF_OP_PUSHTR		48		/* pushtr type, rs, rr */
+#define	DIF_OP_PUSHTV		49		/* pushtv type, rs, rv */
+#define	DIF_OP_POPTS		50		/* popts */
+#define	DIF_OP_FLUSHTS		51		/* flushts */
+#define	DIF_OP_LDGAA		52		/* ldgaa var, rd */
+#define	DIF_OP_LDTAA		53		/* ldtaa var, rd */
+#define	DIF_OP_STGAA		54		/* stgaa var, rs */
+#define	DIF_OP_STTAA		55		/* sttaa var, rs */
+#define	DIF_OP_LDLS		56		/* ldls	var, rd */
+#define	DIF_OP_STLS		57		/* stls	var, rs */
+#define	DIF_OP_ALLOCS		58		/* allocs r1, rd */
+#define	DIF_OP_COPYS		59		/* copys  r1, r2, rd */
+#define	DIF_OP_STB		60		/* stb	r1, [rd] */
+#define	DIF_OP_STH		61		/* sth	r1, [rd] */
+#define	DIF_OP_STW		62		/* stw	r1, [rd] */
+#define	DIF_OP_STX		63		/* stx	r1, [rd] */
+#define	DIF_OP_ULDSB		64		/* uldsb [r1], rd */
+#define	DIF_OP_ULDSH		65		/* uldsh [r1], rd */
+#define	DIF_OP_ULDSW		66		/* uldsw [r1], rd */
+#define	DIF_OP_ULDUB		67		/* uldub [r1], rd */
+#define	DIF_OP_ULDUH		68		/* ulduh [r1], rd */
+#define	DIF_OP_ULDUW		69		/* ulduw [r1], rd */
+#define	DIF_OP_ULDX		70		/* uldx  [r1], rd */
+#define	DIF_OP_RLDSB		71		/* rldsb [r1], rd */
+#define	DIF_OP_RLDSH		72		/* rldsh [r1], rd */
+#define	DIF_OP_RLDSW		73		/* rldsw [r1], rd */
+#define	DIF_OP_RLDUB		74		/* rldub [r1], rd */
+#define	DIF_OP_RLDUH		75		/* rlduh [r1], rd */
+#define	DIF_OP_RLDUW		76		/* rlduw [r1], rd */
+#define	DIF_OP_RLDX		77		/* rldx  [r1], rd */
+#define	DIF_OP_XLATE		78		/* xlate xlrindex, rd */
+#define	DIF_OP_XLARG		79		/* xlarg xlrindex, rd */
+#define	DIF_OP_HYPERCALL	80		/* hcall */
 
 /*
  * Relocations
