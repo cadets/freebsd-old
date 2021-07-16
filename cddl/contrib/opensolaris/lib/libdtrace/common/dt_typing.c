@@ -445,7 +445,10 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * TODO: Maybe we can tolerate some failures by looking at
 		 * symbols too?
 		 */
-		n->din_tf = dt_typefile_mod(n->din_edp->dted_probe.dtpd_mod);
+		if (strcmp(n->din_edp->dted_probe.dtpd_mod, "freebsd") == 0)
+			n->din_tf = dt_typefile_kernel();
+		else
+			n->din_tf = dt_typefile_mod(n->din_edp->dted_probe.dtpd_mod);
 
 		if (n->din_tf != NULL)
 			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
@@ -1451,6 +1454,9 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		return (n->din_type);
 
+	/*
+	 * FIXME(dstolfa): Handle STGAAs to struct types.
+	 */
 	case DIF_OP_STGAA:
 		if (dn2 == NULL) {
 			fprintf(stderr,

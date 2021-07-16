@@ -438,15 +438,14 @@ dt_infer_type_arg(
 	/*
 	 * Try by module first.
 	 */
-	tf = dt_typefile_mod(mod);
-	if (tf == NULL) {
-		fprintf(stderr, "could not find module: %s\n", mod);
-		return (1);
-	}
+	if (strcmp(mod, "freebsd") == 0)
+		tf = dt_typefile_kernel();
+	else
+		tf = dt_typefile_mod(mod);
 
-	assert(tf != NULL);
-	ctfid = dt_typefile_ctfid(tf, resolved_type);
-	if (ctfid == CTF_ERR) {
+	if (tf != NULL)
+		ctfid = dt_typefile_ctfid(tf, resolved_type);
+	if (tf == NULL || ctfid == CTF_ERR) {
 		/*
 		 * If we can't find it in the module, try in the kernel
 		 * itself.
