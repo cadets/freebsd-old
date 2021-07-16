@@ -490,6 +490,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	dt_ifg_node_t *curnode;
 	dt_ifg_list_t *curnode_e, *n_e;
 	int seen_typecast;
+	int clobbers;
 
 	r1 = 0;
 	r2 = 0;
@@ -621,15 +622,17 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			}
 		}
 
+		clobbers = dt_clobbers_reg(instr, rd);
+
 		/*
 		 * If we run into a redefinition of the current register,
 		 * we simply break out of the loop, there is nothing left
 		 * to fill in inside this basic block.
 		 */
-		if (dt_clobbers_reg(instr, rd) && opcode != DIF_OP_TYPECAST)
+		if (clobbers && opcode != DIF_OP_TYPECAST)
 			return (1);
 
-		if (dt_clobbers_reg(instr, rd) && opcode == DIF_OP_TYPECAST)
+		if (clobbers && opcode == DIF_OP_TYPECAST)
 			seen_typecast = 1;
 	}
 

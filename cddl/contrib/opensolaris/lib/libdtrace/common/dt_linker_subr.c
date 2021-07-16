@@ -386,6 +386,7 @@ dt_insert_var_by_difv(dtrace_difv_t *difv)
 	var->dtdv_stack = NULL;
 	var->dtdv_tf = NULL;
 	var->dtdv_storedtype = difv->dtdv_type;
+	var->dtdv_restore = difv->dtdv_restore;
 
 	ve = malloc(sizeof(dt_var_entry_t));
 	if (ve == NULL)

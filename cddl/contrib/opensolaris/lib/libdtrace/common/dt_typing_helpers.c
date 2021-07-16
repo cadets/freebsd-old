@@ -645,7 +645,8 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	    dt_get_class(dn2->din_tf, buf2) :
 	    DTC_STRING;
 
-	if (dn1->din_tf != dn2->din_tf)
+	if (dn1->din_type == DIF_TYPE_CTF && dn2->din_type == DIF_TYPE_CTF &&
+	    dn1->din_tf != dn2->din_tf)
 		dt_set_progerr(g_dtp, g_pgp,
 		    "dn1 (%s) is in typefile %s, "
 		    "while dn2 (%s) is in typefile %s",

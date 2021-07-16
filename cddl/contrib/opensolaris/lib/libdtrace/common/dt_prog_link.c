@@ -599,7 +599,8 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		 * It gets inferred as DIF_TYPE_STRING with size 0, we want
 		 * it to recognise STGAAs to struct members.
 		 */
-		if (vlvar->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM)
+		if (vlvar->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM ||
+		    vlvar->dtdv_restore != 0)
 			var->dtdv_type = vlvar->dtdv_storedtype;
 		else
 			var->dtdv_type = vlvar->dtdv_type;
