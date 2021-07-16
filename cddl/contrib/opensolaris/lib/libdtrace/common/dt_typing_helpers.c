@@ -293,7 +293,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	char type1_name[4096], type2_name[4096];
 	void *s1, *s2;
 
-	*which = 0;
+	*which = SUBTYPE_NONE;
 
 	assert(tf1 != NULL);
 	assert(tf2 != NULL);
@@ -375,7 +375,11 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		size1 = dt_typefile_typesize(tf1, id1);
 		size2 = dt_typefile_typesize(tf2, id2);
 
-		*which = size1 >= size2 ? 1 : 2;
+		if (size1 == size2)
+			*which = SUBTYPE_EQUAL;
+		else
+			*which = size1 > size2 ? SUBTYPE_FST : SUBTYPE_SND;
+
 		return (0);
 	}
 
@@ -386,10 +390,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		if (dt_ctf_type_compare(tf1, id1, tf2, id2))
 			return (-1);
 
-		/*
-		 * It doesn't matter which one we pick here.
-		 */
-		*which = 1;
+		*which = SUBTYPE_EQUAL;
 		return (0);
 	}
 
@@ -500,14 +501,11 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		assert(memb1 == NULL || memb2 == NULL);
 
 		if (memb1 == NULL && memb2 != NULL)
-			*which = 1;
+			*which = SUBTYPE_FST;
 		else if (memb1 != NULL && memb2 == NULL)
-			*which = 2;
+			*which = SUBTYPE_SND;
 		else
-			/*
-			 * In this case, it doesn't really matter.
-			 */
-			*which = 1;
+			*which = SUBTYPE_EQUAL;
 
 		return (0);
 
@@ -520,10 +518,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		if (dt_ctf_type_compare(tf1, id1, tf2, id2) == 0)
 			return (-1);
 
-		/*
-		 * Doesn't matter what we pick in this case.
-		 */
-		*which = 1;
+		*which = SUBTYPE_EQUAL;
 		return (0);
 	}
 

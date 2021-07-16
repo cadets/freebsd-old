@@ -51,7 +51,7 @@
 
 static void
 dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
-    char *buf, size_t bufsize, const char *loc)
+    char *buf, size_t bufsize, const char *loc, int subtype_relation)
 {
 	ctf_id_t arg_ctfid;
 	ctf_id_t arg_kind;
@@ -95,7 +95,7 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	if (arg_kind == CTF_K_INTEGER) {
 		rv = dt_type_subtype(arg->din_tf, arg->din_ctfid, tf, arg_ctfid,
 		    &which);
-		if (rv != 0 || which == 2)
+		if (rv != 0 || ((which & subtype_relation) == 0))
 			dt_set_progerr(g_dtp, g_pgp, "%s: %s (%s) != %s (%s)",
 			    loc, type, dt_typefile_stringof(tf), buf,
 			    dt_typefile_stringof(arg->din_tf));
@@ -238,7 +238,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_mtx, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -262,7 +262,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_mtx, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 #ifdef __FreeBSD__
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, t_thread);
 #elif defined(illumos)
@@ -292,7 +292,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_rw, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -316,7 +316,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_rw, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -340,7 +340,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_rw, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -364,7 +364,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as the second argument.
@@ -378,7 +378,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
 		if (n->din_ctfid == CTF_ERR)
@@ -402,7 +402,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		/*
 		 * Check if the second (optional) argument is present
@@ -417,7 +417,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			assert(arg1->din_tf != NULL);
 
 			dt_arg_cmpwith(arg1, dt_typefile_kernel(), "size_t",
-			    buf, sizeof(buf), subr_name[subr]);
+			    buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_FST | SUBTYPE_EQUAL);
 		}
 
 		n->din_type = DIF_TYPE_STRING;
@@ -446,7 +447,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "pid_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -470,7 +471,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -497,7 +499,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "uintptr_t" as a second argument.
@@ -511,7 +513,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as a third argument.
@@ -525,7 +527,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg2->din_tf != NULL);
 
 		dt_arg_cmpwith(arg2, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_NONE;
 		break;
@@ -543,7 +545,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(), "char *",
-			    buf, sizeof(buf), subr_name[subr]);
+			    buf, sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -560,7 +562,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as a third argument.
@@ -574,7 +576,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg2->din_tf != NULL);
 
 		dt_arg_cmpwith(arg2, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_NONE;
 		break;
@@ -592,7 +594,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
 		if (n->din_ctfid == CTF_ERR)
@@ -616,7 +618,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "void *" as a second argument.
@@ -630,7 +632,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "size_t" as a third argument.
@@ -644,7 +646,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg2->din_tf != NULL);
 
 		dt_arg_cmpwith(arg2, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_NONE;
 		break;
@@ -662,7 +664,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as a second argument.
@@ -676,7 +678,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "void *" as a third argument.
@@ -690,7 +692,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg2->din_tf != NULL);
 
 		dt_arg_cmpwith(arg2, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		n->din_type = DIF_TYPE_NONE;
 		break;
@@ -709,7 +711,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "mblk_t *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "size_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -738,7 +740,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "int64_t" as a second argument.
@@ -752,7 +754,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "int64_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -770,7 +772,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "int64_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		/*
 		 * Check if the second (optional) argument is present
@@ -785,7 +787,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			assert(arg1->din_tf != NULL);
 
 			dt_arg_cmpwith(arg1, dt_typefile_kernel(), "int", buf,
-			    sizeof(buf), subr_name[subr]);
+			    sizeof(buf), subr_name[subr],
+			    SUBTYPE_FST | SUBTYPE_EQUAL);
 		}
 
 		n->din_type = DIF_TYPE_STRING;
@@ -806,7 +809,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -828,7 +832,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -845,7 +850,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "char", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -863,7 +868,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -880,7 +886,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "int", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		/*
 		 * Check if the third (optional) argument is present
@@ -894,7 +900,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			assert(arg2->din_tf != NULL);
 
 			dt_arg_cmpwith(arg2, dt_typefile_kernel(), "int", buf,
-			    sizeof(buf), subr_name[subr]);
+			    sizeof(buf), subr_name[subr],
+			    SUBTYPE_FST | SUBTYPE_EQUAL);
 		}
 
 		n->din_type = DIF_TYPE_STRING;
@@ -914,7 +921,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -931,7 +939,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg1, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
 			    subr_name[subr]);
@@ -948,7 +957,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			assert(arg2->din_tf != NULL);
 
 			dt_arg_cmpwith(arg2, dt_typefile_kernel(), "int", buf,
-			    sizeof(buf), subr_name[subr]);
+			    sizeof(buf), subr_name[subr],
+			    SUBTYPE_FST | SUBTYPE_EQUAL);
 		}
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
@@ -974,7 +984,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uint16_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -999,7 +1009,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uint32_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -1024,7 +1034,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uint64_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint64_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -1048,7 +1058,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "int", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "void *" as a second argument.
@@ -1062,7 +1072,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -1080,7 +1090,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "in_addr_t *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -1097,8 +1107,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		arg0 = se->ds_ifgnode;
 		assert(arg0->din_tf != NULL);
 
-		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "in6_addr_t *", buf,
-		    sizeof(buf), subr_name[subr]);
+		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "struct in6_addr *", buf,
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -1117,7 +1127,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -1138,7 +1149,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "size_t" as a second argument.
@@ -1152,7 +1163,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid =
 		    dt_typefile_ctfid(n->din_tf, "uintptr_t *");
@@ -1179,7 +1190,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), t_sx, buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
 		if (n->din_ctfid == CTF_ERR)
@@ -1203,7 +1214,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "void *", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_NONE);
 
 		/*
 		 * We expect a "char" as a second argument.
@@ -1217,7 +1228,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg1->din_tf != NULL);
 
 		dt_arg_cmpwith(arg1, dt_typefile_kernel(), "char", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as a third argument.
@@ -1231,7 +1242,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg2->din_tf != NULL);
 
 		dt_arg_cmpwith(arg2, dt_typefile_kernel(), "size_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
@@ -1250,7 +1261,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "int", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "file_t *");
 		if (n->din_ctfid == CTF_ERR)
@@ -1274,7 +1285,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -1292,7 +1304,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			assert(arg1->din_tf != NULL);
 
 			dt_arg_cmpwith(arg1, dt_typefile_kernel(), "int", buf,
-			    sizeof(buf), subr_name[subr]);
+			    sizeof(buf), subr_name[subr], SUBTYPE_FST | SUBTYPE_EQUAL);
 		}
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int64_t");
@@ -1327,7 +1339,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		assert(arg0->din_tf != NULL);
 
 		dt_arg_cmpwith(arg0, dt_typefile_kernel(), "uintptr_t", buf,
-		    sizeof(buf), subr_name[subr]);
+		    sizeof(buf), subr_name[subr], SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "void *");
 		if (n->din_ctfid == CTF_ERR)
@@ -1354,7 +1366,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg0->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg0, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg0 type is NONE",
 			    subr_name[subr]);
@@ -1371,7 +1384,8 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 
 		if (arg1->din_type == DIF_TYPE_CTF)
 			dt_arg_cmpwith(arg1, dt_typefile_kernel(),
-			    "const char *", buf, sizeof(buf), subr_name[subr]);
+			    "const char *", buf, sizeof(buf), subr_name[subr],
+			    SUBTYPE_EQUAL);
 		else if (arg0->din_type == DIF_TYPE_NONE)
 			dt_set_progerr(g_dtp, g_pgp, "%s: arg1 type is NONE",
 			    subr_name[subr]);

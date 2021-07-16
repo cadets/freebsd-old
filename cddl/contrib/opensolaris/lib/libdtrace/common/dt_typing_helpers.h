@@ -38,6 +38,12 @@
 extern dtrace_hdl_t *g_dtp;
 extern dtrace_prog_t *g_pgp;
 
+#define SUBTYPE_NONE  0
+#define SUBTYPE_EQUAL (1 << 0)
+#define SUBTYPE_FST   (1 << 1)
+#define SUBTYPE_SND   (1 << 2)
+#define SUBTYPE_ANY   (SUBTYPE_EQUAL | SUBTYPE_FST | SUBTYPE_SND)
+
 extern ctf_id_t dt_type_strip_ref(dt_typefile_t *, ctf_id_t *, size_t *);
 extern ctf_id_t dt_type_strip_typedef(dt_typefile_t *, ctf_id_t *);
 extern int dt_ctf_type_compare(dt_typefile_t *, ctf_id_t, dt_typefile_t *,

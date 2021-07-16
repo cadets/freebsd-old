@@ -501,13 +501,19 @@ dt_infer_type_arg(
 
 		if (dt_type_subtype(
 		    n->din_tf, n->din_ctfid, tf, ctfid, &which) == 0) {
-			assert(which == 0 || which == 1 || which == 2);
-			if (which == 0)
+			if (which == SUBTYPE_NONE)
 				return (1);
 
-			n->din_tf = which == 1 ? n->din_tf : tf;
-			n->din_ctfid = which == 1 ? n->din_ctfid : ctfid;
-			n->din_type = type; /* should be the same */
+			if (which & SUBTYPE_SND) {
+				n->din_tf = tf;
+				n->din_ctfid = ctfid;
+				n->din_type = type;
+			} else if ((which & SUBTYPE_ANY) == SUBTYPE_ANY) {
+				fprintf(stderr,
+				    "dt_infer_type_arg(): impossible "
+				    "subtyping relation\n");
+				return (1);
+			}
 			return (0);
 		}
 	}
@@ -592,6 +598,10 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			return (-1);
 		}
 
+		/*
+		 * TODO(dstolfa): Relax this comparison into a subtyping
+		 * relation instead.
+		 */
 		if (dif_var->dtdv_ctfid != dr->din_ctfid) {
 			if (dt_typefile_typename(dif_var->dtdv_tf,
 			    dif_var->dtdv_ctfid, var_type,
