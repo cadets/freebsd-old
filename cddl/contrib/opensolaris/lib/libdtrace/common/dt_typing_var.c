@@ -534,6 +534,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 {
 	char buf[4096] = {0}, var_type[4096] = {0};
 	dtrace_difv_t *difovar;
+	int rv, which;
 
 	difovar = NULL;
 
@@ -598,28 +599,26 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			return (-1);
 		}
 
-		/*
-		 * TODO(dstolfa): Relax this comparison into a subtyping
-		 * relation instead.
-		 */
-		if (dif_var->dtdv_ctfid != dr->din_ctfid) {
-			if (dt_typefile_typename(dif_var->dtdv_tf,
-			    dif_var->dtdv_ctfid, var_type,
-			    sizeof(var_type)) != ((char *)var_type))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type_var(): failed at getting "
-				    "type name %ld: %s",
-				    dif_var->dtdv_ctfid,
-				    dt_typefile_error(dif_var->dtdv_tf));
+		if (dt_typefile_typename(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
+		    var_type, sizeof(var_type)) != ((char *)var_type))
+			dt_set_progerr(g_dtp, g_pgp,
+			    "dt_infer_type_var(): failed at getting "
+			    "type name %ld: %s",
+			    dif_var->dtdv_ctfid,
+			    dt_typefile_error(dif_var->dtdv_tf));
 
-			if (dt_typefile_typename(dr->din_tf, dr->din_ctfid, buf,
-			    sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type_var(): failed at getting "
-				    "type name %ld: %s",
-				    dr->din_ctfid,
-				    dt_typefile_error(dr->din_tf));
+		if (dt_typefile_typename(dr->din_tf, dr->din_ctfid, buf,
+		    sizeof(buf)) != ((char *)buf))
+			dt_set_progerr(g_dtp, g_pgp,
+			    "dt_infer_type_var(): failed at getting "
+			    "type name %ld: %s",
+			    dr->din_ctfid, dt_typefile_error(dr->din_tf));
 
+		rv = dt_type_subtype(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
+		    dr->din_tf, dr->din_ctfid, &which);
+
+		if (rv != 0 || ((which & (SUBTYPE_EQUAL | SUBTYPE_FST)) == 0) ||
+		    ((which & SUBTYPE_ANY) == SUBTYPE_ANY)) {
 			fprintf(stderr,
 			    "dt_infer_type_var(): type mismatch "
 			    "in STTS: %s != %s\n",
