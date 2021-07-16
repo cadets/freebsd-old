@@ -1866,12 +1866,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 
 	prog_exec = link_elf(dcp, progpath);
 
-	//dtrace_dump_actions(dcp->dc_prog);
-
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
-
-	//dtrace_dump_actions(dcp->dc_prog);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {

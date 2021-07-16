@@ -1058,6 +1058,7 @@ typedef struct dtrace_actdesc {
 	uint32_t dtad_ntuple;			/* number in tuple */
 	uint64_t dtad_arg;			/* action argument */
 	uint64_t dtad_uarg;			/* user argument */
+	int dtad_return;			/* non-void return? */
 	int dtad_refcnt;			/* reference count */
 } dtrace_actdesc_t;
 

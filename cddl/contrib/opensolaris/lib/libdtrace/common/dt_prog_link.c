@@ -181,10 +181,6 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 					assert(ad != NULL);
 
 				switch (actkind) {
-				case DTRACEACT_DIFEXPR:
-					*rtype = dt_void_rtype;
-					break;
-
 				case DTRACEACT_EXIT:
 					*rtype = dt_int_rtype;
 					break;
@@ -201,6 +197,14 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				case DTRACEAGG_LLQUANTIZE:
 					break;
 
+				case DTRACEACT_DIFEXPR:
+					if (ad && ad->dtad_return == 0) {
+						*rtype = dt_void_rtype;
+						break;
+					}
+					/*
+					 * Fall through to the default case.
+					 */
 				default:
 					if (rtype->dtdt_kind == DIF_TYPE_CTF) {
 						ctf_kind = dt_typefile_typekind(

@@ -391,7 +391,7 @@ dtrace_stmt_action(dtrace_hdl_t *dtp, dtrace_stmtdesc_t *sdp)
 	dtrace_actdesc_t *new;
 	dtrace_ecbdesc_t *edp = sdp->dtsd_ecbdesc;
 
-	if ((new = dt_alloc(dtp, sizeof (dtrace_actdesc_t))) == NULL)
+	if ((new = dt_zalloc(dtp, sizeof (dtrace_actdesc_t))) == NULL)
 		return (NULL);
 
 	if (sdp->dtsd_action_last != NULL) {
