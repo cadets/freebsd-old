@@ -59,7 +59,6 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	ctf_id_t passed_arg_ctfid;
 	ctf_id_t passed_arg_kind;
 
-
 	dt_get_typename_tfcheck(arg, tf, buf, bufsize, loc);
 
 	arg_ctfid = dt_typefile_ctfid(tf, type);
@@ -73,6 +72,20 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	passed_arg_ctfid = arg->din_ctfid;
 	passed_arg_kind = dt_type_strip_typedef(arg->din_tf, &passed_arg_ctfid);
 	assert(passed_arg_kind != CTF_K_TYPEDEF);
+
+	if (strcmp(type, "void *") == 0) {
+		/*
+		 * Since this is a void *, any pointer will do, as D allows us
+		 * to implicitly cast any pointer to void *.
+		 */
+		if (passed_arg_kind != CTF_K_POINTER &&
+		    passed_arg_kind != CTF_K_ARRAY)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "%s: %s (%s) can't be cast to void *", loc, buf,
+			    dt_typefile_stringof(tf));
+
+		return;
+	}
 
 	if (arg_kind != passed_arg_kind)
 		dt_set_progerr(g_dtp, g_pgp, "%s (argkind): %s (%s) != %s (%s)",
