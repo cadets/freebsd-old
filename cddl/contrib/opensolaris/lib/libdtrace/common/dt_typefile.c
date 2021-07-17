@@ -67,55 +67,98 @@ dt_typefile_openall(dtrace_hdl_t *dtp)
 	int kld;
 	struct kld_file_stat kldinfo;
 
-	do {
-		again = 0;
-		dtrace_update(dtp);
-		for (kld = kldnext(0); kld > 0; kld = kldnext(kld)) {
-			kldinfo.version = sizeof(kldinfo);
-			if (kldstat(kld, &kldinfo) < 0)
-				errx(EXIT_FAILURE,
-				    "kldstat() failed with: %s\n",
-				    strerror(errno));
+	for (kld = kldnext(0); kld > 0; kld = kldnext(kld)) {
+		kldinfo.version = sizeof(kldinfo);
+		if (kldstat(kld, &kldinfo) < 0)
+			errx(EXIT_FAILURE, "kldstat() failed with: %s\n",
+			    strerror(errno));
 
-			mod = dt_module_lookup_by_name(dtp, kldinfo.name);
-			if (mod == NULL) {
-				again = 1;
-				break;
-			}
-
-			typef = malloc(sizeof(dt_typefile_t));
-			if (typef == NULL)
-				errx(EXIT_FAILURE,
-				    "dt_typefile_openall(): malloc failed "
-				    "with %s\n",
-				    strerror(errno));
-
-			typef->modhdl = mod;
-			typef->dtp = dtp;
-			memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
-			dt_list_append(&typefiles, typef);
+		mod = dt_module_lookup_by_name(dtp, kldinfo.name);
+		if (mod == NULL) {
+			fprintf(stderr,
+			    "dt_typefile_openall(): WARNING - "
+			    "skipping module %s\n",
+			    kldinfo.name);
+			continue;
 		}
 
-		/*
-		 * This is a bit bad, but it will do for now.
-		 */
-		if (again) {
-			while ((typef = dt_list_next(&typefiles)) != NULL) {
-				dt_list_delete(&typefiles, typef);
-				free(typef);
-			}
-		}
-	} while (again);
+		typef = malloc(sizeof(dt_typefile_t));
+		if (typef == NULL)
+			errx(EXIT_FAILURE,
+			    "dt_typefile_openall(): malloc failed "
+			    "with %s\n",
+			    strerror(errno));
+
+		typef->modhdl = mod;
+		typef->dtp = dtp;
+		memcpy(typef->modname, kldinfo.name, MAXPATHLEN);
+		dt_list_append(&typefiles, typef);
+	}
+
+	mod = dt_module_lookup_by_name(dtp, "C");
+	if (mod == NULL)
+		return;
+
+	typef = malloc(sizeof(dt_typefile_t));
+	if (typef == NULL)
+		errx(EXIT_FAILURE,
+		    "dt_typefile_openall(): malloc failed "
+		    "with %s\n",
+		    strerror(errno));
+
+	typef->modhdl = mod;
+	typef->dtp = dtp;
+	strcpy(typef->modname, "C");
+	dt_list_append(&typefiles, typef);
+
+	mod = dt_module_lookup_by_name(dtp, "D");
+	if (mod == NULL)
+		return;
+
+	typef = malloc(sizeof(dt_typefile_t));
+	if (typef == NULL)
+		errx(EXIT_FAILURE,
+		    "dt_typefile_openall(): malloc failed "
+		    "with %s\n",
+		    strerror(errno));
+
+	typef->modhdl = mod;
+	typef->dtp = dtp;
+	strcpy(typef->modname, "D");
+	dt_list_append(&typefiles, typef);
 }
 
 ctf_id_t
 dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 {
 	ctf_file_t *ctfp;
+	dtrace_typeinfo_t tip;
+	const char *obj;
+	int rv;
 
 	assert(typef != NULL);
 	assert(typef->dtp != NULL);
 	assert(typef->modhdl != NULL);
+
+	obj = NULL;
+
+	if (strcmp(typef->modname, "C") == 0)
+		obj = DTRACE_OBJ_CDEFS;
+	else if (strcmp(typef->modname, "D") == 0)
+		obj = DTRACE_OBJ_DDEFS;
+
+	if (obj != NULL) {
+		rv = dtrace_lookup_by_type(typef->dtp, obj, type, &tip);
+		if (rv != 0) {
+			fprintf(stderr,
+			    "dt_typefile_ctfid(): failed looking "
+			    "up C/D type: %s\n",
+			    dtrace_errmsg(typef->dtp, typef->dtp->dt_errno));
+			return (CTF_ERR);
+		}
+
+		return (tip.dtt_type);
+	}
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)

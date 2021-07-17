@@ -639,6 +639,7 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	    dt_get_class(dn2->din_tf, buf2) :
 	    DTC_STRING;
 
+#if 0
 	if (dn1->din_type == DIF_TYPE_CTF && dn2->din_type == DIF_TYPE_CTF &&
 	    dn1->din_tf != dn2->din_tf)
 		dt_set_progerr(g_dtp, g_pgp,
@@ -646,7 +647,7 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 		    "while dn2 (%s) is in typefile %s",
 		    buf1, dt_typefile_stringof(dn1->din_tf),
 		    buf2, dt_typefile_stringof(dn2->din_tf));
-
+#endif
 	if (class1 == DTC_BOTTOM)
 		dt_set_progerr(
 		    g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
