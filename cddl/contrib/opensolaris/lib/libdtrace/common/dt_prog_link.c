@@ -167,9 +167,16 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				rtype->dtdt_kind = node->din_type;
 				if (node->din_type == DIF_TYPE_CTF)
 					rtype->dtdt_ckind = node->din_ctfid;
-
 				else if (node->din_type == DIF_TYPE_STRING)
 					rtype->dtdt_ckind = DT_STR_TYPE(dtp);
+				else if (node->din_type == DIF_TYPE_BOTTOM)
+					/*
+					 * If we have a bottom type, we really
+					 * don't care which CTF type the host
+					 * wants here. It can be patched in
+					 * later on demand.
+					 */
+					rtype->dtdt_ckind = CTF_BOTTOM_TYPE;
 				else
 					errx(EXIT_FAILURE,
 					    "unexpected node->din_type "
