@@ -838,7 +838,8 @@ dt_infer_type(dt_ifg_node_t *n)
 			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
-		n->din_isnull = dt_setx_value(difo, instr) == 0;
+		if (opcode == DIF_OP_SETX)
+			n->din_isnull = dt_setx_value(difo, instr) == 0;
 		return (n->din_type);
 
 	case DIF_OP_SETS:
