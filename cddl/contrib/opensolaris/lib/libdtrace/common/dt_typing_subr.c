@@ -73,10 +73,11 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t *tf, const char *type,
 	passed_arg_kind = dt_type_strip_typedef(arg->din_tf, &passed_arg_ctfid);
 	assert(passed_arg_kind != CTF_K_TYPEDEF);
 
-	if (strcmp(type, "void *") == 0) {
+	if (strcmp(type, "void *") == 0 || strcmp(type, "uintptr_t") == 0) {
 		/*
-		 * Since this is a void *, any pointer will do, as D allows us
-		 * to implicitly cast any pointer to void *.
+		 * Since this is a void * / uintptr_t, any pointer will do, as D
+		 * allows us to implicitly cast any pointer to void * /
+		 * uintptr_t.
 		 */
 		if (passed_arg_kind != CTF_K_POINTER &&
 		    passed_arg_kind != CTF_K_ARRAY)
