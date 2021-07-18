@@ -134,6 +134,8 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 	ctf_file_t *ctfp;
 	dtrace_typeinfo_t tip;
 	const char *obj;
+	static char nonuser_type[4096];
+	static size_t userland_len = strlen("userland ");
 	int rv;
 
 	assert(typef != NULL);
@@ -142,13 +144,18 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 
 	obj = NULL;
 
+	if (strncmp(type, "userland ", userland_len) == 0)
+		strcpy(nonuser_type, type + userland_len);
+	else
+		strcpy(nonuser_type, type);
+
 	if (strcmp(typef->modname, "C") == 0)
 		obj = DTRACE_OBJ_CDEFS;
 	else if (strcmp(typef->modname, "D") == 0)
 		obj = DTRACE_OBJ_DDEFS;
 
 	if (obj != NULL) {
-		rv = dtrace_lookup_by_type(typef->dtp, obj, type, &tip);
+		rv = dtrace_lookup_by_type(typef->dtp, obj, nonuser_type, &tip);
 		if (rv != 0) {
 			fprintf(stderr,
 			    "dt_typefile_ctfid(): failed looking "
@@ -163,7 +170,7 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
 		return (CTF_ERR);
-	return (ctf_lookup_by_name(ctfp, type));
+	return (ctf_lookup_by_name(ctfp, nonuser_type));
 }
 
 char *
@@ -323,7 +330,9 @@ const char *
 dt_typefile_stringof(dt_typefile_t *typef)
 {
 
-	assert(typef != NULL);
+	if (typef == NULL)
+		return ("NOT INITIALIZED");
+
 	return ((const char *)typef->modname);
 }
 
