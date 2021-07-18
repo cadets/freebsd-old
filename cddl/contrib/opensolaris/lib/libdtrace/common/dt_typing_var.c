@@ -446,7 +446,7 @@ dt_infer_type_arg(
 		 */
 		tf = dt_typefile_kernel();
 		assert(tf != NULL);
-		ctfid = dt_typefile_ctfid(n->din_tf, resolved_type);
+		ctfid = dt_typefile_ctfid(tf, resolved_type);
 		if (ctfid == CTF_ERR) {
 			fprintf(stderr, "could not find type %s in %s\n",
 			    resolved_type, dt_typefile_stringof(tf));
