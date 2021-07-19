@@ -406,6 +406,7 @@ dt_infer_type_arg(
 	dt_typefile_t *tf;
 	ctf_id_t ctfid;
 	int type, which;
+	int is_profile_probe;
 
 	memset(resolved_type, 0, DTRACE_ARGTYPELEN);
 	assert(cookie != NULL);
@@ -422,12 +423,19 @@ dt_infer_type_arg(
 	ad.dtargd_id = pdp->dtpd_id;
 	assert(ad.dtargd_id != DTRACE_IDNONE);
 
-	if (dt_ioctl(dtp, DTRACEIOC_PROBEARG, &ad) != 0) {
+	is_profile_probe = 0;
+	if (strstr(pdp->dtpd_name, "tick") != NULL)
+		is_profile_probe = 1;
+
+	if (!is_profile_probe && dt_ioctl(dtp, DTRACEIOC_PROBEARG, &ad) != 0) {
 		(void) dt_set_errno(dtp, errno);
 		return (1);
 	}
 
-	memcpy(resolved_type, ad.dtargd_native, DTRACE_ARGTYPELEN);
+	if (is_profile_probe == 0)
+		memcpy(resolved_type, ad.dtargd_native, DTRACE_ARGTYPELEN);
+	else
+		strcpy(resolved_type, "uint64_t");
 
 	/*
 	 * Try by module first.
@@ -582,6 +590,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		return (DIF_TYPE_STRING);
 
 	if (dif_var->dtdv_ctfid != CTF_ERR) {
+#if 0
 		if (dif_var->dtdv_tf != dr->din_tf) {
 			fprintf(stderr,
 			    "dt_infer_type_var(): variable %d has typefile "
@@ -592,7 +601,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 			    dt_typefile_stringof(dr->din_tf));
 			return (-1);
 		}
-
+#endif
 		if (dt_typefile_typename(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
 		    var_type, sizeof(var_type)) != ((char *)var_type))
 			dt_set_progerr(g_dtp, g_pgp,

@@ -97,7 +97,7 @@ dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 static int
 dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
-    dtrace_actdesc_t *ad, dtrace_difo_t *difo)
+    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
 {
 	size_t idx;
 	dt_ifg_list_t *ifgl, *usetx_ifgl;
@@ -218,6 +218,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						    node->din_tf,
 						    node->din_ctfid);
 
+#if 0
 						/*
 						 * Set that we are returning
 						 * this by reference, rather
@@ -227,6 +228,24 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						    ctf_kind == CTF_K_POINTER)
 							rtype->dtdt_flags |=
 							    DIF_TF_BYREF;
+#endif
+						/*
+						 * XXX(dstolfa, important): Is
+						 * this a sensible thing to be
+						 * doing for all guests? We
+						 * claim to know on the host
+						 * whether or not we need to
+						 * dereference something -- but
+						 * is that actually true? Need
+						 * to think about this a bit
+						 * more. On the guest, we lack
+						 * the information about what
+						 * takes a dereferenced value
+						 * in, but on the host we lack
+						 * type information.
+						 */
+						rtype->dtdt_flags =
+						    orig_rtype->dtdt_flags;
 
 						rtype->dtdt_size =
 						    dt_typefile_typesize(
@@ -619,11 +638,13 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 {
 	int rval;
 	dtrace_actkind_t actkind;
+	dtrace_diftype_t saved_rtype;
 
 	rval = dt_prog_infer_defns(dtp, ecbdesc, difo);
 	if (rval != 0)
 		return (rval);
 
+	saved_rtype = difo->dtdo_rtype;
 	rval = dt_prog_infer_types(dtp, pgp, difo);
 	if (rval != 0)
 		return (rval);
@@ -631,7 +652,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	dt_prog_infer_usetxs(difo);
 
 	actkind = ad == NULL ? DTRACEACT_DIFEXPR : ad->dtad_kind;
-	rval = dt_prog_relocate(dtp, actkind, ad, difo);
+	rval = dt_prog_relocate(dtp, actkind, ad, difo, &saved_rtype);
 	if (rval != 0)
 		return (rval);
 
