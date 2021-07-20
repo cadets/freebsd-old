@@ -1032,7 +1032,7 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 		}
 
 		/*
-		 * FIXME(dstolfa): This is a bit of a mess and might not even work.
+		 * TODO(dstolfa): Some deduplication would be nice here.
 		 */
 		if (sdnew->dtsd_action == sdnew->dtsd_action_last &&
 		    sdbase->dtsd_action == sdbase->dtsd_action_last) {
