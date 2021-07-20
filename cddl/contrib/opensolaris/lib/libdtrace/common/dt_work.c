@@ -23,6 +23,7 @@
 /*
  * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
+ * Copyright (c) 2021, Domagoj Stolfa. All rights reserved.
  */
 
 #pragma ident	"%Z%%M%	%I%	%E% SMI"

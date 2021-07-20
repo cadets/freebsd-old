@@ -27,6 +27,7 @@
  */
 
 /*
+ * Copyright 2021 Domagoj Stolfa. All rights reserved.
  * Copyright 2016 Joyent, Inc.
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
