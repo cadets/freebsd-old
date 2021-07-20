@@ -194,13 +194,14 @@ dt_get_nkind(dif_instr_t instr, dt_node_kind_t *nkind)
 	}
 }
 
+/*
+ * This subroutine assumes it's being called with a node `n` that is an
+ * instruction with a destination register.
+ */
 uint8_t
 dt_get_rd_from_node(dt_ifg_node_t *n)
 {
-	assert(n != NULL);
 
-	/*
-	 * TODO(dstolfa): Some sanity checking here.
-	 */
+	assert(n != NULL);
 	return (DIF_INSTR_RD(n->din_difo->dtdo_buf[n->din_uidx]));
 }
