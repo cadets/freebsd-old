@@ -1872,10 +1872,6 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		/*
 		 * Get the type name of what we're casting it to.
 		 * In this case, this must be a pointer type.
-		 *
-		 * XXX(dstolfa): I am not aware of the possibility to cast
-		 * one struct to another without pointers, so we won't deal
-		 * with this case yet.
 		 */
 		dt_node_type_name(dnp->dn_right, buf, sizeof(buf));
 		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp);
