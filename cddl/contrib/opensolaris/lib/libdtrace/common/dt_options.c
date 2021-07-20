@@ -1125,25 +1125,6 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 	if (opt == NULL)
 		return (dt_set_errno(dtp, EINVAL));
 
-	if (strcmp(opt, "script_type") == 0) {
-		if (val == NULL) {
-			xyerror(D_PRAGMA_INVAL, "invalid script type");
-		}
-
-		if (strcmp(val, "guest") == 0) {
-			script_type = DT_SCRIPT_TYPE_GUEST;
-		} else if (strcmp(val, "host") == 0) {
-			script_type = DT_SCRIPT_TYPE_HOST;
-		} else {
-			xyerror(D_PRAGMA_INVAL, "invalid script type");
-		}
-
-		assert(script_type == DT_SCRIPT_TYPE_GUEST ||
-		    script_type == DT_SCRIPT_TYPE_HOST);
-
-		return (0);
-	}
-
 	if (dt_hypertrace_enabled(dtp)) {
 		if (dtp->dt_active)
 			return (dt_set_errno(dtp, EDT_ACTIVE));
