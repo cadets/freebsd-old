@@ -614,9 +614,6 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		var = &difo->dtdo_vartab[i];
 
-		/*
-		 * XXX(dstolfa): This might not be needed?
-		 */
 		if (dt_var_is_builtin(var->dtdv_id))
 			continue;
 
