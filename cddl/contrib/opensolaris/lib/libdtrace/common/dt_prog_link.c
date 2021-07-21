@@ -190,6 +190,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				switch (actkind) {
 				case DTRACEACT_EXIT:
 					*rtype = dt_int_rtype;
+					rtype->dtdt_size = sizeof(int);
 					break;
 
 				case DTRACEACT_PRINTA:
