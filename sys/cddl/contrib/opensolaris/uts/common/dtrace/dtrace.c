@@ -13564,6 +13564,7 @@ dtrace_buffer_alloc(dtrace_buffer_t *bufs, size_t size, int flags,
 		/*
 		 * If there is already a buffer allocated for this CPU, it
 		 * is only possible that this is a DR event.  In this case,
+		 * the buffer size must match our specified size.
 		 */
 		if (buf->dtb_tomax != NULL) {
 			ASSERT(buf->dtb_size == size);
@@ -16593,7 +16594,7 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 
 	if (opt[DTRACEOPT_AGGSIZE] != DTRACEOPT_UNSET &&
 	    opt[DTRACEOPT_AGGSIZE] != 0) {
-		if (opt[DTRACEOPT_HYPERTRACE] == 0 &&
+		if (opt[DTRACEOPT_HYPERTRACE] == DTRACEOPT_UNSET &&
 		    state->dts_aggregations == NULL) {
 			/*
 			 * We're not going to create an aggregation buffer

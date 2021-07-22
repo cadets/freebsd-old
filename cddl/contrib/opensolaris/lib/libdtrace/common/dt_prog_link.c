@@ -210,6 +210,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						*rtype = dt_void_rtype;
 						break;
 					}
+
 					/*
 					 * Fall through to the default case.
 					 */
