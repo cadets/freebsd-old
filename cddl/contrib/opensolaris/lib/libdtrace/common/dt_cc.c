@@ -1643,9 +1643,6 @@ dt_compile_agg(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 
 	if (dnp->dn_aggfun->dn_args != NULL) {
 		dt_cg(yypcb, dnp->dn_aggfun->dn_args);
-		/*
-		 * XXX(dstolfa): Do we need to set dtad_return to 1 here?
-		 */
 		ap->dtad_difo = dt_as(yypcb);
 	}
 }
