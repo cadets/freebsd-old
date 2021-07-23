@@ -2674,7 +2674,7 @@ main(int argc, char **argv)
 				/*
 				 * We are virtualized, so we can't be an
 				 * overlord. Virtual machines don't have
-				 * minion.
+				 * minions.
 				 */
 				syslog(LOG_ERR,
 				    "Specified '-O' (overlord mode) on a "
