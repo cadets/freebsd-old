@@ -2637,7 +2637,7 @@ main(int argc, char **argv)
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
 
-	while ((ch = getopt(argc, argv, "Ca:cde:hvZ")) != -1) {
+	while ((ch = getopt(argc, argv, "Oa:de:hmvZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -2656,7 +2656,13 @@ main(int argc, char **argv)
 			 */
 			break;
 
-		case 'C':
+		/*
+		 * Run the daemon in 'overlord' mode. A overlord daemon in this
+		 * case also spawns a minion thread which is going to spawn
+		 * DTrace instances on the host in order to do the necessary
+		 * linking.
+		 */
+		case 'O':
 			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
 			    NULL, 0)) {
 				syslog(LOG_ERR,
@@ -2666,18 +2672,25 @@ main(int argc, char **argv)
 
 			if (strcmp(hypervisor, "none") != 0) {
 				/*
-				 * We are virtualized, so we can't be a control
-				 * machine.
+				 * We are virtualized, so we can't be an
+				 * overlord. Virtual machines don't have
+				 * minion.
 				 */
 				syslog(LOG_ERR,
-				    "-C is not allowed in a virtual machine");
+				    "Specified '-O' (overlord mode) on a "
+				    "virtual machine. This is not supported... "
+				    "exiting.");
+
 				exit(EXIT_FAILURE);
 			}
 
 			g_ctrlmachine = 1;
 			break;
 
-		case 'c':
+		/*
+		 * Run the daemon in 'minion' mode.
+		 */
+		case 'm':
 			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
 			    NULL, 0)) {
 				syslog(LOG_ERR,
@@ -2693,9 +2706,10 @@ main(int argc, char **argv)
 				 * XXX: We only support bhyve for now.
 				 */
 
-				syslog(LOG_WARNING,
-				    "-c specified on the host. "
-				    "Did you mean -C?");
+				syslog(LOG_WARN,
+				    "Specified '-m' (minion mode) on a native "
+				    "(bare metal) machine. Did you mean to make"
+				    " this machine an overlord ('-O')?");
 			}
 			g_ctrlmachine = 0;
 			break;
@@ -2735,7 +2749,9 @@ main(int argc, char **argv)
 	assert(state.lockfd != -1);
 
 	if (g_ctrlmachine != 0 && g_ctrlmachine != 1) {
-		syslog(LOG_ERR, "You must either specify -c or -C");
+		syslog(LOG_ERR,
+		    "You must either specify whether to run the daemon in "
+		    "minion ('-m') or overlord ('-O') mode");
 		return (EX_OSERR);
 	}
 
