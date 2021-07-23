@@ -667,7 +667,7 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 {
 	int ctflib;
 
-	dtrace_actdesc_t *ap;
+	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
 	dt_node_t *anp;
 	boolean_t istrace = (dnp->dn_ident->di_id == DT_ACT_TRACE);
 	boolean_t isbottom = dt_node_is_bottom(dnp->dn_args);
@@ -737,21 +737,13 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		}
 	}
 
+	ap->dtad_difo = dt_as(yypcb);
+	ap->dtad_kind = DTRACEACT_DIFEXPR;
 	/*
-	 * Finally, if the action is really just a trace() action, we produce
-	 * a DIFO that contains whatever we want to trace and return.
+	 * Since we will be tracing this, we want to return a non-void
+	 * type from this action.
 	 */
-	if (istrace) {
-		ap = dt_stmt_action(dtp, sdp);
-		dt_cg(yypcb, dnp->dn_args);
-		ap->dtad_difo = dt_as(yypcb);
-		ap->dtad_kind = DTRACEACT_DIFEXPR;
-		/*
-		 * Since we will be tracing this, we want to return a non-void
-		 * type from this action.
-		 */
-		ap->dtad_return = 1;
-	}
+	ap->dtad_return = 1;
 }
 
 static void
