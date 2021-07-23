@@ -704,6 +704,11 @@ dt_action_trace(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	 * the case where we are referring to userland CTF data, we also need to
 	 * to identify which ctf container in question we care about and encode
 	 * that within the name.
+	 *
+	 * TODO(dstolfa, important): We need to support this for arbitrary
+	 * guests. This means that we need to patch in the correct CTF type from
+	 * the correct container that the guest will give us in order to print
+	 * the type correctly.
 	 */
 	if (dnp->dn_ident->di_id == DT_ACT_PRINT) {
 		dt_node_t *dret;
