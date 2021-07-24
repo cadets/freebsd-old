@@ -23,7 +23,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc pthread crypto execinfo
+LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined

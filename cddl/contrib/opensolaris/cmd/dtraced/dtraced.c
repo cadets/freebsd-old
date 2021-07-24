@@ -47,6 +47,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <libgen.h>
+#include <libutil.h>
 #include <limits.h>
 #include <openssl/sha.h>
 #include <pthread.h>
@@ -221,7 +222,7 @@ struct dtd_state {
 	_Atomic int shutdown;        /* shutdown flag */
 	int dirfd;                   /* /var/ddtrace */
 	int nosha;                   /* do we want to checksum? */
-	int lockfd;                  /* lockfile */
+	struct pidfh *pid_fileh;     /* lockfile */
 	int kq_hdl;                  /* event loop kqueue */
 };
 
@@ -2632,12 +2633,12 @@ main(int argc, char **argv)
 	struct kevent ev, ev_data;
 	struct dtd_state *retval;
 	int optidx = 0;
-	int lockfd;
 	char hypervisor[128];
 	int daemonize = 0;
 	size_t len = sizeof(hypervisor);
+	struct pidfh *pfh;
+	pid_t otherpid;
 
-	lockfd = 0;
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
@@ -2732,26 +2733,20 @@ main(int argc, char **argv)
 		}
 	}
 
-	lockfd = open(LOCK_FILE, O_RDWR | O_CREAT, 0640);
-	if (lockfd == -1) {
+	pfh = pidfile_open(LOCK_FILE, 0600, &otherpid);
+	if (pfh == NULL) {
+		if (errno == EEXIST) {
+			syslog(LOG_ERR,
+			    "dtraced is already running as pid %jd (check %s)",
+			    (intmax_t)otherpid, LOCK_FILE);
+			return (EX_OSERR);
+		}
+
 		syslog(LOG_ERR, "Could not open %s: %m", LOCK_FILE);
 		return (EX_OSERR);
 	}
 
-	if (lockf(lockfd, F_TLOCK, 0) < 0) {
-		syslog(LOG_ERR, "Could not lock %s: %m", LOCK_FILE);
-		return (EX_OSERR);
-	}
-
-	sprintf(pidstr, "%d\n", getpid());
-
-	if (write(lockfd, pidstr, strlen(pidstr)) < 0) {
-		syslog(LOG_ERR, "Failed to write pid to %s: %m", LOCK_FILE);
-		return (EX_OSERR);
-	}
-
-	state.lockfd = lockfd;
-	assert(state.lockfd != -1);
+	state.pid_fileh = pfh;
 
 	if (g_ctrlmachine != 0 && g_ctrlmachine != 1) {
 		syslog(LOG_ERR,
@@ -2762,6 +2757,17 @@ main(int argc, char **argv)
 
 	if (daemonize && daemon(0, 0) != 0) {
 		syslog(LOG_ERR, "Failed to daemonize %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
+		return (EX_OSERR);
+	}
+
+	if (pidfile_write(pfh)) {
+		syslog(LOG_ERR, "Failed to write PID to %s: %m", LOCK_FILE);
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2779,6 +2785,9 @@ againefd:
 		}
 
 		syslog(LOG_ERR, "Failed to open %s: %m", elfpath);
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2788,6 +2797,9 @@ againefd:
 	errval = init_state(&state);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to initialize the state");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EXIT_FAILURE);
 	}
 
@@ -2795,23 +2807,35 @@ againefd:
 
 	if (signal(SIGTERM, sig_term) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGTERM handler");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
 	if (signal(SIGINT, sig_int) == SIG_ERR) {
 		syslog(LOG_ERR, "Failed to install SIGINT handler");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
 	if (siginterrupt(SIGTERM, 1) != 0) {
 		syslog(LOG_ERR,
 		    "Failed to enable system call interrupts for SIGTERM");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
 	errval = setup_sockfd(&state);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to set up the socket");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2826,18 +2850,27 @@ againefd:
 	    state.inbounddir->dir, populate_existing, state.inbounddir);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate inbound existing files");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EXIT_FAILURE);
 	}
 
 	errval = setup_threads(&state);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to set up threads");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
 	if (listen_dir(state.outbounddir) == NULL) {
 		syslog(LOG_ERR, "listen_dir() on %s failed",
 		    state.outbounddir->dirpath);
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EXIT_FAILURE);
 	}
 
@@ -2848,6 +2881,9 @@ againefd:
 	errval = pthread_join(state.socktd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join socktd: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2858,6 +2894,9 @@ againefd:
 	errval = pthread_join(state.dtt_listentd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join dtt_listentd: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2868,6 +2907,9 @@ againefd:
 	errval = pthread_join(state.dtt_writetd, (void **)&retval);
 	if (errval != 0 && errval != ESRCH) {
 		syslog(LOG_ERR, "Failed to join dtt_writetd: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2878,6 +2920,9 @@ againefd:
 	errval = pthread_join(state.inboundtd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join inboundtd: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2888,6 +2933,9 @@ againefd:
 	errval = pthread_join(state.basetd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join basetd: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
@@ -2899,6 +2947,10 @@ againefd:
 		errval = pthread_join(state.workers[i], (void **)&retval);
 		if (errval != 0) {
 			syslog(LOG_ERR, "Failed to join threads: %m");
+			if (pidfile_remove(pfh))
+				syslog(LOG_ERR, "Could not remove %s: %m",
+				    LOCK_FILE);
+
 			return (EX_OSERR);
 		}
 	}
@@ -2910,18 +2962,30 @@ againefd:
 	errval = pthread_join(state.killtd, (void **)&retval);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to join child management thread: %m");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EX_OSERR);
 	}
 
 	errval = destroy_state(&state);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to clean up state");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EXIT_FAILURE);
 	}
 
-	closedir(elfdir);
-	close(efd);
+	if (closedir(elfdir))
+		syslog(LOG_ERR, "Could not close directory %s: %m",
+		    elfpath);
 
-	close(lockfd);
+	if (close(efd))
+		syslog(LOG_ERR, "Could not close %s: %m", elfpath);
+
+	if (pidfile_remove(pfh))
+		syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 	return (0);
 }
