@@ -2706,7 +2706,7 @@ main(int argc, char **argv)
 				 * XXX: We only support bhyve for now.
 				 */
 
-				syslog(LOG_WARN,
+				syslog(LOG_WARNING,
 				    "Specified '-m' (minion mode) on a native "
 				    "(bare metal) machine. Did you mean to make"
 				    " this machine an overlord ('-O')?");
