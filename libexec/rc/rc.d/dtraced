@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# PROVIDE: dtraced
+# REQUIRE: DAEMON FILESYSTEMS
+
+. /etc/rc.subr
+
+name="dtraced"
+desc="DTrace daemon that manages DTrace scripts across hosts."
+rcvar="${name}_enable"
+command="/usr/sbin/${name}"
+pidfile="/var/run/${name}.pid"
+start_precmd="${name}_precmd"
+
+sockfile="/var/ddtrace/sub.sock"
+
+dtraced_precmd()
+{
+	case "$dtraced_type" in
+	overlord)
+		rc_flags="-O ${rc_flags}"
+		;;
+	minion)
+		rc_flags="-m ${rc_flags}"
+		;;
+	*)
+		warn "Invalid type for dtraced"
+		return 1
+		;;
+	esac
+
+	rc_flags="-d ${rc_flags}"
+	return 0
+}
+
+load_rc_config $name
+run_rc_command "$1"
+
+

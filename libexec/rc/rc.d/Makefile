@@ -27,6 +27,7 @@ CONFS=	DAEMON \
 	devmatch \
 	dhclient \
 	dmesg \
+	dtraced \
 	dumpon \
 	fsck \
 	gbde \
