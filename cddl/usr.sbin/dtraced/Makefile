@@ -2,10 +2,10 @@
 
 .include <src.opts.mk>
 
-.PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
+.PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
-PROG=		dtdaemon
-SRCS=		dtdaemon.c
+PROG=		dtraced
+SRCS=		dtraced.c
 BINDIR?=	/usr/sbin
 
 WARNS?=		1

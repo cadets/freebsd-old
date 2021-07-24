@@ -65,7 +65,7 @@
 #include <spawn.h>
 #include <dt_prog_link.h>
 #endif
-#include <dtdaemon.h>
+#include <dtraced.h>
 
 #include <pthread.h>
 
@@ -158,7 +158,7 @@ static int g_mode = DMODE_EXEC;
 static int g_status = E_SUCCESS;
 static int g_grabanon = 0;
 
-static pthread_t g_dtdaemontd;
+static pthread_t g_dtracedtd;
 static pthread_t g_worktd;
 
 static const char *g_ofile = NULL;
@@ -817,14 +817,14 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	 * Therefore we don't really need to make a large message and the header
 	 * itself is sufficient.
 	 */
-	dtdaemon_hdr_t msg;
+	dtraced_hdr_t msg;
 
 	if (tofd == -1) {
 		fprintf(stderr, "file descriptor must be != -1\n");
 		return (-1);
 	}
 
-	memset(&msg, 0, DTDAEMON_MSGHDRSIZE);
+	memset(&msg, 0, DTRACED_MSGHDRSIZE);
 
 	assert(pgp != NULL);
 	pid_to_kill = pgp->dp_pid;
@@ -833,10 +833,10 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	 */
 	assert(pid_to_kill != 0 && pid_to_kill != 1);
 
-	DTDAEMON_MSG_TYPE(msg) = DTDAEMON_MSG_KILL;
-	DTDAEMON_MSG_KILLPID(msg) = pid_to_kill;
+	DTRACED_MSG_TYPE(msg) = DTRACED_MSG_KILL;
+	DTRACED_MSG_KILLPID(msg) = pid_to_kill;
 
-	nbytes = DTDAEMON_MSGHDRSIZE;
+	nbytes = DTRACED_MSGHDRSIZE;
 	if (send(tofd, &nbytes, sizeof(nbytes), 0) < 0) {
 		fprintf(stderr, "send() to %d failed with: %s\n", tofd,
 		    strerror(errno));
@@ -852,7 +852,7 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 }
 
 static void *
-listen_dtdaemon(void *arg)
+listen_dtraced(void *arg)
 {
 	int rx_sockfd;
 	int wx_sockfd;
@@ -877,7 +877,7 @@ listen_dtdaemon(void *arg)
 	ssize_t r;
 	uintptr_t elf_ptr;
 	size_t len_to_recv;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 	void *verictx;
 
 	rx_sockfd = 0;
@@ -904,7 +904,7 @@ listen_dtdaemon(void *arg)
 
 	do {
 		/*
-		 * Now that we have created an ELF file, we wait for dtdaemon
+		 * Now that we have created an ELF file, we wait for dtraced
 		 * to give us the new ELF file that contains all the applied
 		 * relocations. We will then verify that the relocations that
 		 * were applied are sensible, get the identifier of which VM
@@ -945,7 +945,7 @@ listen_dtdaemon(void *arg)
 		    ((r = recv(rx_sockfd,
 		    (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
 			if (r < 0)
-				fatal("failed to read from dtdaemon: %s",
+				fatal("failed to read from dtraced: %s",
 				    strerror(errno));
 
 			len_to_recv -= r;
@@ -961,22 +961,22 @@ listen_dtdaemon(void *arg)
 		 * 8-byte aligned
 		 */
 		assert(((uintptr_t)elf & 7) == 0);
-		memcpy(&header, elf, DTDAEMON_MSGHDRSIZE);
-		elf += DTDAEMON_MSGHDRSIZE;
-		elflen -= DTDAEMON_MSGHDRSIZE;
+		memcpy(&header, elf, DTRACED_MSGHDRSIZE);
+		elf += DTRACED_MSGHDRSIZE;
+		elflen -= DTRACED_MSGHDRSIZE;
 
-		if (DTDAEMON_MSG_TYPE(header) != DTDAEMON_MSG_ELF) {
+		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
 			/*
 			 * We shouldn't be receiving a kill command, so let's
 			 * just report it and ignore it...
 			 */
 			fprintf(stderr,
 			    "received unknown message (%lu), ignoring...\n",
-			    DTDAEMON_MSG_TYPE(header));
+			    DTRACED_MSG_TYPE(header));
 			continue;
 		}
 
-		assert(DTDAEMON_MSG_TYPE(header) == DTDAEMON_MSG_ELF);
+		assert(DTRACED_MSG_TYPE(header) == DTRACED_MSG_ELF);
 
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {
@@ -1459,13 +1459,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 		}
 	} else if (g_elf) {
 		/*
-		 * We open a dtdaemon socket because we expect the following
+		 * We open a dtraced socket because we expect the following
 		 * things to happen:
 		 *  (1) We write our ELF file to /var/ddtrace/outbound
-		 *  (2) dtdaemon forwards it to the traced machine (can be host)
+		 *  (2) dtraced forwards it to the traced machine (can be host)
 		 *  (3) traced DTrace applies relocations to the program
-		 *  (4) traced dtdaemon sends it back to host dtdaemon
-		 *  (5) dtdaemon writes out the ELF file to this DTrace
+		 *  (4) traced dtraced sends it back to host dtraced
+		 *  (5) dtraced writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
 
@@ -1478,11 +1478,11 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
-		rx_sock = open_dtdaemon(DTD_SUB_ELFWRITE);
+		rx_sock = open_dtraced(DTD_SUB_ELFWRITE);
 		if (rx_sock == -1)
 			fatal("failed to open rx_sock");
 
-		wx_sock = open_dtdaemon(DTD_SUB_READDATA);
+		wx_sock = open_dtraced(DTD_SUB_READDATA);
 		if (wx_sock == -1)
 			fatal("failed to open wx_sock");
 
@@ -1512,10 +1512,10 @@ exec_prog(const dtrace_cmd_t *dcp)
 		dtd_arg->wx_sock = wx_sock;
 		dtd_arg->hostpgp = dcp->dc_prog;
 
-		err = pthread_create(&g_dtdaemontd, NULL,
-		    listen_dtdaemon, dtd_arg);
+		err = pthread_create(&g_dtracedtd, NULL,
+		    listen_dtraced, dtd_arg);
 		if (err != 0)
-			fatal("failed to create g_dtdaemontd");
+			fatal("failed to create g_dtracedtd");
 
 		for (;;) {
 			/*
@@ -1593,12 +1593,12 @@ again:
 				    strerror(errno));
 		}
 
-		(void)pthread_kill(g_dtdaemontd, SIGTERM);
+		(void)pthread_kill(g_dtracedtd, SIGTERM);
 		(void)pthread_kill(g_worktd, SIGTERM);
 
-		err = pthread_join(g_dtdaemontd, &rval);
+		err = pthread_join(g_dtracedtd, &rval);
 		if (err != 0)
-			fprintf(stderr, "failed to join g_dtdaemontd\n");
+			fprintf(stderr, "failed to join g_dtracedtd\n");
 		err = pthread_join(g_worktd, &rval);
 		if (err != 0)
 			fprintf(stderr, "failed to join g_worktd\n");
@@ -1848,7 +1848,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	dtrace_proginfo_t dpi;
 	int i;
 	int tmpfd;
-	int dtdaemon_sock;
+	int dtraced_sock;
 
 	progpath = strtok(dcp->dc_arg, ",");
 	if (progpath == NULL)
@@ -1881,7 +1881,7 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		/*
 		 * If we are actually tracing things, we will need to stop at
 		 * some point. Get the pid so that the host can send a message
-		 * to dtdaemon to kill us later.
+		 * to dtraced to kill us later.
 		 */
 		assert(dtrace_is_guest(g_dtp) != 0);
 		dcp->dc_prog->dp_pid = getpid();
@@ -1890,9 +1890,9 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	}
 
 
-	dtdaemon_sock = open_dtdaemon(DTD_SUB_READDATA);
-	if (dtdaemon_sock == -1)
-		fatal("failed to open dtdaemon");
+	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
+	if (dtraced_sock == -1)
+		fatal("failed to open dtraced");
 
 	tmpfd = mkstemp(template);
 	if (tmpfd == -1)
@@ -1907,11 +1907,11 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (lseek(tmpfd, 0, SEEK_SET))
 		fatal("lseek() failed");
 
-	if (send_elf(tmpfd, dtdaemon_sock, host ? "inbound" : "outbound"))
+	if (send_elf(tmpfd, dtraced_sock, host ? "inbound" : "outbound"))
 		fatal("failed to send_elf()");
 
 	close(tmpfd);
-	close(dtdaemon_sock);
+	close(dtraced_sock);
 
 	if (prog_exec == DT_PROG_EXEC) {
 		if (pthread_join(g_worktd, NULL))

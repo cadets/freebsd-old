@@ -23,7 +23,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libproc/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
-		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
+		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 
 CFLAGS+=	-fsanitize=address -fsanitize=undefined

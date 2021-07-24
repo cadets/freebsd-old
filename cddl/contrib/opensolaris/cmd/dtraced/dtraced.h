@@ -25,49 +25,49 @@
  * $FreeBSD$
  */
 
-#ifndef __DTDAEMON_H_
-#define __DTDAEMON_H_
+#ifndef __DTRACED_H_
+#define __DTRACED_H_
 
-#define	DTDAEMON_SOCKPATH               "/var/ddtrace/sub.sock"
+#define	DTRACED_SOCKPATH               "/var/ddtrace/sub.sock"
 
-#define	DTDAEMON_KIND_UNKNOWN           0
-#define	DTDAEMON_KIND_CONSUMER          1
-#define	DTDAEMON_KIND_FORWARDER         2
-#define	DTDAEMON_KIND_DTDAEMON          3
+#define	DTRACED_KIND_UNKNOWN           0
+#define	DTRACED_KIND_CONSUMER          1
+#define	DTRACED_KIND_FORWARDER         2
+#define	DTRACED_KIND_DTRACED          3
 
 #define DTD_SUB_READDATA                1
 #define DTD_SUB_ELFWRITE                (1 << 1)
 #define DTD_SUB_KILL                    (1 << 2)
 
-#define DTDAEMON_LOCSIZE                64ul
+#define DTRACED_LOCSIZE                64ul
 
-typedef struct dtdaemon_hdr {
-	uint64_t msg_type;      /* message type (see DTDAEMON_MSG_*) */
+typedef struct dtraced_hdr {
+	uint64_t msg_type;      /* message type (see DTRACED_MSG_*) */
 	struct {
-		char location[DTDAEMON_LOCSIZE]; /* elf location */
+		char location[DTRACED_LOCSIZE]; /* elf location */
 	} elf;
 
 	struct {
 		pid_t pid; /* process id to kill */
 	} kill;
-} dtdaemon_hdr_t;
+} dtraced_hdr_t;
 
 typedef struct dtd_initmsg {
 	int kind;       /* kind (see above) */
 	uint64_t subs;  /* what are we subscribing to? */
 } dtd_initmsg_t;
 
-#define	DTDAEMON_MSGHDRSIZE             sizeof(dtdaemon_hdr_t)
+#define	DTRACED_MSGHDRSIZE             sizeof(dtraced_hdr_t)
 
 /*
  * Public message API
  */
-#define	DTDAEMON_MSG_ELF                1
-#define	DTDAEMON_MSG_KILL               2
-#define	DTDAEMON_MSG_LAST               2
+#define	DTRACED_MSG_ELF                1
+#define	DTRACED_MSG_KILL               2
+#define	DTRACED_MSG_LAST               2
 
-#define	DTDAEMON_MSG_TYPE(m)            ((m).msg_type)
-#define	DTDAEMON_MSG_LOC(m)             ((m).elf.location)
-#define DTDAEMON_MSG_KILLPID(m)         ((m).kill.pid)
+#define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
+#define	DTRACED_MSG_LOC(m)             ((m).elf.location)
+#define DTRACED_MSG_KILLPID(m)         ((m).kill.pid)
 
-#endif // __DTDAEMON_H_
+#endif // __DTRACED_H_

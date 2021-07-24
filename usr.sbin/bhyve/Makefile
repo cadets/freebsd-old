@@ -123,7 +123,7 @@ CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/e1000
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/mii
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
-CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
+CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 .if ${MK_BHYVE_SNAPSHOT} != "no"
 CFLAGS+= -I${SRCTOP}/contrib/libucl/include

@@ -46,7 +46,7 @@
 #include <errno.h>
 #include <stddef.h>
 
-#include <dtdaemon.h>
+#include <dtraced.h>
 
 static const struct {
 	int err;
@@ -313,7 +313,7 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	size_t donepathlen = 0;
 	size_t dirlen;
 	va_list args;
-	int dtdaemon_sock, tmpfd;
+	int dtraced_sock, tmpfd;
 	char template[MAXPATHLEN] = "/tmp/ddtrace-set-prog-err.XXXXXXX";
 
 	if (pgp == NULL)
@@ -342,9 +342,9 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	if (dtp->dt_is_guest == 0)
 		errx(EXIT_FAILURE, "%s", pgp->dp_err);
 
-	dtdaemon_sock = open_dtdaemon(DTD_SUB_READDATA);
-	if (dtdaemon_sock == -1)
-		errx(EXIT_FAILURE, "failed to open dtdaemon\n");
+	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
+	if (dtraced_sock == -1)
+		errx(EXIT_FAILURE, "failed to open dtraced\n");
 
 	tmpfd = mkstemp(template);
 	if (tmpfd == -1)
@@ -359,11 +359,11 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	if (lseek(tmpfd , 0, SEEK_SET))
 		errx(EXIT_FAILURE, "lseek() failed: %s\n", strerror(errno));
 
-	if (send_elf(tmpfd, dtdaemon_sock, "outbound"))
+	if (send_elf(tmpfd, dtraced_sock, "outbound"))
 		errx(EXIT_FAILURE, "send_elf() failed\n");
 
 	close(tmpfd);
-	close(dtdaemon_sock);
+	close(dtraced_sock);
 
 	errx(EXIT_FAILURE, "%s", pgp->dp_err);
 }

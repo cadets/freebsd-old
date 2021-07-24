@@ -36,7 +36,7 @@
 #endif
 
 #include <assert.h>
-#include <dtdaemon.h>
+#include <dtraced.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -58,7 +58,7 @@ static int wx_sockfd = -1;
 static int dirfd = -1;
 
 static int
-dtdaemon_sockinit(uint64_t subs)
+dtraced_sockinit(uint64_t subs)
 {
 	size_t l;
 	struct sockaddr_un addr;
@@ -74,11 +74,11 @@ dtdaemon_sockinit(uint64_t subs)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = PF_UNIX;
-	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		fprintf(stderr,
 		    "attempting to copy %s failed (need %zu bytes)\n",
-		    DTDAEMON_SOCKPATH, l);
+		    DTRACED_SOCKPATH, l);
 		return (-1);
 	}
 
@@ -94,14 +94,14 @@ dtdaemon_sockinit(uint64_t subs)
 		return (-1);
 	}
 
-	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
-		fprintf(stderr, "Expected dtdaemon kind, got %d\n",
+	if (initmsg.kind != DTRACED_KIND_DTRACED) {
+		fprintf(stderr, "Expected dtraced kind, got %d\n",
 		    initmsg.kind);
 		close(sock);
 		return (-1);
 	}
 
-	initmsg.kind = DTDAEMON_KIND_FORWARDER;
+	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = subs;
 	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "write() initmsg failed with: %s",
@@ -119,11 +119,11 @@ dtdaemon_sockinit(uint64_t subs)
 int
 dthyve_init(void)
 {
-	rx_sockfd = dtdaemon_sockinit(DTD_SUB_ELFWRITE | DTD_SUB_KILL);
+	rx_sockfd = dtraced_sockinit(DTD_SUB_ELFWRITE | DTD_SUB_KILL);
 	if (rx_sockfd == -1)
 		fprintf(stderr, "failed to init rx_socktfd\n");
 
-	wx_sockfd = dtdaemon_sockinit(DTD_SUB_READDATA);
+	wx_sockfd = dtraced_sockinit(DTD_SUB_READDATA);
 	if (wx_sockfd == -1)
 		fprintf(stderr, "failed to init wx_socktfd\n");
 

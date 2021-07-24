@@ -53,7 +53,7 @@ __FBSDID("$FreeBSD$");
 #include <pthread.h>
 #include <errno.h>
 #include <err.h>
-#include <dtdaemon.h>
+#include <dtraced.h>
 
 #include <syslog.h>
 #include <stdarg.h>
@@ -268,10 +268,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	char name[MAX_VMNAME];
 	uint16_t vmid;
 	static char padding[6] = {0,0,0,0,0,0};
-	static char inbound[DTDAEMON_LOCSIZE] = "inbound";
+	static char inbound[DTRACED_LOCSIZE] = "inbound";
 	size_t buflen;
 	unsigned char *buf, *_buf;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 
 	memset(&header, 0, sizeof(header));
 	assert(niov == 1);
@@ -320,11 +320,11 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			}
 			size = strlen(name);
 
-			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
-			memcpy(DTDAEMON_MSG_LOC(header), inbound,
-			    DTDAEMON_LOCSIZE);
+			DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
+			memcpy(DTRACED_MSG_LOC(header), inbound,
+			    DTRACED_LOCSIZE);
 
-			buflen = DTDAEMON_MSGHDRSIZE + sizeof(vmid) +
+			buflen = DTRACED_MSGHDRSIZE + sizeof(vmid) +
 			    sizeof(padding) + sizeof(size) + size + len;
 
 			assert(buflen > len);
@@ -338,10 +338,10 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 
 			_buf = buf;
 
-			assert((_buf + DTDAEMON_MSGHDRSIZE) < (buf + buflen));
+			assert((_buf + DTRACED_MSGHDRSIZE) < (buf + buflen));
 
-			memcpy(_buf, &header, DTDAEMON_MSGHDRSIZE);
-			_buf += DTDAEMON_MSGHDRSIZE;
+			memcpy(_buf, &header, DTRACED_MSGHDRSIZE);
+			_buf += DTRACED_MSGHDRSIZE;
 
 			assert(_buf > buf);
 			assert((_buf + sizeof(vmid)) < (buf + buflen));
@@ -786,7 +786,7 @@ pci_vtdtr_events(void *xsc)
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	size_t len;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 
 	buf = NULL;
 	sc = xsc;
@@ -810,20 +810,20 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
-		memcpy(&header, buf, DTDAEMON_MSGHDRSIZE);
+		memcpy(&header, buf, DTRACED_MSGHDRSIZE);
 		/*
 		 * We don't need the header anymore...
 		 */
-		_buf = buf + DTDAEMON_MSGHDRSIZE;
-		len -= DTDAEMON_MSGHDRSIZE;
+		_buf = buf + DTRACED_MSGHDRSIZE;
+		len -= DTRACED_MSGHDRSIZE;
 
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
 		assert(ctrl_entry != NULL);
 		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
-		switch (DTDAEMON_MSG_TYPE(header)) {
-		case DTDAEMON_MSG_KILL:
-			ctrl = vtdtr_kill_event(DTDAEMON_MSG_KILLPID(header));
+		switch (DTRACED_MSG_TYPE(header)) {
+		case DTRACED_MSG_KILL:
+			ctrl = vtdtr_kill_event(DTRACED_MSG_KILLPID(header));
 			ctrl_entry->ctrl = ctrl;
 
 			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
@@ -836,7 +836,7 @@ pci_vtdtr_events(void *xsc)
 
 			break;
 
-		case DTDAEMON_MSG_ELF:
+		case DTRACED_MSG_ELF:
 			/*
 			 * We can't do anything meaningful if this malloc fails,
 			 * so we simply assume it will succeed every time and

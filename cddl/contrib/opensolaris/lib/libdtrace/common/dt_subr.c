@@ -54,7 +54,7 @@
 #include <unistd.h>
 
 #include <dt_impl.h>
-#include <dtdaemon.h>
+#include <dtraced.h>
 
 static const struct {
 	size_t dtps_offset;
@@ -1005,60 +1005,60 @@ dtrace_uaddr2str(dtrace_hdl_t *dtp, pid_t pid,
 }
 
 int
-open_dtdaemon(uint64_t subs)
+open_dtraced(uint64_t subs)
 {
-	int dtdaemon_sock;
+	int dtraced_sock;
 	struct sockaddr_un addr;
 	dtd_initmsg_t initmsg;
 	size_t l;
 
 	memset(&initmsg, 0, sizeof(initmsg));
-	dtdaemon_sock = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (dtdaemon_sock == -1) {
-		fprintf(stderr, "failed to open dtdaemon socket");
+	dtraced_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (dtraced_sock == -1) {
+		fprintf(stderr, "failed to open dtraced socket");
 		return (-1);
 	}
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = PF_UNIX;
-	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		fprintf(stderr, "failed to copy %s into sun_path\n",
-		    DTDAEMON_SOCKPATH);
+		    DTRACED_SOCKPATH);
 		return (-1);
 	}
 
-	if (connect(dtdaemon_sock,
+	if (connect(dtraced_sock,
 	    (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		fprintf(stderr, "failed to connect to dtdaemon socket: %s\n",
+		fprintf(stderr, "failed to connect to dtraced socket: %s\n",
 		    strerror(errno));
 		return (-1);
 	}
 
-	if (recv(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
-		fprintf(stderr, "failed to recv from dtdaemon socket: %s\n",
+	if (recv(dtraced_sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "failed to recv from dtraced socket: %s\n",
 		    strerror(errno));
-		close(dtdaemon_sock);
+		close(dtraced_sock);
 		return (-1);
 	}
 
-	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
+	if (initmsg.kind != DTRACED_KIND_DTRACED) {
 		fprintf(stderr, "expected kind %d but got %d\n",
-		    DTDAEMON_KIND_DTDAEMON, initmsg.kind);
-		close(dtdaemon_sock);
+		    DTRACED_KIND_DTRACED, initmsg.kind);
+		close(dtraced_sock);
 		return (-1);
 	}
 
-	initmsg.kind = DTDAEMON_KIND_CONSUMER;
+	initmsg.kind = DTRACED_KIND_CONSUMER;
 	initmsg.subs = subs;
-	if (send(dtdaemon_sock, &initmsg, sizeof(initmsg), 0) < 0) {
-		fprintf(stderr, "failed to send to dtdaemon socket: %s\n",
+	if (send(dtraced_sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "failed to send to dtraced socket: %s\n",
 		    strerror(errno));
-		close(dtdaemon_sock);
+		close(dtraced_sock);
 		return (-1);
 	}
 
-	return (dtdaemon_sock);
+	return (dtraced_sock);
 }
 
 int
@@ -1068,7 +1068,7 @@ send_elf(int fromfd, int tofd, const char *location)
 	size_t total_size;
 	struct stat sb;
 	unsigned char data = 0;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 	size_t l;
 
 	if (fromfd == -1 || tofd == -1) {
@@ -1084,14 +1084,14 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
-	total_size = DTDAEMON_MSGHDRSIZE + sb.st_size;
+	total_size = DTRACED_MSGHDRSIZE + sb.st_size;
 	buf = malloc(total_size);
 	if (buf == NULL) {
 		fprintf(stderr, "malloc() failed: %s\n", strerror(errno));
 		return (-1);
 	}
 
-	_buf = buf + DTDAEMON_MSGHDRSIZE;
+	_buf = buf + DTRACED_MSGHDRSIZE;
 	if (read(fromfd, _buf, sb.st_size) < 0) {
 		fprintf(stderr, "read() from %d failed: %s\n", fromfd,
 		    strerror(errno));
@@ -1099,11 +1099,11 @@ send_elf(int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
-	DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
-	l = strlcpy(DTDAEMON_MSG_LOC(header), location, DTDAEMON_LOCSIZE);
-	if (l >= DTDAEMON_LOCSIZE) {
+	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
+	l = strlcpy(DTRACED_MSG_LOC(header), location, DTRACED_LOCSIZE);
+	if (l >= DTRACED_LOCSIZE) {
 		fprintf(stderr, "strlcpy() failed (%zu >= %zu)\n", l,
-		    DTDAEMON_LOCSIZE);
+		    DTRACED_LOCSIZE);
 		free(buf);
 		return (-1);
 	}
@@ -1116,9 +1116,9 @@ send_elf(int fromfd, int tofd, const char *location)
 	}
 
 	/*
-	 * populate the header to the buffer that we will send to dtdaemon.
+	 * populate the header to the buffer that we will send to dtraced.
 	 */
-	memcpy(buf, &header, DTDAEMON_MSGHDRSIZE);
+	memcpy(buf, &header, DTRACED_MSGHDRSIZE);
 	if (send(tofd, buf, total_size, 0) < 0) {
 		fprintf(
 		    stderr, "send() to %d failed: %s\n", tofd, strerror(errno));

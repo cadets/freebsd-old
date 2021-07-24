@@ -105,7 +105,7 @@ CFLAGS+=	-I${.OBJDIR} -I${.CURDIR} \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libctf/common \
 		-I${OPENSOLARIS_USR_DISTDIR}/lib/libdtrace/common \
 		-I${OPENSOLARIS_SYS_DISTDIR}/uts/common \
-		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtdaemon
+		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 #CFLAGS+=	-DYYDEBUG
 

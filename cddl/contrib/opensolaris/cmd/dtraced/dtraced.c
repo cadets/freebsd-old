@@ -63,15 +63,15 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "dtdaemon.h"
+#include "dtraced.h"
 
-#define DTDAEMON_INBOUNDDIR      "/var/ddtrace/inbound/"
-#define DTDAEMON_OUTBOUNDDIR     "/var/ddtrace/outbound/"
-#define DTDAEMON_BASEDIR         "/var/ddtrace/base/"
-#define DTDAEMON_BACKTRACELEN    128
-#define DTDAEMON_BACKLOG_SIZE    4
+#define DTRACED_INBOUNDDIR      "/var/ddtrace/inbound/"
+#define DTRACED_OUTBOUNDDIR     "/var/ddtrace/outbound/"
+#define DTRACED_BASEDIR         "/var/ddtrace/base/"
+#define DTRACED_BACKTRACELEN    128
+#define DTRACED_BACKLOG_SIZE    4
 
-#define LOCK_FILE                "/var/dtdaemon.lock"
+#define LOCK_FILE                "/var/dtraced.lock"
 #define SOCKFD_NAME              "sub.sock"
 #define THREADPOOL_SIZE          4
 
@@ -161,7 +161,7 @@ typedef struct pidlist {
 } pidlist_t;
 
 /*
- * dtdaemon state structure. This contains everything relevant to dtdaemon's
+ * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
  */
 struct dtd_state {
@@ -359,10 +359,10 @@ static void
 dump_backtrace(void)
 {
 	int nptrs;
-	void *buffer[DTDAEMON_BACKTRACELEN];
+	void *buffer[DTRACED_BACKTRACELEN];
 	char **strings;
 
-	nptrs = backtrace(buffer, DTDAEMON_BACKTRACELEN);
+	nptrs = backtrace(buffer, DTRACED_BACKTRACELEN);
 	strings = backtrace_symbols(buffer, nptrs);
 
 	if (strings == NULL) {
@@ -713,7 +713,7 @@ write_dttransport(void *_s)
 	struct sockaddr_un addr;
 	dtd_initmsg_t initmsg;
 	uint32_t identifier;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 	ssize_t r;
 	uintptr_t msg_ptr;
 	unsigned char *msg;
@@ -732,7 +732,7 @@ write_dttransport(void *_s)
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = PF_UNIX;
 
-	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		syslog(LOG_ERR, "Failed setting addr.sun_path"
 		    " to /var/ddtrace/sub.sock");
@@ -753,15 +753,15 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 	}
 
-	if (initmsg.kind != DTDAEMON_KIND_DTDAEMON) {
-		syslog(LOG_ERR, "Expected dtdaemon kind, got %d\n",
+	if (initmsg.kind != DTRACED_KIND_DTRACED) {
+		syslog(LOG_ERR, "Expected dtraced kind, got %d\n",
 		    initmsg.kind);
 		close(sockfd);
 		pthread_exit(NULL);
 	}
 
 	memset(&initmsg, 0, sizeof(initmsg));
-	initmsg.kind = DTDAEMON_KIND_FORWARDER;
+	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = DTD_SUB_ELFWRITE;
 	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		syslog(LOG_ERR, "Failed to write initmsg to sockfd: %m");
@@ -799,20 +799,20 @@ write_dttransport(void *_s)
 			msg_ptr += r;
 		}
 
-		memcpy(&header, msg, DTDAEMON_MSGHDRSIZE);
-		if (DTDAEMON_MSG_TYPE(header) != DTDAEMON_MSG_ELF) {
+		memcpy(&header, msg, DTRACED_MSGHDRSIZE);
+		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
 			syslog(LOG_ERR, "Received unknown message type: %lu\n",
-			    DTDAEMON_MSG_TYPE(header));
+			    DTRACED_MSG_TYPE(header));
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
 
-		assert(DTDAEMON_MSG_TYPE(header) == DTDAEMON_MSG_ELF);
+		assert(DTRACED_MSG_TYPE(header) == DTRACED_MSG_ELF);
 
 		msg_ptr = (uintptr_t)msg;
-		msg += DTDAEMON_MSGHDRSIZE;
+		msg += DTRACED_MSGHDRSIZE;
 
-		totallen -= DTDAEMON_MSGHDRSIZE;
+		totallen -= DTRACED_MSGHDRSIZE;
 		len = totallen;
 		while (len != 0) {
 			memset(&e, 0, sizeof(e));
@@ -842,7 +842,7 @@ write_dttransport(void *_s)
 			assert(len >= 0 && len < totallen);
 			assert((uintptr_t)msg >= msg_ptr);
 			assert((uintptr_t)msg <=
-			    (msg_ptr + totallen + DTDAEMON_MSGHDRSIZE));
+			    (msg_ptr + totallen + DTRACED_MSGHDRSIZE));
 		}
 
 		assert(len == 0);
@@ -929,7 +929,7 @@ process_joblist(void *_s)
 	struct stat stat;
 	unsigned char *buf, *_buf;
 	size_t nbytes, totalbytes;
-	dtdaemon_hdr_t header;
+	dtraced_hdr_t header;
 	struct kevent change_event[1];
 	unsigned char ack = 1;
 	struct dtd_joblist *job;
@@ -1043,20 +1043,20 @@ process_joblist(void *_s)
 			 * listen_dir thread for process_base.
 			 */
 
-			memcpy(&header, buf, DTDAEMON_MSGHDRSIZE);
-			switch (DTDAEMON_MSG_TYPE(header)) {
-			case DTDAEMON_MSG_ELF:
-				_buf += DTDAEMON_MSGHDRSIZE;
-				nbytes -= DTDAEMON_MSGHDRSIZE;
+			memcpy(&header, buf, DTRACED_MSGHDRSIZE);
+			switch (DTRACED_MSG_TYPE(header)) {
+			case DTRACED_MSG_ELF:
+				_buf += DTRACED_MSGHDRSIZE;
+				nbytes -= DTRACED_MSGHDRSIZE;
 
 				if (strcmp(
-				    DTDAEMON_MSG_LOC(header), "base") == 0)
+				    DTRACED_MSG_LOC(header), "base") == 0)
 					dir = s->basedir;
 				else if (strcmp(
-				    DTDAEMON_MSG_LOC(header), "outbound") == 0)
+				    DTRACED_MSG_LOC(header), "outbound") == 0)
 					dir = s->outbounddir;
 				else if (strcmp(
-				    DTDAEMON_MSG_LOC(header), "inbound") == 0)
+				    DTRACED_MSG_LOC(header), "inbound") == 0)
 					dir = s->inbounddir;
 				else
 					dir = NULL;
@@ -1064,7 +1064,7 @@ process_joblist(void *_s)
 				if (dir == NULL) {
 					syslog(LOG_ERR,
 					    "unrecognized location: %s",
-					    DTDAEMON_MSG_LOC(header));
+					    DTRACED_MSG_LOC(header));
 
 					free(buf);
 					pthread_exit(NULL);
@@ -1073,7 +1073,7 @@ process_joblist(void *_s)
 				if (write_data(dir, _buf, nbytes))
 					syslog(LOG_ERR, "write_data() failed");
 				break;
-			case DTDAEMON_MSG_KILL:
+			case DTRACED_MSG_KILL:
 				/*
 				 * We enqueue a KILL message in the joblist
 				 * (another thread will simply pick this up). We
@@ -1084,7 +1084,7 @@ process_joblist(void *_s)
 				for (fd_list = dt_list_next(&s->sockfds);
 				     fd_list; fd_list = dt_list_next(fd_list)) {
 					if (fd_list->kind !=
-					    DTDAEMON_KIND_FORWARDER)
+					    DTRACED_KIND_FORWARDER)
 						continue;
 
 					if ((fd_list->subs & DTD_SUB_KILL) == 0)
@@ -1105,7 +1105,7 @@ process_joblist(void *_s)
 					job->job = KILL;
 					job->connsockfd = fd_list->fd;
 					job->j.kill.pid =
-					    DTDAEMON_MSG_KILLPID(header);
+					    DTRACED_MSG_KILLPID(header);
 
 					LOCK(&s->joblistmtx);
 					dt_list_append(&s->joblist, job);
@@ -1128,7 +1128,7 @@ process_joblist(void *_s)
 			 * If we end up with pid <= 1, something went wrong.
 			 */
 			assert(pid > 1);
-			msglen = sizeof(pid_t) + DTDAEMON_MSGHDRSIZE;
+			msglen = sizeof(pid_t) + DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
 			if (msg == NULL) {
 				syslog(LOG_ERR,
@@ -1141,9 +1141,9 @@ process_joblist(void *_s)
 			 * we don't really make it a structure. In the future,
 			 * this might change.
 			 */
-			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_KILL;
-			memcpy(msg, &header, DTDAEMON_MSGHDRSIZE);
-			contents = msg + DTDAEMON_MSGHDRSIZE;
+			DTRACED_MSG_TYPE(header) = DTRACED_MSG_KILL;
+			memcpy(msg, &header, DTRACED_MSGHDRSIZE);
+			contents = msg + DTRACED_MSGHDRSIZE;
 
 			memcpy(contents, &pid, sizeof(pid));
 
@@ -1253,7 +1253,7 @@ killcleanup:
 			elflen = stat.st_size;
 			msglen =
 			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
-			msglen += DTDAEMON_MSGHDRSIZE;
+			msglen += DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
 
 			if (msg == NULL) {
@@ -1264,11 +1264,11 @@ killcleanup:
 				break;
 			}
 
-			DTDAEMON_MSG_TYPE(header) = DTDAEMON_MSG_ELF;
+			DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
 			memset(msg, 0, msglen);
-			memcpy(msg, &header, DTDAEMON_MSGHDRSIZE);
+			memcpy(msg, &header, DTRACED_MSGHDRSIZE);
 
-			_msg = msg + DTDAEMON_MSGHDRSIZE;
+			_msg = msg + DTRACED_MSGHDRSIZE;
 			contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
 
 			if ((r = read(elffd, contents, elflen)) < 0) {
@@ -1397,7 +1397,7 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
-	initmsg.kind = DTDAEMON_KIND_DTDAEMON;
+	initmsg.kind = DTRACED_KIND_DTRACED;
 	if (send(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
 		syslog(LOG_ERR, "send() initmsg to connsockfd failed: %m");
@@ -1535,7 +1535,7 @@ process_consumers(void *_s)
 	if (s->sockfd == -1)
 		pthread_exit(NULL);
 
-	err = listen(s->sockfd, DTDAEMON_BACKLOG_SIZE);
+	err = listen(s->sockfd, DTRACED_BACKLOG_SIZE);
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to listen on %d: %m", s->sockfd);
 		pthread_exit(NULL);
@@ -1543,7 +1543,7 @@ process_consumers(void *_s)
 
 	kq = kqueue();
 	if (kq == -1) {
-		syslog(LOG_ERR, "Failed to create dtdaemon socket kqueue: %m");
+		syslog(LOG_ERR, "Failed to create dtraced socket kqueue: %m");
 		pthread_exit(NULL);
 	}
 
@@ -1632,7 +1632,7 @@ process_consumers(void *_s)
 
 				/*
 				 * If efd did not state it ever wants READDATA
-				 * to work on dtdaemon, we will simply ignore
+				 * to work on dtraced, we will simply ignore
 				 * it and report a warning.
 				 */
 				if ((udata_fde->subs & DTD_SUB_READDATA) == 0) {
@@ -1716,11 +1716,11 @@ setup_sockfd(struct dtd_state *s)
 	memset(&addr, 0, sizeof(addr));
 
 	addr.sun_family = PF_UNIX;
-	l = strlcpy(addr.sun_path, DTDAEMON_SOCKPATH, sizeof(addr.sun_path));
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
 		syslog(LOG_ERR,
 		    "Failed to copy %s into sockaddr (%zu)",
-		    DTDAEMON_SOCKPATH, l);
+		    DTRACED_SOCKPATH, l);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
@@ -1760,8 +1760,8 @@ destroy_sockfd(struct dtd_state *s)
 
 	s->sockfd = -1;
 
-	if (unlink(DTDAEMON_SOCKPATH) != 0)
-		syslog(LOG_ERR, "Failed to unlink %s: %m", DTDAEMON_SOCKPATH);
+	if (unlink(DTRACED_SOCKPATH) != 0)
+		syslog(LOG_ERR, "Failed to unlink %s: %m", DTRACED_SOCKPATH);
 
 	return (0);
 }
@@ -1904,11 +1904,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	assert(g_ctrlmachine == 1 || g_ctrlmachine == 0);
 	if (g_ctrlmachine == 1) {
 		/*
-		 * If we have a host configuration of dtdaemon
+		 * If we have a host configuration of dtraced
 		 * we simply send off the ELF file to dtrace(1).
 		 *
 		 * We iterate over all our known dtrace(1)s that have
-		 * registered with dtdaemon and send off the file path
+		 * registered with dtraced and send off the file path
 		 * to them. They will parse said file path (we assume
 		 * they won't be writing over it since this requires root
 		 * anyway) and decide if the file is meant for them to
@@ -1918,7 +1918,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		LOCK(&s->socklistmtx);
 		for (fd_list = dt_list_next(&s->sockfds); fd_list;
 		    fd_list = dt_list_next(fd_list)) {
-			if (fd_list->kind != DTDAEMON_KIND_CONSUMER)
+			if (fd_list->kind != DTRACED_KIND_CONSUMER)
 				continue;
 
 			if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
@@ -1995,7 +1995,7 @@ cleanup:
 }
 
 static void
-dtdaemon_copyfile(const char *src, const char *dst)
+dtraced_copyfile(const char *src, const char *dst)
 {
 	int fd, newfd;
 	struct stat sb;
@@ -2108,7 +2108,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	dirpathlen = strlen(outbounddirpath);
 	strcpy(fullpath, dirpath);
 	strcpy(fullpath + strlen(fullpath), f->d_name);
-	dtdaemon_copyfile(fullpath, newname);
+	dtraced_copyfile(fullpath, newname);
 	strcpy(donename, outbounddirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
 	if (rename(newname, donename))
@@ -2199,7 +2199,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	LOCK(&s->socklistmtx);
 	for (fd_list = dt_list_next(&s->sockfds); fd_list;
 	    fd_list = dt_list_next(fd_list)) {
-		if (fd_list->kind != DTDAEMON_KIND_FORWARDER)
+		if (fd_list->kind != DTRACED_KIND_FORWARDER)
 			continue;
 
 		if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
@@ -2492,9 +2492,9 @@ init_state(struct dtd_state *s)
 		}
 	}
 
-	s->outbounddir = dtd_mkdir(DTDAEMON_OUTBOUNDDIR, &process_outbound);
-	s->inbounddir = dtd_mkdir(DTDAEMON_INBOUNDDIR, &process_inbound);
-	s->basedir = dtd_mkdir(DTDAEMON_BASEDIR, &process_base);
+	s->outbounddir = dtd_mkdir(DTRACED_OUTBOUNDDIR, &process_outbound);
+	s->inbounddir = dtd_mkdir(DTRACED_INBOUNDDIR, &process_inbound);
+	s->basedir = dtd_mkdir(DTRACED_BASEDIR, &process_base);
 
 	s->outbounddir->state = s;
 	s->inbounddir->state = s;
