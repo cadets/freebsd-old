@@ -2657,7 +2657,7 @@ main(int argc, char **argv)
 			break;
 
 		/*
-		 * Run the daemon in 'overlord' mode. A overlord daemon in this
+		 * Run the daemon in 'overlord' mode. An overlord daemon in this
 		 * case also spawns a minion thread which is going to spawn
 		 * DTrace instances on the host in order to do the necessary
 		 * linking.
