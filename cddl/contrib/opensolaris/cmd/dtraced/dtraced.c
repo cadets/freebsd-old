@@ -1729,6 +1729,11 @@ setup_sockfd(struct dtd_state *s)
 		return (-1);
 	}
 
+	if (remove(DTRACED_SOCKPATH) != 0) {
+		syslog(LOG_ERR, "Failed to remove %s: %m", DTRACED_SOCKPATH);
+		return (-1);
+	}
+
 	err = bind(s->sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (err != 0) {
 		syslog(LOG_ERR, "Failed to bind to %d: %m", s->sockfd);
@@ -1760,8 +1765,8 @@ destroy_sockfd(struct dtd_state *s)
 
 	s->sockfd = -1;
 
-	if (unlink(DTRACED_SOCKPATH) != 0)
-		syslog(LOG_ERR, "Failed to unlink %s: %m", DTRACED_SOCKPATH);
+	if (remove(DTRACED_SOCKPATH) != 0)
+		syslog(LOG_ERR, "Failed to remove %s: %m", DTRACED_SOCKPATH);
 
 	return (0);
 }
