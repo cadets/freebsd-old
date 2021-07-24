@@ -28,12 +28,17 @@
 #ifndef __DTRACED_H_
 #define __DTRACED_H_
 
+#define DTRACED_MAJOR                  0
+#define DTRACED_MINOR                  1
+#define DTRACED_PATCH                  0
+#define DTRACED_EXTRA_IDENTIFIER       "BETA"
+
 #define	DTRACED_SOCKPATH               "/var/ddtrace/sub.sock"
 
 #define	DTRACED_KIND_UNKNOWN           0
 #define	DTRACED_KIND_CONSUMER          1
 #define	DTRACED_KIND_FORWARDER         2
-#define	DTRACED_KIND_DTRACED          3
+#define	DTRACED_KIND_DTRACED           3
 
 #define DTD_SUB_READDATA                1
 #define DTD_SUB_ELFWRITE                (1 << 1)

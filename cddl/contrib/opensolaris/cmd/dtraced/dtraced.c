@@ -136,6 +136,7 @@ typedef struct mutex {
 #define CHECKOWNER_YES    1
 } mutex_t;
 
+char version_str[128];
 struct dtd_state;
 struct dtd_dir;
 typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
@@ -2615,10 +2616,20 @@ print_help(void)
 {
 }
 
+static char *
+version(void)
+{
+	sprintf(version_str, "%u.%u.%u-%s", DTRACED_MAJOR, DTRACED_MINOR,
+	    DTRACED_PATCH, DTRACED_EXTRA_IDENTIFIER);
+
+	return (version_str);
+}
 
 static void
 print_version(void)
 {
+
+	printf("dtraced: version %s\n", version());
 }
 
 int
