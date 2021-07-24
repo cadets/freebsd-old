@@ -71,7 +71,7 @@
 #define DTRACED_BACKTRACELEN    128
 #define DTRACED_BACKLOG_SIZE    4
 
-#define LOCK_FILE                "/var/dtraced.lock"
+#define LOCK_FILE                "/var/run/dtraced.pid"
 #define SOCKFD_NAME              "sub.sock"
 #define THREADPOOL_SIZE          4
 
