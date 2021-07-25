@@ -1732,8 +1732,11 @@ setup_sockfd(struct dtd_state *s)
 	}
 
 	if (remove(DTRACED_SOCKPATH) != 0) {
-		syslog(LOG_ERR, "Failed to remove %s: %m", DTRACED_SOCKPATH);
-		return (-1);
+		if (errno != ENOENT) {
+			syslog(LOG_ERR, "Failed to remove %s: %m",
+			    DTRACED_SOCKPATH);
+			return (-1);
+		}
 	}
 
 	err = bind(s->sockfd, (struct sockaddr *)&addr, sizeof(addr));
