@@ -1041,7 +1041,8 @@ dt_printf_dup(dt_pfargv_t *pfv)
 	dt_pfargd_t *pfd, *nfd, *inner;
 	dt_pfargv_t *nfv;
 
-	assert(pfv != NULL);
+	if (pfv == NULL)
+		return (NULL);
 
 	nfv = malloc(sizeof(dt_pfargv_t));
 	if (nfv == NULL)
