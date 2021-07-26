@@ -271,7 +271,7 @@ SYSCTL_INT(_hw_vmm, OID_AUTO, trace_guest_exceptions, CTLFLAG_RDTUN,
     &trace_guest_exceptions, 0,
     "Trap into hypervisor on all guest exceptions and reflect them back");
 
-int hypercalls_enabled = 0;
+int hypercalls_enabled = 1;
 SYSCTL_INT(_hw_vmm, OID_AUTO, hypercalls_enabled, CTLFLAG_RWTUN,
     &hypercalls_enabled, 0,
     "Enable hypercalls on all guests");
