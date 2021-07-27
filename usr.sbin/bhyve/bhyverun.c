@@ -1213,6 +1213,7 @@ main(int argc, char *argv[])
 	size_t memsize;
 	const char *value, *vmname;
 	char *optstr;
+	int enable_dthyve = 0;
 #ifdef BHYVE_SNAPSHOT
 	char *restore_file;
 	struct restore_state rstate;
@@ -1226,9 +1227,9 @@ main(int argc, char *argv[])
 	progname = basename(argv[0]);
 
 #ifdef BHYVE_SNAPSHOT
-	optstr = "aehuwxACDHIPSWYk:o:p:G:c:s:m:l:U:r:";
+	optstr = "aedhuwxACDHIPSWYk:o:p:G:c:s:m:l:U:r:";
 #else
-	optstr = "aehuwxACDHIPSWYk:o:p:G:c:s:m:l:U:";
+	optstr = "aedhuwxACDHIPSWYk:o:p:G:c:s:m:l:U:";
 #endif
 	while ((c = getopt(argc, argv, optstr)) != -1) {
 		switch (c) {
@@ -1252,6 +1253,9 @@ main(int argc, char *argv[])
 			    errx(EX_USAGE, "invalid cpu topology "
 				"'%s'", optarg);
 			}
+			break;
+		case 'd':
+			enable_dthyve = 1;
 			break;
 		case 'C':
 			set_config_bool("memory.guest_in_core", true);
@@ -1381,7 +1385,16 @@ main(int argc, char *argv[])
 		errx(EX_USAGE, "invalid memsize '%s'", value);
 
 	ctx = do_open(vmname);
-	if (dthyve_init())
+	/*
+	 * XXX(dstolfa): We only really want to open dthyve when we are running
+	 * virtio-dtrace, however we can't really open dthyve when initializing
+	 * virtio-dtrace backend because of capsicum. As a result, we need to
+	 * open it ahead of time, but because we can't really see that
+	 * virtio-dtrace is passed in as a PCI device, we need to deal with this
+	 * extra flag for now. We can either hack it up in the '-s' flag or we
+	 * can let the PCI parsing code specify a flag somewhere, somehow.
+	 */
+	if (enable_dthyve != 0 && dthyve_init())
 		fprintf(stderr, "Failed to init dthyve: %s\n", strerror(errno));
 
 #ifdef BHYVE_SNAPSHOT
