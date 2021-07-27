@@ -645,14 +645,16 @@ pci_vtdtr_run(void *xsc)
 			    vq_has_descs(vq)) {
 				pci_vtdtr_fill_eof_desc(vq);
 			}
+			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			assert(error == 0);
 			pthread_mutex_lock(&sc->vsd_mtx);
 			sc->vsd_guest_ready = ready_flag;
 			pthread_mutex_unlock(&sc->vsd_mtx);
 			pci_vtdtr_poll(vq, 1);
+		} else {
+			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+			assert(error == 0);
 		}
-
-		error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
-
 	}
 
 	pthread_exit(NULL);
@@ -842,7 +844,6 @@ pci_vtdtr_events(void *xsc)
 			 * so we simply assume it will succeed every time and
 			 * assert it.
 			 */
-
 			ctrl = vtdtr_elf_event(_buf, len, offs);
 			assert(ctrl != NULL);
 			offs += ctrl->pvc_elflen;
@@ -867,7 +868,6 @@ pci_vtdtr_events(void *xsc)
 				memset(ctrl_entry, 0,
 				    sizeof(struct pci_vtdtr_ctrl_entry));
 			}
-
 			ctrl_entry->ctrl = ctrl;
 
 			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
@@ -881,6 +881,9 @@ pci_vtdtr_events(void *xsc)
 			offs = 0;
 			len = 0;
 			break;
+
+		default:
+			assert(0);
 		}
 
 		free(buf);
