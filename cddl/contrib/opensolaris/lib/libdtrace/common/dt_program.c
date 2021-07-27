@@ -877,6 +877,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 
 		default:
 			if (ibase != inew) {
+				opnew = DIF_INSTR_OP(inew);
 				fprintf(stderr,
 				    "ibase and inew aren't "
 				    "the same (%x != %x)\n"
