@@ -241,6 +241,7 @@ struct dtd_joblist {
 #define NOTIFY_ELFWRITE    1
 #define KILL               2
 #define READ_DATA          3
+#define JOB_LAST           3
 
 	union {
 		struct {
@@ -936,6 +937,12 @@ process_joblist(void *_s)
 	unsigned char ack = 1;
 	struct dtd_joblist *job;
 	struct dtd_fdlist *fd_list;
+	const char *jobname[] = {
+		[0]               = "NONE",
+		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
+		[KILL]            = "KILL",
+		[READ_DATA]       = "READ_DATA"
+	};
 
 	_nosha = s->nosha;
 	dir = NULL;
@@ -969,6 +976,11 @@ process_joblist(void *_s)
 
 		dt_list_delete(&s->joblist, curjob);
 		UNLOCK(&s->joblistmtx);
+
+		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
+			syslog(LOG_DEBUG, "Job: %s", jobname[curjob->job]);
+		else
+			syslog(LOG_WARNING, "Job %u out of bounds", curjob->job);
 
 		switch (curjob->job) {
 		case READ_DATA:
