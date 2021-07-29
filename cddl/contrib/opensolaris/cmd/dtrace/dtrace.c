@@ -1027,17 +1027,10 @@ process_prog:
 			fatal("failed to sync file");
 
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
-		if (newprog == NULL) {
-			fprintf(stderr, "newprog is NULL\n");
+		if (newprog == NULL)
 			continue;
-		}
 
 		newprog->dp_vmid = vmid;
-		if (dt_prog_verify(verictx, hostpgp, newprog)) {
-			fprintf(stderr, "failed to verify DIF from %s (%u)\n",
-			    vm_name == NULL ? "host" : vm_name, vmid);
-			continue;
-		}
 
 		if (!done && newprog == NULL && err != EACCES)
 			fatal("failed to parse elf file");
@@ -1072,9 +1065,17 @@ process_prog:
 			continue;
 		}
 
-		if (found)
+		if (found) {
 			newpgpl->gpgp = newprog;
-		else {
+		} else {
+			if (dt_prog_verify(verictx, hostpgp, newprog)) {
+				fprintf(stderr,
+				    "failed to verify DIF from %s (%u)\n",
+				    vm_name == NULL ? "host" : vm_name, vmid);
+				free(newpgpl);
+				continue;
+			}
+
 			newpgpl->vmid = vmid;
 			newpgpl->pgp = newprog;
 		}
@@ -1085,7 +1086,7 @@ process_prog:
 			if (guestpgp == NULL)
 				fatal("failed to create a guest program");
 
-			guestpgp->dp_exec = 1;
+			guestpgp->dp_exec = DT_PROG_EXEC;
 
 			tmpfd = mkstemp(template);
 			if (tmpfd == -1)
