@@ -7796,7 +7796,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					dtv_args.dtv_gid =
 					    curthread->td_ucred->cr_gid;
 				}
-				
+
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
 				    (uintptr_t)&dtv_args, curthread->td_tid);

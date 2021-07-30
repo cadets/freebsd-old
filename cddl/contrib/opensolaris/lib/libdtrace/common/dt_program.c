@@ -225,7 +225,6 @@ dtrace_program_exec(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 	memset(args.ps, 0, sizeof(dtrace_probedesc_t) * expected_nprobes);
 	args.ps_bufsize = expected_nprobes * sizeof(dtrace_probedesc_t);
 	n = dt_ioctl(dtp, DTRACEIOC_ENABLE, &args);
-
 	dtrace_dof_destroy(dtp, dof);
 
 	if (n == -1) {
