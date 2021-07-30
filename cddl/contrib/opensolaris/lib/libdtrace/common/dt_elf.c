@@ -2437,8 +2437,16 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
 
 	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
-	if (*err)
+	if (*err) {
+		dt_free(dtp, prog);
+		free(dtelf_state);
+		elf_end(e);
+
+		if (needsclosing)
+			close(fd);
+
 		return (NULL);
+	}
 
 	memcpy(prog->dp_ident, eprog->dtep_ident, DT_PROG_IDENTLEN);
 	memcpy(prog->dp_srcident, eprog->dtep_srcident, DT_PROG_IDENTLEN);
