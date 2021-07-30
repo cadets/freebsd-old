@@ -2869,6 +2869,9 @@ againefd:
 	    state.outbounddir->dir, populate_existing, state.outbounddir);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate outbound existing files");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
 		return (EXIT_FAILURE);
 	}
 
@@ -2876,6 +2879,16 @@ againefd:
 	    state.inbounddir->dir, populate_existing, state.inbounddir);
 	if (errval != 0) {
 		syslog(LOG_ERR, "Failed to populate inbound existing files");
+		if (pidfile_remove(pfh))
+			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+
+		return (EXIT_FAILURE);
+	}
+
+	errval = file_foreach(
+	    state.basedir->dir, populate_existing, state.basedir);
+	if (errval != 0) {
+		syslog(LOG_ERR, "Failed to populate base existing files");
 		if (pidfile_remove(pfh))
 			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
 
