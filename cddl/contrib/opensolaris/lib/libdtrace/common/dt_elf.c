@@ -603,6 +603,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	eact->dtea_ntuple = ad->dtad_ntuple;
 	eact->dtea_arg = ad->dtad_arg;
 	eact->dtea_uarg = sscn;
+	eact->dtea_return = ad->dtad_return;
 
 	data->d_align = 8;
 	data->d_buf = eact;
@@ -1979,6 +1980,7 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
 	ad->dtad_ntuple = ead->dtea_ntuple;
 	ad->dtad_arg = ead->dtea_arg;
 	ad->dtad_uarg = ead->dtea_uarg;
+	ad->dtad_return = ead->dtea_return;
 
 	el = malloc(sizeof(dt_elf_eact_list_t));
 	if (el == NULL)

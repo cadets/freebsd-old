@@ -90,6 +90,7 @@ typedef struct dt_elf_difo {
  * dtea_ntuple: Number in the tuple.
  * dtea_arg:    Action argument.
  * dtea_uarg:   User argument.
+ * dtea_return: Return a value or not?
  */
 typedef struct dt_elf_actdesc {
 	dt_elf_ref_t		dtea_difo;
@@ -98,6 +99,7 @@ typedef struct dt_elf_actdesc {
 	uint64_t		dtea_ntuple;
 	uint64_t		dtea_arg;
 	uint64_t		dtea_uarg;
+	int			dtea_return;
 } dt_elf_actdesc_t;
 
 /*
