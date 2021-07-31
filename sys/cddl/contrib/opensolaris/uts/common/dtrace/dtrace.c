@@ -10314,6 +10314,7 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 {
 	dtrace_probe_t *probe, **probes;
 	dtrace_id_t id;
+	int needs_increment = 0;
 	int needs_unlock = 0;
 
 	if ((vmid == 0 && prov == (dtrace_provider_id_t)dtrace_provider) ||
@@ -10373,6 +10374,9 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 
 			return (DTRACE_IDNONE);
 		}
+
+		if (dtrace_nvprobes[vmid] == 0)
+			needs_increment = 1;
 
 		id = _id;
 	}
@@ -10445,6 +10449,9 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 
 	ASSERT(dtrace_vprobes[vmid][id - 1] == NULL);
 	dtrace_vprobes[vmid][id - 1] = probe;
+
+	if (needs_increment)
+		dtrace_nvmids++;
 
 	if (needs_unlock)
 		mutex_exit(&dtrace_lock);
