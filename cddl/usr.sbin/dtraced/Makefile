@@ -25,7 +25,7 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 
 LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 
-CFLAGS+=	-fsanitize=address -fsanitize=undefined
-LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+#CFLAGS+=	-fsanitize=address -fsanitize=undefined
+#LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 .include <bsd.prog.mk>

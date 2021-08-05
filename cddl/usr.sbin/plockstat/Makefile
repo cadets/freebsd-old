@@ -25,8 +25,8 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/sys
 CFLAGS+= -DHAVE_ISSETUGID
 
-CFLAGS+=	-fsanitize=address -fsanitize=undefined
-LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+#CFLAGS+=	-fsanitize=address -fsanitize=undefined
+#LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 LIBADD=	dtrace proc
 
