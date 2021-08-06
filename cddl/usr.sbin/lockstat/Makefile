@@ -27,8 +27,8 @@ CFLAGS+= -DHAVE_ISSETUGID
 
 CFLAGS+=	-DNEED_ERRLOC -g
 
-#CFLAGS+=	-fsanitize=address -fsanitize=undefined
-#LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 #YFLAGS+=	-d
 

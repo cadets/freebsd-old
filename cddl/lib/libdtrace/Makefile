@@ -145,8 +145,8 @@ SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
 .endif
 
-#CFLAGS+=	-fsanitize=address -fsanitize=undefined
-#LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+CFLAGS+=	-fsanitize=address -fsanitize=undefined
+LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 YFLAGS+=-d
 
