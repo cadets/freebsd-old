@@ -1453,7 +1453,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			 * where it was created.
 			 */
 			dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
-			notice("created %s (ELF file)", template);
+			printf("%s\n", template);
 			strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 			close(tmpfd);

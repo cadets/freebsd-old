@@ -1181,8 +1181,11 @@ dt_elf_options(Elf *e)
 		if (op->dteo_set == 0)
 			continue;
 
-		arglen = strlen(op->dteo_arg) + 1;
-		arglen = (arglen + 7) & (-8);
+		if (op->dteo_arg != NULL) {
+			arglen = strlen(op->dteo_arg) + 1;
+			arglen = (arglen + 7) & (-8);
+		} else
+			arglen = 0;
 
 		len = sizeof(_dt_elf_eopt_t) + arglen;
 		eop = malloc(len);
@@ -1196,10 +1199,13 @@ dt_elf_options(Elf *e)
 
 		eop->eo_len = arglen;
 
-		l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
-		if (l >= eop->eo_len)
-			errx(EXIT_FAILURE, "%s is too long to be copied",
-			    op->dteo_arg);
+		if (op->dteo_arg != NULL) {
+			l = strlcpy(eop->eo_arg, op->dteo_arg, eop->eo_len);
+			if (l >= eop->eo_len)
+				errx(EXIT_FAILURE,
+				    "%s is too long to be copied",
+				    op->dteo_arg);
+		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
 		    strcmp("incdir", op->dteo_name) == 0 ||
@@ -2098,10 +2104,10 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 		 * Set the options only if we are a guest, if the option has
 		 * a name and if we're not actively tracing.
 		 */
-		if (err = dtrace_setopt(
-			dtp, dteop->eo_name, strdup(dteop->eo_arg))) {
-			fprintf(
-			    stderr, "failed to setopt %s\n", dteop->eo_name);
+		if (err = dtrace_setopt(dtp, dteop->eo_name,
+		    strdup(dteop->eo_arg))) {
+			fprintf(stderr, "failed to setopt %s\n",
+			    dteop->eo_name);
 			return (err);
 		}
 	}
