@@ -737,13 +737,10 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 			break;
 
 	/*
-	 * If the data structure is laid out correctly, we are guaranteed
-	 * that during the action creation phase, we will have created the
-	 * action needed for this ecbdesc. If this is not the case, bail out
-	 * hard.
+	 * It is possible that the ECB has no actions, e.g. BEGIN {}.
 	 */
-	assert(el != NULL);
-	eecb->dtee_action = el->eact_ndx;
+	if (el != NULL)
+		eecb->dtee_action = el->eact_ndx;
 
 	/*
 	 * While the DTrace struct has a number of things associated with it
@@ -1769,8 +1766,6 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 		}
 
 	}
-
-	assert(el != NULL);
 }
 
 static void *
