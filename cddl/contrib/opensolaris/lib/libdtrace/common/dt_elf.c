@@ -2218,6 +2218,9 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 			sprintf(chk + (i * 2), "%02x", elf_checksum[i]);
 		fprintf(stderr, "%s\n", chk);
 
+		/*
+		 * FIXME(dstolfa): This should be an error log somewhere else.
+		 */
 		dump_buf("/var/ddtrace/error", buf,
 		    st.st_size - SHA256_DIGEST_LENGTH);
 
