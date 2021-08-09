@@ -1323,21 +1323,6 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 	dtelf_state->s_idname_table = malloc(dtelf_state->s_idname_size);
 	memset(dtelf_state->s_idname_table, 0, dtelf_state->s_idname_size);
 
-	/*
-	 * Create the directories that we will be using (if necessary)
-	 */
-	err = mkdir("/var/ddtrace", 0755);
-	if (err != 0 && errno != EEXIST)
-		errx(EXIT_FAILURE,
-		    "Failed to mkdir /var/ddtrace(0755): %s",
-		    strerror(errno));
-
-	err = mkdir("/var/ddtrace/outbound", 0755);
-	if (err != 0 && errno != EEXIST)
-		errx(EXIT_FAILURE,
-		    "Failed to mkdir /var/ddtrace/outbound(0755): %s",
-		    strerror(errno));
-
 	if (elf_version(EV_CURRENT) == EV_NONE)
 		errx(EXIT_FAILURE, "ELF library initialization failed: %s",
 		    elf_errmsg(-1));
