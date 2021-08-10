@@ -135,6 +135,7 @@ typedef struct dt_elf_stmt {
 	dt_elf_attribute_t	dtes_stmtattr;
 	dt_elf_ref_t		dtes_aggdata;
 	dt_elf_ref_t		dtes_next;
+	dt_elf_ref_t		dtes_self;
 } dt_elf_stmt_t;
 
 /*

@@ -29,6 +29,7 @@
 #include <dt_program.h>
 #include <dt_impl.h>
 #include <dt_resolver.h>
+#include <dt_hashmap.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,6 +84,8 @@ typedef struct dt_elf_state {
 	dt_elf_ref_t		s_last_act_scn;
 	dt_elf_ref_t		s_first_ecbdesc_scn;
 	dt_list_t		s_actions;
+	dt_hashmap_t		*s_acthash;
+	dt_hashmap_t		*s_ecbhash;
 	dt_elf_actdesc_t	*s_eadprev;
 	char			*s_idname_table;
 	size_t			s_idname_size;
@@ -116,6 +119,8 @@ char sec_strtab[] =
 #define	DTELF_VARIABLE_SIZE	  0
 
 #define	DTELF_PROG_SECIDX	  2
+
+static const size_t DEFAULT_HASHMAP_SIZE = (1 << 16);
 
 static dt_elf_state_t *dtelf_state;
 
@@ -567,6 +572,11 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	dt_elf_actdesc_t *eact;
 	dt_elf_eact_list_t *el;
 
+	scn = dt_hashmap_lookup(dtelf_state->s_acthash, ad,
+	    sizeof(dtrace_actdesc_t));
+	if (scn != NULL)
+		return (scn);
+
 	eact = malloc(sizeof(dt_elf_actdesc_t));
 	if (eact == NULL)
 		errx(EXIT_FAILURE, "failed to malloc eact");
@@ -640,6 +650,8 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	el->eact = eact;
 
 	dt_list_append(&dtelf_state->s_actions, el);
+	dt_hashmap_insert(dtelf_state->s_acthash, ad, sizeof(dtrace_actdesc_t),
+	    scn);
 	return (scn);
 }
 
@@ -667,13 +679,11 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	 * next reference in the ELF file, which constructs the "action list" as known
 	 * in DTrace, but in our ELF file.
 	 */
-	for (ad = stmt->dtsd_action;
-	    ad != stmt->dtsd_action_last->dtad_next && ad != NULL;
-	    ad = ad->dtad_next) {
-		scn = dt_elf_new_action(e, ad, sscn);
+	for (ad = stmt->dtsd_action; ad != NULL; ad = ad->dtad_next) {
+		if (ad->dtad_uarg != (uintptr_t)stmt)
+			continue;
 
-		if (dtelf_state->s_eadprev != NULL)
-			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
+		scn = dt_elf_new_action(e, ad, sscn);
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -681,6 +691,10 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 
 		if (data->d_buf == NULL)
 			errx(EXIT_FAILURE, "data->d_buf must not be NULL.");
+
+		if (dtelf_state->s_eadprev != NULL &&
+		    dtelf_state->s_eadprev != data->d_buf)
+			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
 
 		dtelf_state->s_eadprev = data->d_buf;
 
@@ -692,6 +706,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 		if (ad == stmt->dtsd_action)
 			dtelf_state->s_first_act_scn = elf_ndxscn(scn);
 	}
+
 	/*
 	 * We know that this is the last section that we could have
 	 * created, so we simply set the state variable to it.
@@ -712,6 +727,11 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	if (stmt->dtsd_ecbdesc == NULL)
 		return (NULL);
 
+	scn = dt_hashmap_lookup(dtelf_state->s_ecbhash, stmt->dtsd_ecbdesc,
+	    sizeof(dtrace_ecbdesc_t));
+	if (scn != NULL)
+		return (scn);
+	
 	eecb = malloc(sizeof(dt_elf_ecbdesc_t));
 	if (eecb == NULL)
 		errx(EXIT_FAILURE, "failed to malloc eecb");
@@ -774,6 +794,10 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	(void) elf_flagshdr(scn, ELF_C_SET, ELF_F_DIRTY);
 	(void) elf_flagscn(scn, ELF_C_SET, ELF_F_DIRTY);
 	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
+
+	if (dt_hashmap_insert(dtelf_state->s_ecbhash, ecb,
+	    sizeof(dtrace_ecbdesc_t), scn))
+		errx(EXIT_FAILURE, "Failed to insert section into hashmap.");
 
 	return (scn);
 }
@@ -887,6 +911,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 	estmt->dtes_descattr.dtea_attr = stmt->dtsd_descattr;
 	estmt->dtes_stmtattr.dtea_attr = stmt->dtsd_stmtattr;
 	estmt->dtes_aggdata = 0;
+	estmt->dtes_self = elf_ndxscn(scn);
 
 	if (stmt->dtsd_aggdata != NULL) {
 		dt_ident_t *aid = (dt_ident_t *)stmt->dtsd_aggdata;
@@ -1315,6 +1340,13 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
+	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
+	if (dtelf_state->s_ecbhash == NULL)
+		errx(EXIT_FAILURE, "failed to create ecb hashmap");
+
+	dtelf_state->s_acthash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
+	if (dtelf_state->s_acthash == NULL)
+		errx(EXIT_FAILURE, "failed to create ecb hashmap");
 	/*
 	 * Initialise the identifier name string table.
 	 */
@@ -1566,6 +1598,8 @@ finish:
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_WRITE) failed with %s",
 		    e, elf_errmsg(-1));
 
+	dt_hashmap_free(dtelf_state->s_ecbhash);
+	dt_hashmap_free(dtelf_state->s_acthash);
 	free(dtelf_state);
 	(void) elf_end(e);
 }
@@ -1679,6 +1713,26 @@ dt_elf_get_target(Elf *e, dt_elf_ref_t ecbref)
 	return ((const char *)eecb->dtee_probe.dtep_pdesc.dtpd_target);
 }
 
+static dtrace_ecbdesc_t *
+dt_elf_ecb_find(dt_elf_ref_t ecbref, int *found)
+{
+	dtrace_ecbdesc_t *ecb = NULL;
+
+	ecb = dt_hashmap_lookup(dtelf_state->s_ecbhash, &ecbref,
+	    sizeof(dt_elf_ref_t));
+	if (ecb) {
+		ecb->dted_refcnt++;
+		return (ecb);
+	}
+
+	ecb = malloc(sizeof(dtrace_ecbdesc_t));
+	if (ecb == NULL)
+		return (NULL);
+
+	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
+	ecb->dted_refcnt++;
+	return (ecb);
+}
 
 static dtrace_ecbdesc_t *
 dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
@@ -1688,6 +1742,7 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	dt_elf_ecbdesc_t *eecb = NULL;
 	dtrace_ecbdesc_t *ecb = NULL;
 	dt_elf_eact_list_t *el = NULL;
+	int found = 0;
 
 	if ((scn = elf_getscn(e, ecbref)) == NULL)
 		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
@@ -1700,11 +1755,12 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	assert(data->d_buf != NULL);
 	eecb = data->d_buf;
 
-	ecb = malloc(sizeof(dtrace_ecbdesc_t));
+	ecb = dt_elf_ecb_find(ecbref, &found);
 	if (ecb == NULL)
-		errx(EXIT_FAILURE, "failed to malloc ecb");
+		errx(EXIT_FAILURE, "failed to find/allocate ecb");
 
-	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
+	if (found)
+		return (ecb);
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
 	    el != NULL; el = dt_list_next(el)) {
@@ -1725,6 +1781,10 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	ecb->dted_probe.dtpd_name[DTRACE_NAMELEN - 1] = '\0';
 
 	ecb->dted_uarg = eecb->dtee_uarg;
+
+	if (dt_hashmap_insert(dtelf_state->s_ecbhash, &ecbref,
+	    sizeof(dt_elf_ref_t), ecb))
+		fprintf(stderr, "Failed to insert into hashmap\n");
 	return (ecb);
 }
 
@@ -1740,11 +1800,14 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	    el != NULL; el = dt_list_next(el)) {
 		act = el->act;
 
-		if (el->eact_ndx == fst) {
+		if (el->eact_ndx == fst)
 			stmt->dtsd_action = act;
+
+		if (act->dtad_patched == 0) {
+			act->dtad_uarg = (uintptr_t)stmt;
+			act->dtad_patched = 1;
 		}
 
-		act->dtad_uarg = (uintptr_t)stmt;
 		if (el->eact_ndx == last) {
 			stmt->dtsd_action_last = act;
 			break;
@@ -1940,7 +2003,8 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 }
 
 static dtrace_actdesc_t *
-dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
+dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_stmt_t *estmt,
+    dtrace_actdesc_t *prev)
 {
 	dtrace_actdesc_t *ad;
 	dt_elf_eact_list_t *el;
@@ -1953,6 +2017,9 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dtrace_actdesc_t *prev)
 
 	assert(data->d_buf != NULL);
 	ead = data->d_buf;
+
+	if (ead->dtea_uarg != estmt->dtes_self)
+		return (NULL);
 
 	ad = malloc(sizeof(dtrace_actdesc_t));
 	if (ad == NULL)
@@ -2009,7 +2076,7 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 		assert(data->d_buf != NULL);
 
 		ead = data->d_buf;
-		prev = dt_elf_alloc_action(e, scn, prev);
+		prev = dt_elf_alloc_action(e, scn, estmt, prev);
 	}
 }
 
@@ -2033,9 +2100,7 @@ dt_elf_get_stmts(Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
 		assert(data->d_buf != NULL);
 		estmt = data->d_buf;
 
-		if (first_stmt_scn == scnref)
-			dt_elf_alloc_actions(e, estmt);
-
+		dt_elf_alloc_actions(e, estmt);
 		dt_elf_add_stmt(e, prog, estmt, scnref);
 	}
 }
@@ -2269,6 +2334,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
+	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
+	if (dtelf_state->s_ecbhash == NULL)
+		errx(EXIT_FAILURE, "failed to create ecb hashmap");
+
 	dtelf_state->s_rslv = rslv;
 
 	off = lseek(fd, 0, SEEK_SET);
@@ -2430,6 +2499,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
 	if (*err) {
 		dt_free(dtp, prog);
+		dt_hashmap_free(dtelf_state->s_ecbhash);
 		free(dtelf_state);
 		elf_end(e);
 
@@ -2455,6 +2525,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
 		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
 	}
+	dt_hashmap_free(dtelf_state->s_ecbhash);
 	free(dtelf_state);
 	(void) elf_end(e);
 

@@ -1060,6 +1060,7 @@ typedef struct dtrace_actdesc {
 	uint64_t dtad_uarg;			/* user argument */
 	int dtad_return;			/* non-void return? */
 	int dtad_refcnt;			/* reference count */
+	int dtad_patched;			/* did we patch this? */
 } dtrace_actdesc_t;
 
 typedef struct dtrace_ecbdesc {
