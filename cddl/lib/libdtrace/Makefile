@@ -21,6 +21,7 @@ SRCS=		dt_aggregate.c \
 		dt_errtags.c \
 		dt_grammar.y \
 		dt_handle.c \
+		dt_hashmap.c \
 		dt_ident.c \
 		dt_ifg.c \
 		dt_ifgnode.c \
