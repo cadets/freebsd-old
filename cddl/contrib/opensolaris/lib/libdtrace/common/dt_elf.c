@@ -1064,6 +1064,8 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
+			free(op->dteo_arg);
+			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1150,6 +1152,8 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
+			free(op->dteo_arg);
+			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1236,6 +1240,8 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
+			free(op->dteo_arg);
+			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -2159,7 +2165,7 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 		 * a name and if we're not actively tracing.
 		 */
 		if (err = dtrace_setopt(dtp, dteop->eo_name,
-		    strdup(dteop->eo_arg))) {
+		    dteop->eo_len > 0 ? strdup(dteop->eo_arg) : NULL)) {
 			fprintf(stderr, "failed to setopt %s\n",
 			    dteop->eo_name);
 			return (err);

@@ -2402,6 +2402,7 @@ main(int argc, char *argv[])
 				dcp->dc_spec = DTRACE_PROBESPEC_NONE;
 				dcp->dc_arg = optarg;
 				g_elf = 1;
+				g_guest = 1;
 				break;
 
 			case 'Y':

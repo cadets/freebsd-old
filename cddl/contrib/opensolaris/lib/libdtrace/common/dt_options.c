@@ -1131,21 +1131,24 @@ dtrace_setopt(dtrace_hdl_t *dtp, const char *opt, const char *val)
 
 		for (eop = dtelf_ctopts; eop->dteo_name != NULL; eop++) {
 			if (strcmp(eop->dteo_name, opt) == 0) {
-				eop->dteo_arg = val;
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
 				eop->dteo_set = 1;
 			}
 		}
 
 		for (eop = dtelf_drtopts; eop->dteo_name != NULL; eop++) {
 			if (strcmp(eop->dteo_name, opt) == 0) {
-				eop->dteo_arg = val;
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
 				eop->dteo_set = 1;
 			}
 		}
 
 		for (eop = dtelf_rtopts; eop->dteo_name != NULL; eop++) {
 			if (strcmp(eop->dteo_name, opt) == 0) {
-				eop->dteo_arg = val;
+				eop->dteo_arg = __DECONST(char *,
+				    val ? strdup(val) : val);
 				eop->dteo_set = 1;
 			}
 		}

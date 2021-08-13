@@ -179,7 +179,7 @@ typedef struct dt_elf_prog {
 typedef struct dt_elf_opt {
 	const char	*dteo_name;
 	int		dteo_set;
-	const char	*dteo_arg;
+	char		*dteo_arg;
 	uintptr_t	dteo_option;
 } dt_elf_opt_t;
 
