@@ -109,6 +109,7 @@
 #include <dt_ident.h>
 #include <dt_string.h>
 #include <dt_impl.h>
+#include <dt_resolver.h>
 
 const dtrace_diftype_t dt_void_rtype = {
 	DIF_TYPE_CTF, CTF_K_INTEGER, 0, 0, 0
@@ -1747,7 +1748,9 @@ dt_setcontext(dtrace_hdl_t *dtp, dtrace_probedesc_t *pdp)
 		err = 0;
 	}
 
-	if (err == EDT_NOPROBE && !(yypcb->pcb_cflags & DTRACE_C_ZDEFS)) {
+	if (dt_hypertrace_enabled(dtp) == 0 && err == EDT_NOPROBE &&
+	    !(yypcb->pcb_cflags & DTRACE_C_ZDEFS)) {
+		printf("expected xyerror\n");
 		xyerror(D_PDESC_ZERO,
 		    "probe description %s:%s:%s:%s:%s does not "
 		    "match any probes\n",
@@ -1758,10 +1761,11 @@ dt_setcontext(dtrace_hdl_t *dtp, dtrace_probedesc_t *pdp)
 	if (err != EDT_NOPROBE && err != EDT_UNSTABLE && err != 0)
 		xyerror(D_PDESC_INVAL, "%s\n", dtrace_errmsg(dtp, err));
 
-	dt_dprintf("set context to %s:%s:%s:%s [%u] prp=%p attr=%s argc=%d\n",
-	    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name,
-	    pdp->dtpd_id, (void *)prp, dt_attr_str(yypcb->pcb_pinfo.dtp_attr,
-	    attrstr, sizeof (attrstr)), yypcb->pcb_pinfo.dtp_argc);
+	dt_dprintf("set context to %s:%s:%s:%s:%s [%u] prp=%p attr=%s argc=%d\n",
+	    pdp->dtpd_target, pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func,
+	    pdp->dtpd_name, pdp->dtpd_id, (void *)prp, dt_attr_str(
+	    yypcb->pcb_pinfo.dtp_attr, attrstr, sizeof (attrstr)),
+	    yypcb->pcb_pinfo.dtp_argc);
 
 	/*
 	 * Reset the stability attributes of D global variables that vary
