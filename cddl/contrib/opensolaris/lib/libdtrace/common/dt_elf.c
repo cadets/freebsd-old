@@ -1064,8 +1064,6 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
-			free(op->dteo_arg);
-			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1152,8 +1150,6 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
-			free(op->dteo_arg);
-			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||
@@ -1240,8 +1236,6 @@ dt_elf_options(Elf *e)
 				errx(EXIT_FAILURE,
 				    "%s is too long to be copied",
 				    op->dteo_arg);
-			free(op->dteo_arg);
-			op->dteo_arg = NULL;
 		}
 
 		if (strcmp("define", op->dteo_name) == 0 ||

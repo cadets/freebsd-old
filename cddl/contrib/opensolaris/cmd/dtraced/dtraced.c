@@ -1455,6 +1455,8 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
+	syslog(LOG_DEBUG, "Accepted (%d, %x, %x)\n", fde->fd, fde->kind,
+	    fde->subs);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, fde);
 	UNLOCK(&s->socklistmtx);

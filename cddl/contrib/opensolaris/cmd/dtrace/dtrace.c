@@ -1136,7 +1136,6 @@ process_prog:
 			pthread_cond_signal(&g_pgpcond);
 			pthread_mutex_unlock(&g_pgpcondmtx);
 		}
-
 	} while (!done);
 
 	dt_verictx_teardown(verictx);
@@ -1493,7 +1492,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
-
 		if (fsync(tmpfd))
 			fatal("failed to sync file");
 
@@ -1832,9 +1830,6 @@ static void
 process_elf(dtrace_cmd_t *dcp)
 {
 
-	/*
-	 * FIXME: This won't work.
-	 */
 	(void) link_elf(dcp, dcp->dc_arg);
 }
 
