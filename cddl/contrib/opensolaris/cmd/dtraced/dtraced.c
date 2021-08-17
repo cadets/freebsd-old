@@ -1989,7 +1989,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			return (-1);
 		} else if (pid > 0) {
 			/*
-			 * Send the pid back to the host... somehow.
+			 * We don't actually need to do anything in this case.
 			 */
 		} else if (pid == 0) {
 			argv[0] = strdup("/usr/sbin/dtrace");
