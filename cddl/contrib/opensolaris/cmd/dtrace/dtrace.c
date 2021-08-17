@@ -1366,6 +1366,18 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 	}
 
 	if (pgp->dp_vmid != 0) {
+		/*
+		 * If no probes were enabled for this program, we don't need to
+		 * do anything.
+		 */
+		if (gpgp->dp_neprobes == 0) {
+			if (g_quiet == 0)
+				fprintf(stderr,
+				    "Ignoring 0 probes from VMID %u\n",
+				    gpgp->dp_vmid);
+			return;
+		}
+
 		n = dt_vprobes_create(g_dtp, gpgp);
 		if (n == -1) {
 			atomic_store(&g_intr, 1);

@@ -2504,6 +2504,17 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	prog->dp_dofversion = eprog->dtep_dofversion;
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
+	if (dt_list_next(&prog->dp_stmts) == NULL) {
+		dt_free(dtp, prog);
+		dt_hashmap_free(dtelf_state->s_ecbhash);
+		free(dtelf_state);
+		elf_end(e);
+
+		if (needsclosing)
+			close(fd);
+
+		return (NULL);
+	}
 
 	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
 	if (*err) {
