@@ -1,20 +1,18 @@
-#include <dt_resolver.h>
-
 #include <sys/types.h>
 #include <sys/param.h>
+#include <sys/dtrace.h>
 #include <sys/sysctl.h>
 
-#include <sys/dtrace.h>
-
-#include <dtrace.h>
+#include <assert.h>
 #include <dt_impl.h>
-
-#include <stdio.h>
-#include <unistd.h>
+#include <dt_resolver.h>
+#include <dtrace.h>
 #include <err.h>
 #include <errno.h>
+#include <fnmatch.h>
+#include <stdio.h>
 #include <string.h>
-#include <assert.h>
+#include <unistd.h>
 
 #define	DT_RESOLVER_HOSTNAME(f) ((f) & 1)
 #define	DT_RESOLVER_VERSION(f)  (((f) >> 1) & 1)
@@ -48,7 +46,7 @@ dt_resolve(const char *target, uint32_t flags)
 		if (gethostname(curtarget, MAXHOSTNAMELEN) != 0)
 			errx(EXIT_FAILURE, "failed to get hostname");
 
-		if (strcmp(target, curtarget) == 0)
+		if (fnmatch(target, curtarget, 0) == 0)
 			return (0);
 	}
 
@@ -59,7 +57,7 @@ dt_resolve(const char *target, uint32_t flags)
 			errx(EXIT_FAILURE, "failed getting the OS release %s",
 			    strerror(errno));
 
-		if (strcmp(target, curtarget) == 0)
+		if (fnmatch(target, curtarget, 0) == 0)
 			return (0);
 	}
 
