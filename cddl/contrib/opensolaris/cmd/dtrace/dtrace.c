@@ -933,6 +933,10 @@ listen_dtraced(void *arg)
 		if (elflen <= 0)
 			fatal("elflen is <= 0");
 
+		if (elflen <= DTRACED_MSGHDRSIZE)
+			fatal("elflen (%zu) needs to be > %zu", elflen,
+			    DTRACED_MSGHDRSIZE);
+
 		elf = malloc(elflen);
 		if (elf == NULL)
 			fatal("malloc(elf) failed");
