@@ -995,6 +995,8 @@ process_joblist(void *_s)
 			}
 
 			assert(r == sizeof(totalbytes));
+			syslog(LOG_DEBUG, "    %zu bytes from %d", totalbytes,
+			    fd);
 
 			nbytes = totalbytes;
 
@@ -1062,6 +1064,7 @@ process_joblist(void *_s)
 			case DTRACED_MSG_ELF:
 				_buf += DTRACED_MSGHDRSIZE;
 				nbytes -= DTRACED_MSGHDRSIZE;
+				syslog(LOG_DEBUG, "        ELF file");
 
 				if (strcmp(
 				    DTRACED_MSG_LOC(header), "base") == 0)
@@ -1121,6 +1124,11 @@ process_joblist(void *_s)
 					job->j.kill.pid =
 					    DTRACED_MSG_KILLPID(header);
 
+					syslog(LOG_DEBUG,
+					    "        kill %d to %d",
+					    DTRACED_MSG_KILLPID(header),
+					    fd_list->fd));
+
 					LOCK(&s->joblistmtx);
 					dt_list_append(&s->joblist, job);
 					UNLOCK(&s->joblistmtx);
@@ -1136,6 +1144,8 @@ process_joblist(void *_s)
 		case KILL:
 			fd = curjob->connsockfd;
 			pid = curjob->j.kill.pid;
+
+			syslog(LOG_DEBUG, "    kill pid %d to %d", pid, fd);
 
 			assert(fd != -1);
 			/*
@@ -1241,6 +1251,8 @@ killcleanup:
 			dir = curjob->j.notify_elfwrite.dir;
 			_nosha = curjob->j.notify_elfwrite.nosha;
 
+			syslog(LOG_DEBUG, "    %s%s to %d", dir->dirpath, path,
+			    fd);
 			/*
 			 * Sanity assertions.
 			 */
@@ -1269,6 +1281,10 @@ killcleanup:
 			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msglen += DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
+
+			syslog(LOG_DEBUG, "    Length of ELF file: %zu",
+			    elflen);
+			syslog(LOG_DEBUG, "    Message length: %zu", msglen);
 
 			if (msg == NULL) {
 				syslog(LOG_ERR,
@@ -1378,6 +1394,7 @@ elfcleanup:
 			break;
 
 		default:
+			syslog(LOG_ERR, "Unknown job: %d", curjob->job);
 			pthread_exit(NULL);
 		}
 
