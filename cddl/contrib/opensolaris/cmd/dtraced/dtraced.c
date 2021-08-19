@@ -74,7 +74,7 @@
 
 #define LOCK_FILE                "/var/run/dtraced.pid"
 #define SOCKFD_NAME              "sub.sock"
-#define THREADPOOL_SIZE          4
+#define THREADPOOL_SIZE          1
 
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1
@@ -1127,7 +1127,7 @@ process_joblist(void *_s)
 					syslog(LOG_DEBUG,
 					    "        kill %d to %d",
 					    DTRACED_MSG_KILLPID(header),
-					    fd_list->fd));
+					    fd_list->fd);
 
 					LOCK(&s->joblistmtx);
 					dt_list_append(&s->joblist, job);
@@ -1387,6 +1387,7 @@ killcleanup:
 				syslog(LOG_WARNING,
 				    "process_joblist: kevent() "
 				    "failed with: %m");
+
 elfcleanup:
 			free(path);
 			free(msg);
@@ -1510,6 +1511,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 
+		syslog(LOG_DEBUG, "Dispatching EVFILT_READ on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
@@ -1525,6 +1527,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		 * we can signal the condition variable and rely on one of our
 		 * workers to pick up and process the event.
 		 */
+		syslog(LOG_DEBUG, "Dispatching EVFILT_WRITE on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
