@@ -8303,6 +8303,17 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 		 */
 		ASSERT(dtvirt_getns != NULL);
 		vmid = dtvirt_getns(vmhdl);
+		if (vmid >= HYPERTRACE_MAX_VMS) {
+			printf("WARNING: %u > HYPERTRACE_MAX_VMS (%d)\n", vmid,
+			    HYPERTRACE_MAX_VMS);
+			return;
+		}
+
+		if (vmid >= dtrace_nvmids) {
+			printf("WARNING: %u > dtrace_nvmids (%zu)\n", vmid,
+			    dtrace_nvmids);
+			return;
+		}
 	} else
 		vmid = 0;
 
@@ -8343,6 +8354,7 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 		return;
 	}
 
+	ASSERT(probe != NULL);
 	cpuid = curcpu;
 	onintr = CPU_ON_INTR(CPU);
 
