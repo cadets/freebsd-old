@@ -150,4 +150,7 @@ Firstly, we show a simple aggregation smoke-test. The second script shows that
 HyperTrace can correctly poke into guest memory with the right offsets for guest
 types, rather than using those on the host. Finally, the last script shows that
 HyperTrace can deal with collision of thread IDs in the kernel without being
-confused about namespaces across different guests (and the host).
+confused about namespaces across different guests (and the host). Furthermore,
+the timestamps gathered in the last script are in fact gathered on the host, so
+they don't suffer any of the traditional issues when it comes to time on virtual
+machines.
