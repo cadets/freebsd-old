@@ -514,6 +514,7 @@ typedef struct dtrace_difv {
 #define	DIFV_SCOPE_GLOBAL	0	/* variable has global scope */
 #define	DIFV_SCOPE_THREAD	1	/* variable has thread scope */
 #define	DIFV_SCOPE_LOCAL	2	/* variable has local scope */
+#define	DIFV_NSCOPES		3	/* number of scopes */
 
 #define	DIFV_F_REF		0x1	/* variable is referenced by DIFO */
 #define	DIFV_F_MOD		0x2	/* variable is written by DIFO */

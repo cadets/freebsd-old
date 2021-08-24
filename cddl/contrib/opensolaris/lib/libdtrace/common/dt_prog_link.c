@@ -220,17 +220,6 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						    node->din_tf,
 						    node->din_ctfid);
 
-#if 0
-						/*
-						 * Set that we are returning
-						 * this by reference, rather
-						 * than by value
-						 */
-						if (ctf_kind == CTF_K_ARRAY ||
-						    ctf_kind == CTF_K_POINTER)
-							rtype->dtdt_flags |=
-							    DIF_TF_BYREF;
-#endif
 						/*
 						 * XXX(dstolfa, important): Is
 						 * this a sensible thing to be
@@ -253,7 +242,15 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						    dt_typefile_typesize(
 							node->din_tf,
 							node->din_ctfid);
-					} else
+					} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
+						/*
+						 * We don't care what the size
+						 * is, we just need to set the
+						 * correct flags.
+						 */
+						rtype->dtdt_flags =
+						    orig_rtype->dtdt_flags;
+					else
 						rtype->dtdt_flags |=
 						    DIF_TF_BYREF;
 
@@ -575,12 +572,15 @@ dt_prog_infer_usetxs(dtrace_difo_t *difo)
 }
 
 static void
-dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
+dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
+    dtrace_diftype_t **biggest_type)
 {
 	size_t inthash_size;
 	uint64_t *otab;
 	size_t i;
 	dtrace_difv_t *var, *vlvar;
+	uint32_t id;
+	uint8_t scope;
 
 	var = vlvar = NULL;
 	i = 0;
@@ -630,12 +630,43 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 			var->dtdv_type = vlvar->dtdv_storedtype;
 		else
 			var->dtdv_type = vlvar->dtdv_type;
+
+		id = var->dtdv_id;
+		scope = var->dtdv_scope;
+
+		biggest_type[scope][id] = biggest_type[scope][id].dtdt_size >=
+			var->dtdv_type.dtdt_size ?
+			  biggest_type[scope][id] :
+			  var->dtdv_type;
 	}
+}
+
+static void
+finalize_vartab(dtrace_difo_t *difo, dtrace_diftype_t **biggest_type)
+{
+	size_t i;
+	dtrace_difv_t *var;
+
+	/*
+	 * Re-patch the variable table to ensure that we have uniform types
+	 * across all of the references of the variable. Without this, the
+	 * kernel verifier will fail.
+	 */
+	for (i = 0; i < difo->dtdo_varlen; i++) {
+		var = &difo->dtdo_vartab[i];
+
+		if (dt_var_is_builtin(var->dtdv_id))
+			continue;
+
+		var->dtdv_type = biggest_type[var->dtdv_scope][var->dtdv_id];
+	}
+
 }
 
 static int
 process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
-    dtrace_difo_t *difo, dtrace_ecbdesc_t *ecbdesc)
+    dtrace_difo_t *difo, dtrace_ecbdesc_t *ecbdesc,
+    dtrace_diftype_t **biggest_vartype)
 {
 	int rval;
 	dtrace_actkind_t actkind;
@@ -657,7 +688,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	if (rval != 0)
 		return (rval);
 
-	dt_prog_assemble(dtp, pgp, difo);
+	dt_prog_assemble(dtp, pgp, difo, biggest_vartype);
 	return (0);
 }
 
@@ -673,6 +704,8 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_ecbdesclist_t *edl;
 	int rval = 0;
 	int err = 0;
+	int i;
+	dtrace_diftype_t *biggest_vartype[DIFV_NSCOPES];
 
 	dt_typefile_openall(dtp);
 	if (err)
@@ -691,17 +724,34 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	r0node = dt_ifg_node_alloc(NULL, NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
+	for (i = 0; i < DIFV_NSCOPES; i++) {
+		biggest_vartype[i] = malloc(
+		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
+		if (biggest_vartype[i] == NULL)
+			dt_set_progerr(dtp, pgp,
+			    "could not allocate biggest_vartype\n");
+
+		memset(biggest_vartype[i], 0,
+		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
+	}
+
 	/*
 	 * Go over all the statements in a D program
 	 */
 	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
 		sdp = stp->ds_desc;
-		if (sdp == NULL)
+		if (sdp == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_NOSTMT));
+		}
 
 		ecbdesc = sdp->dtsd_ecbdesc;
-		if (ecbdesc == NULL)
+		if (ecbdesc == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_DIFINVAL));
+		}
 
 		pred = &ecbdesc->dted_pred;
 		assert(pred != NULL);
@@ -716,13 +766,19 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				dt_populate_varlist(pred->dtpdd_difo);
 
 				rval = process_difo(dtp, pgp, NULL,
-				    pred->dtpdd_difo, ecbdesc);
-				if (rval != 0)
+				    pred->dtpdd_difo, ecbdesc, biggest_vartype);
+				if (rval != 0) {
+					for (i = 0; i < DIFV_NSCOPES; i++)
+						free(biggest_vartype[i]);
 					return (dt_set_errno(dtp, rval));
+				}
 
 				edl = dt_alloc(dtp, sizeof(dtrace_ecbdesclist_t));
-				if (edl == NULL)
+				if (edl == NULL) {
+					for (i = 0; i < DIFV_NSCOPES; i++)
+						free(biggest_vartype[i]);
 					return (dt_set_errno(dtp, EDT_NOMEM));
+				}
 
 				memset(edl, 0, sizeof(dtrace_ecbdesclist_t));
 
@@ -740,8 +796,11 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		 * If we are in a state where we have the first action, but not
 		 * a last action we bail out. This should not happen.
 		 */
-		if (sdp->dtsd_action_last == NULL)
+		if (sdp->dtsd_action_last == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_ACTLAST));
+		}
 
 		/*
 		 * We populate the variable list before we actually do a pass
@@ -775,12 +834,49 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				continue;
 
 			rval = process_difo(dtp, pgp, ad, ad->dtad_difo,
-			    ecbdesc);
-			if (rval != 0)
+			    ecbdesc, biggest_vartype);
+			if (rval != 0) {
+				for (i = 0; i < DIFV_NSCOPES; i++)
+					free(biggest_vartype[i]);
 				return (dt_set_errno(dtp, rval));
+			}
 		}
 	}
 
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		/*
+		 * We don't need any checks here, because we just passed them
+		 * above.
+		 */
+		sdp = stp->ds_desc;
+		ecbdesc = sdp->dtsd_ecbdesc;
+		pred = &ecbdesc->dted_pred;
+
+		if (pred->dtpdd_difo != NULL)
+			finalize_vartab(pred->dtpdd_difo, biggest_vartype);
+
+		/*
+		 * Nothing to do if the action is missing
+		 */
+		if (sdp->dtsd_action == NULL)
+			continue;
+
+		/*
+		 * Finalize the variable table for each DIFO.
+		 */
+		for (ad = sdp->dtsd_action;
+		     ad != sdp->dtsd_action_last->dtad_next;
+		     ad = ad->dtad_next) {
+			if (ad->dtad_difo == NULL)
+				continue;
+
+			finalize_vartab(ad->dtad_difo, biggest_vartype);
+		}
+
+	}
+
+	for (i = 0; i < DIFV_NSCOPES; i++)
+		free(biggest_vartype[i]);
 	while ((edl = dt_list_next(&processed_ecbdescs)) != NULL) {
 		dt_list_delete(&processed_ecbdescs, edl);
 		dt_free(dtp, edl);
