@@ -2505,7 +2505,11 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	dt_elf_get_stmts(e, prog, eprog->dtep_first_stmt);
 	if (dt_list_next(&prog->dp_stmts) == NULL) {
-		dt_free(dtp, prog);
+		/*
+		 * NOTE: We don't free the program here because it will be
+		 * handled in dtrace_close(), as we've created it with
+		 * dt_program_create().
+		 */
 		dt_hashmap_free(dtelf_state->s_ecbhash);
 		free(dtelf_state);
 		elf_end(e);
@@ -2518,7 +2522,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
 	if (*err) {
-		dt_free(dtp, prog);
 		dt_hashmap_free(dtelf_state->s_ecbhash);
 		free(dtelf_state);
 		elf_end(e);
