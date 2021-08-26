@@ -11,8 +11,8 @@
         min .---. max        | count
  2147483648 : X : 8589934592 | 1
 
-      key  min .---. max  | count
-        1    0 : X : 2    | 1
+              key  min .---. max  | count
+                1    0 : X : 2    | 1
 
               key  min .---. max  | count
            mumble    0 : X : 2    | 1
