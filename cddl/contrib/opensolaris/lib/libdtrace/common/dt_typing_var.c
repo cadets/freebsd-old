@@ -590,18 +590,6 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		return (DIF_TYPE_STRING);
 
 	if (dif_var->dtdv_ctfid != CTF_ERR) {
-#if 0
-		if (dif_var->dtdv_tf != dr->din_tf) {
-			fprintf(stderr,
-			    "dt_infer_type_var(): variable %d has typefile "
-			    "%s, but the node we are compearing it to has "
-			    "typefile %s\n",
-			    dif_var->dtdv_id,
-			    dt_typefile_stringof(dif_var->dtdv_tf),
-			    dt_typefile_stringof(dr->din_tf));
-			return (-1);
-		}
-#endif
 		if (dt_typefile_typename(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
 		    var_type, sizeof(var_type)) != ((char *)var_type))
 			dt_set_progerr(g_dtp, g_pgp,
@@ -620,14 +608,23 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		rv = dt_type_subtype(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
 		    dr->din_tf, dr->din_ctfid, &which);
 
-		if (rv != 0 || ((which & (SUBTYPE_EQUAL | SUBTYPE_FST)) == 0) ||
-		    ((which & SUBTYPE_ANY) == SUBTYPE_ANY)) {
+		if (rv != 0) {
 			fprintf(stderr,
 			    "dt_infer_type_var(): type mismatch "
 			    "in STTS: %s != %s\n",
 			    var_type, buf);
 
 			return (-1);
+		}
+
+		if (which & SUBTYPE_SND) {
+			dif_var->dtdv_tf = dr->din_tf;
+			dif_var->dtdv_ctfid = dr->din_ctfid;
+			dif_var->dtdv_sym = dr->din_sym;
+			dif_var->dtdv_type.dtdt_kind = dr->din_type;
+			dif_var->dtdv_type.dtdt_size =
+			    dt_typefile_typesize(dr->din_tf, dr->din_ctfid);
+			dif_var->dtdv_type.dtdt_ckind = dr->din_ctfid;
 		}
 
 		if (dif_var->dtdv_sym != NULL) {

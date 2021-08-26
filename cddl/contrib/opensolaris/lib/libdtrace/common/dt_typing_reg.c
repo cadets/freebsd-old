@@ -63,6 +63,7 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 	int type, otype;
 	int class1, class2;
 	int first_iter;
+	int which;
 
 	ifgl = NULL;
 	type = otype = DIF_TYPE_NONE;
@@ -211,7 +212,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 			 * reliably zeroed (non-struct, non-union).
 			 */
 			if ((node->din_isnull == 0 && onode->din_isnull == 0) &&
-			    node->din_ctfid != onode->din_ctfid) {
+			    dt_type_subtype(node->din_tf, node->din_ctfid,
+			    onode->din_tf, onode->din_ctfid, &which)) {
 				fprintf(stderr,
 				    "dt_typecheck_regdefs(): types %s (%zu) "
 				    "and %s (%zu) do not match\n",
