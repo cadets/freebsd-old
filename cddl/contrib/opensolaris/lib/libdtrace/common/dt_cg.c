@@ -2171,6 +2171,25 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 	case DT_TOK_INT:
 		dnp->dn_reg = dt_regset_alloc(drp);
 		dt_cg_setx(dlp, dnp->dn_reg, dnp->dn_value);
+		/*
+		 * Generate a typecast if needed.
+		 */
+		if (strlen(dnp->dn_typecast) > 0) {
+			ssize_t typeref = 0;
+
+			typeref = dt_strtab_insert(yypcb->pcb_symtab,
+			    dnp->dn_typecast);
+
+			if (typeref == -1L)
+				longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+			if (typeref > DIF_STROFF_MAX)
+				longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+			instr = DIF_INSTR_TYPECAST(typeref, dnp->dn_reg);
+			dt_irlist_append(dlp,
+			    dt_cg_node_alloc(DT_LBL_NONE, instr));
+		}
 		break;
 
 	default:

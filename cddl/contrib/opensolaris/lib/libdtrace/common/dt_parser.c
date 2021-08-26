@@ -1976,6 +1976,8 @@ dt_cast(dt_node_t *lp, dt_node_t *rp)
 	size_t srcsize = dt_node_type_size(rp);
 	size_t dstsize = dt_node_type_size(lp);
 
+	rp->dn_needscast = 1;
+	dt_node_type_name(lp, rp->dn_typecast, DT_TYPE_NAMELEN);
 	if (dstsize < srcsize) {
 		int n = (sizeof (uint64_t) - dstsize) * NBBY;
 		rp->dn_value <<= n;

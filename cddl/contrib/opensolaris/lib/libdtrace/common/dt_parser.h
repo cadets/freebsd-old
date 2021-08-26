@@ -71,6 +71,8 @@ typedef struct dt_node {
 		struct {
 			uintmax_t _value;	/* integer value */
 			char *_string;		/* string value */
+			char _typecast[DT_TYPE_NAMELEN]; /* type to cast */
+			int _needscast;		/* need to cast? */
 		} _const;
 
 		struct {
@@ -123,6 +125,8 @@ typedef struct dt_node {
 } dt_node_t;
 
 #define	dn_value	dn_u._const._value	/* DT_NODE_INT */
+#define	dn_typecast	dn_u._const._typecast	/* DT_NODE_INT */
+#define	dn_needscast	dn_u._const._needscast	/* DT_NODE_INT */
 #define	dn_string	dn_u._const._string	/* STRING, IDENT, TYPE */
 #define	dn_ident	dn_u._nodes._ident	/* VAR,SYM,FUN,AGG,INL,PROBE */
 #define	dn_args		dn_u._nodes._links[0]	/* DT_NODE_VAR, FUNC */
