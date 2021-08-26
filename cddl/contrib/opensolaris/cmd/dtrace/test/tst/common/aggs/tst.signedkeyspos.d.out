@@ -14,21 +14,21 @@
   dog                                                               0              100
   cat                                                               0                0
   bear                                                              0               10
-  mouse                                                    -1               -1
-  cat                                                      -1             -111
-  bear                                                     -1              -11
-  mouse                                                    -2               -2
-  cat                                                      -2             -222
-  bear                                                     -2              -22
-  mouse                                                     2                2
-  cat                                                       2              222
-  bear                                                      2               22
-  mouse                                                     1                1
-  cat                                                       1              111
-  bear                                                      1               11
-  mouse                                                     0                0
-  cat                                                       0              100
-  bear                                                      0               10
+  mouse                                                            -1               -1
+  cat                                                              -1             -111
+  bear                                                             -1              -11
+  mouse                                                            -2               -2
+  cat                                                              -2             -222
+  bear                                                             -2              -22
+  mouse                                                             2                2
+  cat                                                               2              222
+  bear                                                              2               22
+  mouse                                                             1                1
+  cat                                                               1              111
+  bear                                                              1               11
+  mouse                                                             0                0
+  cat                                                               0              100
+  bear                                                              0               10
   mouse                                              65535               -1
   dog                                                65535              -11
   cat                                                65535             -111
