@@ -453,15 +453,27 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (n->din_tf != NULL)
 			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
 		if (n->din_tf == NULL || n->din_ctfid == CTF_ERR) {
-			n->din_tf = dt_typefile_kernel();
+			/*
+			 * XXX: Do we want to do this from the guest, or do we
+			 * want the host data model here? Not 100% sure.
+			 */
+			n->din_tf = dt_typefile_mod("D");
 			assert(n->din_tf != NULL);
 			n->din_ctfid = dt_typefile_ctfid(n->din_tf, symname);
-			if (n->din_ctfid == CTF_ERR)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed to get "
-				    "type %s: %s",
-				    insname[opcode], n->din_uidx, symname,
-				    dt_typefile_error(n->din_tf));
+
+			if (n->din_ctfid == CTF_ERR) {
+				n->din_tf = dt_typefile_kernel();
+				assert(n->din_tf != NULL);
+				n->din_ctfid = dt_typefile_ctfid(n->din_tf,
+				    symname);
+				if (n->din_ctfid == CTF_ERR)
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_infer_type(%s, %zu): failed to get "
+					    "type %s: %s",
+					    insname[opcode], n->din_uidx,
+					    symname,
+					    dt_typefile_error(n->din_tf));
+			}
 		}
 
 		n->din_type = DIF_TYPE_CTF;
