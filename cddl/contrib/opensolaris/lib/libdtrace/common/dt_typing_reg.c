@@ -186,24 +186,6 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 				    dt_typefile_error(onode->din_tf));
 
 			/*
-			 * We need to make sure that we are comparing types in
-			 * the same typefile, otherwise we could have a mismatch
-			 * of ctfids.
-			 *
-			 * XXX(dstolfa): Maybe we should allow for this to be
-			 * different, but then check the layout and so on...?
-			 */
-			if (node->din_tf != onode->din_tf) {
-				fprintf(stderr,
-				    "dt_typecheck_regdefs(): typefiles %s and "
-				    "%s do not match\n",
-				    dt_typefile_stringof(node->din_tf),
-				    dt_typefile_stringof(onode->din_tf));
-
-				return (NULL);
-			}
-
-			/*
 			 * Fail to typecheck if the types don't match 100%.
 			 * We only do this if both types are non-NULL/0 as we
 			 * might be doing some weird zeroing thing where we
