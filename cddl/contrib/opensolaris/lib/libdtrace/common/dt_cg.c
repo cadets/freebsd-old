@@ -2174,7 +2174,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		/*
 		 * Generate a typecast if needed.
 		 */
-		if (strlen(dnp->dn_typecast) > 0) {
+		if (dnp->dn_needscast) {
 			ssize_t typeref = 0;
 
 			typeref = dt_strtab_insert(yypcb->pcb_symtab,
