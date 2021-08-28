@@ -138,6 +138,12 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 	assert(tf1 != NULL);
 	assert(tf2 != NULL);
 
+	/*
+	 * If we're comparing the same type, it's just equal.
+	 */
+	if (tf1 == tf2 && id1 == id2)
+		return (0);
+
 	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
 	    (char *)type1_name) {
 		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
@@ -314,7 +320,6 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 
 	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
 	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
-
 	/*
 	 * In case number of stars in a pointer didn't match.
 	 */
@@ -369,7 +374,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 
 		if (enc1.cte_format != enc2.cte_format && size1 == size2) {
 			fprintf(stderr,
-			    "dt_type_subtype(): both arguments types"
+			    "dt_type_subtype(): both arguments types "
 			    "need to have same signedness\n");
 			return (-1);
 		}
@@ -531,49 +536,38 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
  * the internal DTrace class it belongs to (DTC_INT, DTC_BOTTOM, DTC_STRUCT).
  */
 int
-dt_get_class(dt_typefile_t *tf, char *buf)
+dt_get_class(dt_typefile_t *tf, ctf_id_t id)
 {
-	size_t len;
-	ctf_id_t t, ot;
-	ctf_id_t k;
+	ctf_id_t ot, k;
+	char buf[DT_TYPE_NAMELEN];
 
-	t = 0;
 	ot = -1;
 	k = 0;
-	len = strlen(buf);
 
-	/*
-	 * XXX: This is a quick and dirty way to check if something is
-	 *      a struct pointer. The "right" way to do this would be to
-	 *      look at the current kind, and then get the reference kind
-	 *      and make sure they are a (Pointer, Struct) tuple.
-	 */
-	if (len > strlen("struct") &&
-	    strncmp(buf, "struct", strlen("struct")) == 0 &&
-	    buf[len - 1] == '*')
-		return (DTC_STRUCT);
-
-	t = dt_typefile_ctfid(tf, buf);
-	if (t == CTF_ERR)
+	if (dt_typefile_typename(tf, id, buf, sizeof(buf)) != ((char *)buf))
 		dt_set_progerr(g_dtp, g_pgp,
-		    "failed getting type (%s) by name: %s\n", buf,
-		    dt_typefile_error(tf));
+		    "dt_get_class(%s, %d): failed at "
+		    "getting type name: %s",
+		    dt_typefile_stringof(tf), id, dt_typefile_error(tf));
 
 	do {
 
-		if ((k = dt_typefile_typekind(tf, t)) == CTF_ERR)
+		if ((k = dt_typefile_typekind(tf, id)) == CTF_ERR)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "failed getting type (%s) kind: %s", buf,
 			    dt_typefile_error(tf));
 
-		if (t == ot)
+		if (id == ot)
 			break;
 
-		ot = t;
-	} while (((t = dt_typefile_reference(tf, t)) != CTF_ERR));
+		ot = id;
+	} while (((id = dt_typefile_reference(tf, id)) != CTF_ERR));
 
 	if (k == CTF_K_INTEGER)
 		return (DTC_INT);
+
+	if (k == CTF_K_STRUCT)
+		return (DTC_STRUCT);
 
 	return (DTC_BOTTOM);
 }
@@ -633,28 +627,19 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	}
 
 	class1 = dn1->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn1->din_tf, buf1) :
+	    dt_get_class(dn1->din_tf, dn1->din_ctfid) :
 	    DTC_STRING;
 	class2 = dn2->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn2->din_tf, buf2) :
+	    dt_get_class(dn2->din_tf, dn2->din_ctfid) :
 	    DTC_STRING;
 
-#if 0
-	if (dn1->din_type == DIF_TYPE_CTF && dn2->din_type == DIF_TYPE_CTF &&
-	    dn1->din_tf != dn2->din_tf)
-		dt_set_progerr(g_dtp, g_pgp,
-		    "dn1 (%s) is in typefile %s, "
-		    "while dn2 (%s) is in typefile %s",
-		    buf1, dt_typefile_stringof(dn1->din_tf),
-		    buf2, dt_typefile_stringof(dn2->din_tf));
-#endif
 	if (class1 == DTC_BOTTOM)
-		dt_set_progerr(
-		    g_dtp, g_pgp, "class1 is bottom because of %s", buf1);
+		dt_set_progerr(g_dtp, g_pgp,
+		    "dt_type_compare(): class1 is bottom because of %s", buf1);
 
 	if (class2 == DTC_BOTTOM)
-		dt_set_progerr(
-		    g_dtp, g_pgp, "class2 is bottom because of %s", buf2);
+		dt_set_progerr(g_dtp, g_pgp,
+		    "dt_type_compare(): class2 is bottom because of %s", buf2);
 
 	if (class1 == DTC_STRING && class2 == DTC_INT)
 		return (1);

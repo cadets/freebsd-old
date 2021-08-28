@@ -214,7 +214,6 @@ dt_infer_type(dt_ifg_node_t *n)
 	 * We do not tolerate NULL ECBs.
 	 */
 	assert(n->din_edp != NULL);
-
 	instr = n->din_buf[n->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
@@ -326,7 +325,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, dn1->din_ctfid,
 			    dt_typefile_error(dn1->din_tf));
 
-		if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT) {
+		if (dt_get_class(dn1->din_tf, dn1->din_ctfid) != DTC_STRUCT) {
 			fprintf(stderr,
 			    "dt_infer_type(%s, %zu): failed to get class\n",
 			    insname[opcode], n->din_uidx);
@@ -445,6 +444,11 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * TODO: Maybe we can tolerate some failures by looking at
 		 * symbols too?
 		 */
+		if (strcmp(symname, "string") == 0) {
+			n->din_type = DIF_TYPE_STRING;
+			return (n->din_type);
+		}
+
 		if (strcmp(n->din_edp->dted_probe.dtpd_mod, "freebsd") == 0)
 			n->din_tf = dt_typefile_kernel();
 		else
@@ -1610,7 +1614,8 @@ dt_infer_type(dt_ifg_node_t *n)
 				    dn1->din_ctfid,
 				    dt_typefile_error(dn1->din_tf));
 
-			if (dt_get_class(dn1->din_tf, buf) != DTC_STRUCT)
+			if (dt_get_class(
+			    dn1->din_tf, dn1->din_ctfid) != DTC_STRUCT)
 				return (-1);
 
 			/*
@@ -1692,7 +1697,8 @@ dt_infer_type(dt_ifg_node_t *n)
 				    data_dn1->din_ctfid,
 				    dt_typefile_error(data_dn1->din_tf));
 
-			if (dt_get_class(data_dn1->din_tf, buf) != DTC_STRUCT)
+			if (dt_get_class(data_dn1->din_tf,
+			    data_dn1->din_ctfid) != DTC_STRUCT)
 				return (-1);
 
 			/*

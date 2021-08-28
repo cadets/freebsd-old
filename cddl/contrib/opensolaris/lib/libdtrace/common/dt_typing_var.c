@@ -576,7 +576,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 	    dif_var->dtdv_type.dtdt_kind != dr->din_type) {
 		fprintf(stderr,
 		    "dt_infer_type_var(): dif_var and dr have different "
-		    "types: %d != %d",
+		    "types: %d != %d\n",
 		    dif_var->dtdv_type.dtdt_kind, dr->din_type);
 
 		return (-1);
@@ -584,7 +584,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 
 	if (dr->din_type == DIF_TYPE_NONE || dr->din_type == DIF_TYPE_BOTTOM)
 		dt_set_progerr(g_dtp, g_pgp,
-		    "dt_infer_type_var(): unexpected type %d", dr->din_type);
+		    "dt_infer_type_var(): unexpected type %d\n", dr->din_type);
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
 		return (DIF_TYPE_STRING);
@@ -594,7 +594,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		    var_type, sizeof(var_type)) != ((char *)var_type))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "dt_infer_type_var(): failed at getting "
-			    "type name %ld: %s",
+			    "type name %ld: %s\n",
 			    dif_var->dtdv_ctfid,
 			    dt_typefile_error(dif_var->dtdv_tf));
 
@@ -602,7 +602,7 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		    sizeof(buf)) != ((char *)buf))
 			dt_set_progerr(g_dtp, g_pgp,
 			    "dt_infer_type_var(): failed at getting "
-			    "type name %ld: %s",
+			    "type name %ld: %s\n",
 			    dr->din_ctfid, dt_typefile_error(dr->din_tf));
 
 		rv = dt_type_subtype(dif_var->dtdv_tf, dif_var->dtdv_ctfid,
