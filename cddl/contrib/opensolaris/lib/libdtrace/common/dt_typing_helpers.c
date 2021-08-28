@@ -372,12 +372,14 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		size1 = dt_typefile_typesize(tf1, id1);
 		size2 = dt_typefile_typesize(tf2, id2);
 
+#if 0
 		if (enc1.cte_format != enc2.cte_format && size1 == size2) {
 			fprintf(stderr,
 			    "dt_type_subtype(): both arguments types "
 			    "need to have same signedness\n");
 			return (-1);
 		}
+#endif
 
 		if (size1 == size2)
 			*which = SUBTYPE_EQUAL;
