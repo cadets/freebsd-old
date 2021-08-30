@@ -591,10 +591,10 @@ dtrace_get_paging(void *_vmhdl)
 			err = dtrace_gla2hva(                                 \
 			    dtrace_get_paging(vmhdl), addr, &addr);           \
 			if (err) {                                            \
-				return (0);                                   \
 				*flags &= ~CPU_DTRACE_NOFAULT;                \
+				return (0);                                   \
 			}                                                     \
-			rval = *(uint##bits##_t *)addr;                       \
+			rval = *((volatile uint##bits##_t *)addr);            \
 			*flags &= ~CPU_DTRACE_NOFAULT;                        \
 			if ((*flags & CPU_DTRACE_FAULT) == 0) {               \
 				return (rval);                                \
