@@ -8303,14 +8303,17 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 		ASSERT(dtvirt_getns != NULL);
 		vmid = dtvirt_getns(vmhdl);
 		if (vmid >= HYPERTRACE_MAX_VMS) {
-			printf("WARNING: %u > HYPERTRACE_MAX_VMS (%d)\n", vmid,
-			    HYPERTRACE_MAX_VMS);
+			if (dtrace_err_verbose)
+				cmn_err(CE_WARN,
+				    "%u > HYPERTRACE_MAX_VMS (%d)\n", vmid,
+				    HYPERTRACE_MAX_VMS);
 			return;
 		}
 
 		if (vmid >= dtrace_nvmids) {
-			printf("WARNING: %u > dtrace_nvmids (%zu)\n", vmid,
-			    dtrace_nvmids);
+			if (dtrace_err_verbose)
+				cmn_err(CE_WARN, "%u > dtrace_nvmids (%zu)\n",
+				    vmid, dtrace_nvmids);
 			return;
 		}
 	} else
