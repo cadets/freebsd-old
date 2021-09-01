@@ -179,7 +179,7 @@ static void pci_vtdtr_notify_ready(struct pci_vtdtr_softc *);
 static void pci_vtdtr_fill_eof_desc(struct vqueue_info *);
 static void * pci_vtdtr_run(void *);
 static void pci_vtdtr_reset_queue(struct pci_vtdtr_softc *);
-static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, char *);
+static int pci_vtdtr_init(struct vmctx *, struct pci_devinst *, nvlist_t *);
 
 static struct virtio_consts vtdtr_vi_consts = {
 	"vtdtr",			/* name */
@@ -896,7 +896,7 @@ pci_vtdtr_events(void *xsc)
  * the communicator thread and add an event handler for kqueue.
  */
 static int
-pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, char *opts)
+pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, nvlist_t *nvl)
 {
 	struct pci_vtdtr_softc *sc;
 	pthread_t communicator, reader;

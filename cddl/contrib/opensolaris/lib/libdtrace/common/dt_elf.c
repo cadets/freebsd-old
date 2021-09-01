@@ -2333,7 +2333,9 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dtrace_prog_t *prog;
 	dt_elf_prog_t *eprog;
 	int needsclosing; /* Do we need to close the fd at the end? */
-	int i;
+	char *ident;
+	dt_identlist_t *ident_entry;
+	int i, found, chk;
 
 	needsclosing = 0;
 
@@ -2493,6 +2495,27 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	if (eprog->dtep_haserror)
 		errx(EXIT_FAILURE, "%s", eprog->dtep_err);
+
+	found = 0;
+	chk = 0;
+	ident_entry = dt_list_next(&dtp->dt_compile_idents);
+	while (ident_entry != NULL) {
+		chk = 1;
+		ident = ident_entry->dtil_ident;
+		assert(ident != NULL);
+
+		if (memcmp(ident, eprog->dtep_srcident, DT_PROG_IDENTLEN) == 0) {
+			found = 1;
+			break;
+		}
+
+		ident_entry = dt_list_next(ident_entry);
+	}
+
+	if (chk && found == 0) {
+		*err = ENOENT;
+		return (NULL);
+	}
 
 	dtelf_state->s_rflags = eprog->dtep_rflags;
 

@@ -2636,3 +2636,29 @@ dtrace_type_fcompile(dtrace_hdl_t *dtp, FILE *fp, dtrace_typeinfo_t *dtt)
 	    DTRACE_PROBESPEC_NONE, dtt, 0, 0, NULL, fp, NULL);
 	return (dtp->dt_errno ? -1 : 0);
 }
+
+int
+dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents)
+{
+	char *ident;
+	dt_identlist_t *ident_entry;
+
+	if (idents == NULL)
+		return (-1);
+
+	if (idents[0] == '\0')
+		return (-1);
+
+	ident = strtok(idents, ",");
+	while (ident != NULL) {
+		ident_entry = malloc(sizeof(dt_identlist_t));
+		if (ident_entry == NULL)
+			return (errno);
+
+		memcpy(ident_entry->dtil_ident, ident, DT_PROG_IDENTLEN);
+		dt_list_append(&dtp->dt_compile_idents, ident_entry);
+		ident = strtok(NULL, ",");
+	}
+
+	return (0);
+}

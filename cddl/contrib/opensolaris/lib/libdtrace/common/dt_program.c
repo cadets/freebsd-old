@@ -25,23 +25,22 @@
  * Copyright (c) 2021, Domagoj Stolfa. All rights reserved.
  */
 
-
-#include <unistd.h>
-#include <strings.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <err.h>
-#include <errno.h>
 #include <assert.h>
 #include <ctype.h>
+#include <err.h>
+#include <errno.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <strings.h>
+#include <unistd.h>
 #ifdef illumos
 #include <alloca.h>
 #endif
 
 #include <dt_impl.h>
 #include <dt_linker_subr.h>
-#include <dt_program.h>
 #include <dt_printf.h>
+#include <dt_program.h>
 #include <dt_provider.h>
 
 #define VERICTX_DEFAULT_VECSIZE 256 /* We expect around 256 DIFOs by default. */
@@ -56,6 +55,7 @@ typedef struct dt_verictx {
 	size_t num_difos;
 	size_t difovec_size;
 } dt_verictx_t;
+
 void dt_prog_generate_ident(dtrace_prog_t *);
 
 dtrace_prog_t *

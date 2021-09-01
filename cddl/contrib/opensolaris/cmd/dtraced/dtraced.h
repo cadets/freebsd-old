@@ -29,7 +29,7 @@
 #define __DTRACED_H_
 
 #define DTRACED_MAJOR                  0
-#define DTRACED_MINOR                  1
+#define DTRACED_MINOR                  2
 #define DTRACED_PATCH                  0
 #define DTRACED_EXTRA_IDENTIFIER       "BETA"
 
@@ -45,11 +45,13 @@
 #define DTD_SUB_KILL                    (1 << 2)
 
 #define DTRACED_LOCSIZE                64ul
+#define DTRACED_PROGIDENTLEN           128ull
 
 typedef struct dtraced_hdr {
 	uint64_t msg_type;      /* message type (see DTRACED_MSG_*) */
 	struct {
-		char location[DTRACED_LOCSIZE]; /* elf location */
+		char location[DTRACED_LOCSIZE];   /* elf location */
+		char ident[DTRACED_PROGIDENTLEN]; /* program identifier */
 	} elf;
 
 	struct {
@@ -73,6 +75,7 @@ typedef struct dtd_initmsg {
 
 #define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
 #define	DTRACED_MSG_LOC(m)             ((m).elf.location)
+#define	DTRACED_MSG_IDENT(m)           ((m).elf.ident)
 #define DTRACED_MSG_KILLPID(m)         ((m).kill.pid)
 
 #endif // __DTRACED_H_

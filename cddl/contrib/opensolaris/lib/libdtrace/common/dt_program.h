@@ -37,7 +37,7 @@ extern "C" {
 #include <dt_list.h>
 
 #define	DT_PROG_ERRLEN		4096ull
-#define	DT_PROG_IDENTLEN	1024ull
+#define	DT_PROG_IDENTLEN	128ull
 
 #define	DT_PROG_NOEXEC		0
 #define	DT_PROG_EXEC		1

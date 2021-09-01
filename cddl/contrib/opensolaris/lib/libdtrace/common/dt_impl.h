@@ -27,6 +27,7 @@
 /*
  * Copyright (c) 2013, Joyent, Inc. All rights reserved.
  * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
+ * Copyright (c) 2021 Domagoj Stolfa.  All rights reserved.
  */
 
 #ifndef	_DT_IMPL_H
@@ -38,35 +39,37 @@
 #include <sys/objfs.h>
 #ifndef illumos
 #include <sys/bitmap.h>
-#include <sys/utsname.h>
 #include <sys/ioccom.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
+
 #include <string.h>
 #endif
-#include <setjmp.h>
-#include <libctf.h>
 #include <dtrace.h>
 #include <gelf.h>
+#include <libctf.h>
+#include <setjmp.h>
 #ifdef illumos
 #include <synch.h>
 #endif
 
-#ifdef	__cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <dt_parser.h>
-#include <dt_regset.h>
-#include <dt_inttab.h>
-#include <dt_strtab.h>
-#include <dt_ident.h>
-#include <dt_list.h>
-#include <dt_decl.h>
 #include <dt_as.h>
-#include <dt_proc.h>
+#include <dt_decl.h>
 #include <dt_dof.h>
+#include <dt_ident.h>
+#include <dt_inttab.h>
+#include <dt_list.h>
+#include <dt_parser.h>
 #include <dt_pcb.h>
 #include <dt_pq.h>
+#include <dt_proc.h>
+#include <dt_program.h>
+#include <dt_regset.h>
+#include <dt_strtab.h>
 
 struct dt_module;		/* see below */
 struct dt_pfdict;		/* see <dt_printf.h> */
@@ -240,6 +243,11 @@ typedef struct dt_lib_depend {
 
 typedef uint32_t dt_version_t;		/* encoded version (see below) */
 
+typedef struct dt_identlist {
+	dt_list_t dtil_list;				/* next */
+	unsigned char dtil_ident[DT_PROG_IDENTLEN];	/* identifier */
+} dt_identlist_t;
+
 struct dtrace_hdl {
 	const dtrace_vector_t *dt_vector; /* library vector, if vectored open */
 	void *dt_varg;	/* vector argument, if vectored open */
@@ -375,6 +383,7 @@ struct dtrace_hdl {
 	boolean_t dt_has_sugar;	/* syntactic sugar used? */
 	boolean_t dt_hypertrace;	/* are we currently hypertracing? */
 	boolean_t dt_is_guest;	/* is a guest? */
+	dt_list_t dt_compile_idents;	/* acceptable program idents */
 };
 
 /*
@@ -729,6 +738,8 @@ extern int dt_lib_depend_add(dtrace_hdl_t *, dt_list_t *, const char *);
 extern dt_lib_depend_t *dt_lib_depend_lookup(dt_list_t *, const char *);
 extern ctf_file_t *dt_lib_membinfo(ctf_file_t *, ctf_id_t,
     const char *, ctf_membinfo_t *);
+
+extern int dtrace_compile_idents_set(dtrace_hdl_t *, char *);
 
 extern dt_pcb_t *yypcb;		/* pointer to current parser control block */
 extern char yyintprefix;	/* int token prefix for macros (+/-) */

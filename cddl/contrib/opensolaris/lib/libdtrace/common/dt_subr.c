@@ -1062,7 +1062,7 @@ open_dtraced(uint64_t subs)
 }
 
 int
-send_elf(int fromfd, int tofd, const char *location)
+dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location)
 {
 	unsigned char *buf, *_buf;
 	size_t total_size;

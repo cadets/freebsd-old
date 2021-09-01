@@ -30,29 +30,29 @@
  */
 
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
 #include <machine/vmm.h>
 
-#include <dtrace.h>
+#include <assert.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
-#include <stdlib.h>
-#include <stdatomic.h>
+#include <dtrace.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <syslog.h>
 #include <unistd.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <signal.h>
-#include <assert.h>
 #ifdef illumos
 #include <alloca.h>
 #endif
@@ -61,12 +61,11 @@
 #include <libproc.h>
 #endif
 #ifdef __FreeBSD__
+#include <dt_prog_link.h>
 #include <locale.h>
 #include <spawn.h>
-#include <dt_prog_link.h>
 #endif
 #include <dtraced.h>
-
 #include <pthread.h>
 
 typedef struct dtrace_cmd {
@@ -114,7 +113,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:o:p:P:qs:SU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:N:o:p:P:qs:SU:vVwx:y:Y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -232,6 +231,7 @@ usage(FILE *fp)
 	    "\t-L  add library directory to library search path\n"
 	    "\t-m  enable or list probes matching the specified module name\n"
 	    "\t-n  enable or list probes matching the specified probe name\n"
+	    "\t-N  accept only programs with given identefiers (HyperTrace)\n"
 	    "\t-o  set output file\n"
 	    "\t-p  grab specified process-ID and cache its symbol tables\n"
 	    "\t-P  enable or list probes matching the specified provider name\n"
@@ -1113,8 +1113,9 @@ process_prog:
 				pthread_exit(NULL);
 			}
 
-			if (send_elf(tmpfd, wx_sockfd, "outbound")) {
-				fprintf(stderr, "failed to send_elf()\n");
+			if (dtrace_send_elf(
+			    guestpgp, tmpfd, wx_sockfd, "outbound")) {
+				fprintf(stderr, "failed to dtrace_send_elf()\n");
 				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
@@ -1514,8 +1515,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (lseek(tmpfd, 0, SEEK_SET))
 			fatal("lseek() failed");
 
-		if (send_elf(tmpfd, wx_sock, "base"))
-			fatal("failed to send_elf()");
+		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base"))
+			fatal("failed to dtrace_send_elf()");
 
 		close(tmpfd);
 
@@ -1919,8 +1920,9 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (lseek(tmpfd, 0, SEEK_SET))
 		fatal("lseek() failed");
 
-	if (send_elf(tmpfd, dtraced_sock, host ? "inbound" : "outbound"))
-		fatal("failed to send_elf()");
+	if (dtrace_send_elf(
+	    dcp->dc_prog, tmpfd, dtraced_sock, host ? "inbound" : "outbound"))
+		fatal("failed to dtrace_send_elf()");
 
 	close(tmpfd);
 	close(dtraced_sock);
@@ -2642,6 +2644,10 @@ main(int argc, char *argv[])
 				dcp->dc_func = compile_str;
 				dcp->dc_spec = DTRACE_PROBESPEC_NAME;
 				dcp->dc_arg = optarg;
+				break;
+
+			case 'N':
+				dtrace_compile_idents_set(g_dtp, optarg);
 				break;
 
 			case 'P':

@@ -37,17 +37,16 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#ifdef	__cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <dtrace.h>
-
+#include <dt_decl.h>
 #include <dt_errtags.h>
 #include <dt_ident.h>
-#include <dt_decl.h>
-#include <dt_xlator.h>
 #include <dt_list.h>
+#include <dt_xlator.h>
+#include <dtrace.h>
 
 typedef struct dt_node {
 	ctf_file_t *dn_ctfp;	/* CTF type container for node's type */

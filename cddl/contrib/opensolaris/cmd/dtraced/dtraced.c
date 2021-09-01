@@ -162,6 +162,11 @@ typedef struct pidlist {
 	pid_t pid;
 } pidlist_t;
 
+typedef struct identlist {
+	dt_list_t list;
+	unsigned char ident[DTRACED_PROGIDENTLEN];
+} identlist_t;
+
 /*
  * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
@@ -225,6 +230,9 @@ struct dtd_state {
 	int nosha;                   /* do we want to checksum? */
 	struct pidfh *pid_fileh;     /* lockfile */
 	int kq_hdl;                  /* event loop kqueue */
+
+	dt_list_t identlist;         /* list of identifiers */
+	mutex_t identlistmtx;        /* mutex protecting the ident list */
 };
 
 struct dtd_fdlist {
@@ -937,6 +945,7 @@ process_joblist(void *_s)
 	unsigned char ack = 1;
 	struct dtd_joblist *job;
 	struct dtd_fdlist *fd_list;
+	identlist_t *newident;
 	const char *jobname[] = {
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
@@ -1087,10 +1096,31 @@ process_joblist(void *_s)
 					pthread_exit(NULL);
 				}
 
+				if (g_ctrlmachine == 0) {
+					newident = malloc(sizeof(identlist_t));
+					if (newident == NULL) {
+						syslog(LOG_ERR,
+						    "Failed to allocate new"
+						    " identifier: %m");
+						free(buf);
+						pthread_exit(NULL);
+					}
+
+					memcpy(newident->ident,
+					    DTRACED_MSG_IDENT(header),
+					    DTRACED_PROGIDENTLEN);
+					LOCK(&s->identlistmtx);
+					dt_list_append(&s->identlist, newident);
+					UNLOCK(&s->identlistmtx);
+				}
+
 				if (write_data(dir, _buf, nbytes))
 					syslog(LOG_ERR, "write_data() failed");
 				break;
+
 			case DTRACED_MSG_KILL:
+				syslog(LOG_DEBUG, "        KILL (%d)",
+				    DTRACED_MSG_KILLPID(header));
 				/*
 				 * We enqueue a KILL message in the joblist
 				 * (another thread will simply pick this up). We
@@ -1891,7 +1921,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status;
 	size_t l, dirpathlen, filepathlen;
-	char *argv[4] = { 0 };
+	char *argv[6] = { 0 };
+	identlist_t *ident_entry;
 	struct kevent change_event[1];
 
 	status = 0;
@@ -2009,13 +2040,54 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			return (-1);
 		} else if (pid > 0) {
 			/*
-			 * We don't actually need to do anything in this case.
+			 * Clean up the pidlist.
 			 */
+			LOCK(&s->identlistmtx);
+			while ((ident_entry =
+			    dt_list_next(&s->identlist)) != NULL) {
+				dt_list_delete(&s->identlist, ident_entry);
+				free(ident_entry);
+			}
+			UNLOCK(&s->identlistmtx);
 		} else if (pid == 0) {
+			char *curptr;
+			char *ident;
+			size_t num_idents;
+
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
 			argv[2] = strdup(fullpath);
-			argv[3] = NULL;
+
+			num_idents = 0;
+			for (ident_entry = dt_list_next(&s->identlist);
+			     ident_entry;
+			     ident_entry = dt_list_next(ident_entry))
+				num_idents++;
+
+			if (num_idents > 0) {
+				argv[3] = strdup("-N");
+				argv[4] = malloc(
+				    num_idents * DTRACED_PROGIDENTLEN);
+				memset(argv[4], 0,
+				    num_idents * DTRACED_PROGIDENTLEN);
+
+				curptr = argv[4];
+				while ((ident_entry = dt_list_next(
+				    &s->identlist)) != NULL) {
+					dt_list_delete(&s->identlist,
+					    ident_entry);
+					ident = ident_entry->ident;
+
+					l = strlcpy(curptr, ident,
+					    DTRACED_PROGIDENTLEN);
+					assert(l < DTRACED_PROGIDENTLEN);
+					curptr += l;
+				}
+
+				argv[5] = NULL;
+			} else
+				argv[3] = NULL, argv[4] = NULL, argv[5] = NULL;
+
 			execve("/usr/sbin/dtrace", argv, NULL);
 			exit(EXIT_FAILURE);
 		}
@@ -2515,6 +2587,12 @@ init_state(struct dtd_state *s)
 	if ((err = mutex_init(
 	    &s->killcvmtx, NULL, "", CHECKOWNER_NO)) != 0) {
 		syslog(LOG_ERR, "Failed to create kill condvar mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_init(
+	    &s->identlistmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+		syslog(LOG_ERR, "Failed to create identlist mutex: %m");
 		return (-1);
 	}
 
