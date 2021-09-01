@@ -88,7 +88,9 @@ dump_errmsg(const char *msg, ...)
 	va_start(ap, msg);
 	if (msg) {
 		vfprintf(stderr, msg, ap);
+		va_end(ap);
 		fprintf(stderr, "\n");
+		va_start(ap, msg);
 		vsyslog(LOG_ERR, msg, ap);
 	}
 	va_end(ap);
@@ -102,7 +104,9 @@ dump_warnmsg(const char *msg, ...)
 	va_start(ap, msg);
 	if (msg) {
 		vfprintf(stderr, msg, ap);
+		va_end(ap);
 		fprintf(stderr, "\n");
+		va_start(ap, msg);
 		vsyslog(LOG_WARNING, msg, ap);
 	}
 	va_end(ap);
@@ -116,7 +120,9 @@ dump_debugmsg(const char *msg, ...)
 	va_start(ap, msg);
 	if (msg) {
 		vfprintf(stdout, msg, ap);
+		va_end(ap);
 		fprintf(stdout, "\n");
+		va_start(ap, msg);
 		vsyslog(LOG_DEBUG, msg, ap);
 	}
 	va_end(ap);
