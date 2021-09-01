@@ -80,51 +80,93 @@
 #define EXISTS_CHANGED           1
 #define EXISTS_EQUAL             2
 
+static void
+dump_errmsg(const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	if (msg) {
+		vfprintf(stderr, msg, ap);
+		fprintf(stderr, "\n");
+		vsyslog(LOG_ERR, msg, ap);
+	}
+	va_end(ap);
+}
+
+static void
+dump_warnmsg(const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	if (msg) {
+		vfprintf(stderr, msg, ap);
+		fprintf(stderr, "\n");
+		vsyslog(LOG_WARNING, msg, ap);
+	}
+	va_end(ap);
+}
+
+static void
+dump_debugmsg(const char *msg, ...)
+{
+	va_list ap;
+
+	va_start(ap, msg);
+	if (msg) {
+		vfprintf(stdout, msg, ap);
+		fprintf(stdout, "\n");
+		vsyslog(LOG_DEBUG, msg, ap);
+	}
+	va_end(ap);
+}
+
 #define OWNED(m)    (atomic_load(&(m)->_owner) == pthread_self())
 
-#define SIGNAL(c)						   \
-	{							   \
-		int err;					   \
-		err = pthread_cond_signal(c);			   \
-		if (err != 0) {					   \
-			syslog(LOG_ERR,"Failed to signal cv: %m"); \
-		}						   \
+#define SIGNAL(c)                                               \
+	{                                                       \
+		int err;                                        \
+		err = pthread_cond_signal(c);                   \
+		if (err != 0) {                                 \
+			dump_errmsg("Failed to signal cv: %m"); \
+		}                                               \
 	}
 
-#define WAIT(c,m)						     \
-	{							     \
-		int err;					     \
-		err = pthread_cond_wait(c,m);			     \
-		if (err != 0) {					     \
-			syslog(LOG_ERR,"Failed to wait for cv: %m"); \
-		}						     \
+#define WAIT(c, m)                                                \
+	{                                                         \
+		int err;                                          \
+		err = pthread_cond_wait(c, m);                    \
+		if (err != 0) {                                   \
+			dump_errmsg("Failed to wait for cv: %m"); \
+		}                                                 \
 	}
 
-#define BROADCAST(c)						      \
-	{							      \
-		int err;					      \
-		err = pthread_cond_broadcast(c);		      \
-		if (err != 0) {					      \
-			syslog(LOG_ERR,"Failed to broadcast cv: %m"); \
-		}						      \
+#define BROADCAST(c)                                               \
+	{                                                          \
+		int err;                                           \
+		err = pthread_cond_broadcast(c);                   \
+		if (err != 0) {                                    \
+			dump_errmsg("Failed to broadcast cv: %m"); \
+		}                                                  \
 	}
 
-#define SWAIT(s)						       \
-	{							       \
-		int err;					       \
-		err = sem_wait(s);				       \
-		if (err != 0) {					       \
-			syslog(LOG_ERR,"Failed to wait for sema: %m"); \
-		}						       \
+#define SWAIT(s)                                                    \
+	{                                                           \
+		int err;                                            \
+		err = sem_wait(s);                                  \
+		if (err != 0) {                                     \
+			dump_errmsg("Failed to wait for sema: %m"); \
+		}                                                   \
 	}
 
-#define SPOST(s)						       \
-	{							       \
-		int err;					       \
-		err = sem_post(s);				       \
-		if (err != 0) {					       \
-			syslog(LOG_ERR,"Failed to post for sema: %m"); \
-		}						       \
+#define SPOST(s)                                                    \
+	{                                                           \
+		int err;                                            \
+		err = sem_post(s);                                  \
+		if (err != 0) {                                     \
+			dump_errmsg("Failed to post for sema: %m"); \
+		}                                                   \
 	}
 
 typedef struct mutex {
@@ -302,19 +344,6 @@ sig_pipe(int __unused signo)
 {
 }
 
-static void
-dump_errormsg(const char *msg, ...)
-{
-	va_list ap;
-
-	va_start(ap, msg);
-	if (msg) {
-		vfprintf(stderr, msg, ap);
-		vsyslog(LOG_ERR, msg, ap);
-	}
-	va_end(ap);
-}
-
 static int
 mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
     const char *name, int checkowner)
@@ -358,7 +387,7 @@ LOCK(mutex_t *m)
 
 	err = pthread_mutex_lock(&(m)->_m);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to lock mutex: %m");
+		dump_errmsg("Failed to lock mutex: %m");
 		exit(EXIT_FAILURE);
 	}
 
@@ -377,12 +406,12 @@ dump_backtrace(void)
 	strings = backtrace_symbols(buffer, nptrs);
 
 	if (strings == NULL) {
-		syslog(LOG_ERR, "Failed to get backtrace symbols: %m");
+		dump_errmsg("Failed to get backtrace symbols: %m");
 		exit(EXIT_FAILURE);
 	}
 
 	for (int j = 0; j < nptrs; j++)
-		dump_errormsg("%s\n", strings[j]);
+		dump_errmsg("%s", strings[j]);
 
 	free(strings);
 }
@@ -394,8 +423,8 @@ UNLOCK(mutex_t *m)
 
 	if (m->_checkowner != CHECKOWNER_NO) {
 		if (OWNED(m) == 0) {
-			dump_errormsg(
-			    "attempted unlock of %s which is not owned\n",
+			dump_errmsg(
+			    "attempted unlock of %s which is not owned",
 			    m->_name);
 			dump_backtrace();
 			exit(EXIT_FAILURE);
@@ -403,8 +432,8 @@ UNLOCK(mutex_t *m)
 
 		assert(OWNED(m));
 		if (atomic_load(&m->_owner) != pthread_self()) {
-			dump_errormsg(
-			    "attempted unlock of %s by thread %p (!= %p)\n",
+			dump_errmsg(
+			    "attempted unlock of %s by thread %p (!= %p)",
 			    m->_name, pthread_self(), atomic_load(&m->_owner));
 			dump_backtrace();
 			exit(EXIT_FAILURE);
@@ -413,7 +442,7 @@ UNLOCK(mutex_t *m)
 
 	err = pthread_mutex_unlock(&(m)->_m);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to unlock mutex: %m");
+		dump_errmsg("Failed to unlock mutex: %m");
 		return;
 	}
 
@@ -497,7 +526,7 @@ manage_children(void *_s)
 		LOCK(&s->kill_listmtx);
 		kill_entry = dt_list_next(&s->kill_list);
 		if (kill_entry == NULL) {
-			fprintf(stderr, "kill message pulled from under us\n");
+			fprintf(stderr, "kill message pulled from under us");
 			UNLOCK(&s->kill_listmtx);
 			continue;
 		}
@@ -510,7 +539,7 @@ manage_children(void *_s)
 			assert(errno != EPERM);
 
 			if (errno == ESRCH) {
-				fprintf(stderr, "pid %d does not exist\n",
+				fprintf(stderr, "pid %d does not exist",
 				    kill_entry->pid);
 			}
 		}
@@ -531,7 +560,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	int fd;
 
 	if (dir == NULL) {
-		syslog(LOG_ERR, "dir is NULL in write_data()");
+		dump_errmsg("dir is NULL in write_data()");
 		return (-1);
 	}
 
@@ -540,7 +569,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	UNLOCK(&dir->dirmtx);
 
 	if (s == NULL) {
-		syslog(LOG_ERR, "state is NULL in write_data()");
+		dump_errmsg("state is NULL in write_data()");
 		return (-1);
 	}
 
@@ -556,18 +585,17 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 
 	fd = open(newname, O_WRONLY | O_CREAT);
 	if (fd == -1) {
-		syslog(LOG_ERR, "open() failed with: %m");
+		dump_errmsg("open() failed with: %m");
 		return (-1);
 	}
 
 	if (write(fd, data, nbytes) < 0) {
-		syslog(LOG_ERR, "write() failed with: %m");
+		dump_errmsg("write() failed with: %m");
 		return (-1);
 	}
 
 	if (rename(newname, donename)) {
-		syslog(
-		    LOG_ERR, "rename() failed %s -> %s: %m", newname, donename);
+		dump_errmsg("rename() failed %s -> %s: %m", newname, donename);
 		return (-1);
 	}
 
@@ -609,7 +637,7 @@ listen_dttransport(void *_s)
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			syslog(LOG_ERR, "Failed to read an entry: %m");
+			dump_errmsg("Failed to read an entry: %m");
 			continue;
 		}
 
@@ -631,15 +659,15 @@ retry:
 				UNLOCK(&s->inbounddir->dirmtx);
 
 				if (path == NULL) {
-					syslog(LOG_ERR,
-					    "gen_filename() failed with %s\n",
+					dump_errmsg(
+					    "gen_filename() failed with %s",
 					    strerror(errno));
 					goto retry;
 				}
 				fd = open(path, O_CREAT | O_WRONLY, 0600);
 
 				if (fd == -1) {
-					syslog(LOG_ERR, "Failed to open %s: %m",
+					dump_errmsg("Failed to open %s: %m",
 					    path);
 					continue;
 				}
@@ -658,7 +686,7 @@ retry:
 					if (errno == EINTR)
 						pthread_exit(s);
 
-					syslog(LOG_ERR,
+					dump_errmsg(
 					    "Failed to write data to %s: %m",
 					    path);
 				}
@@ -671,7 +699,7 @@ retry:
 				    donepathlen - dirlen);
 
 				if (rename(path, donepath)) {
-					syslog(LOG_ERR,
+					dump_errmsg(
 					    "Failed to move %s to %s: %m", path,
 					    donepath);
 				}
@@ -703,8 +731,7 @@ retry:
 			break;
 
 		default:
-			syslog(LOG_WARNING,
-			    "got unknown event (%d) from dttransport",
+			dump_errmsg("got unknown event (%d) from dttransport",
 			    e.event_kind);
 			break;
 		}
@@ -736,7 +763,7 @@ write_dttransport(void *_s)
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		syslog(LOG_ERR, "Failed creating a socket: %m");
+		dump_errmsg("Failed creating a socket: %m");
 		pthread_exit(NULL);
 	}
 
@@ -745,7 +772,7 @@ write_dttransport(void *_s)
 
 	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
-		syslog(LOG_ERR, "Failed setting addr.sun_path"
+		dump_errmsg("Failed setting addr.sun_path"
 		    " to /var/ddtrace/sub.sock");
 		sockfd = -1;
 		pthread_exit(NULL);
@@ -754,7 +781,7 @@ write_dttransport(void *_s)
 	SWAIT(&s->socksema);
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		syslog(LOG_ERR, "connect to /var/ddtrace/sub.sock failed: %m");
+		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
 		sockfd = -1;
 		pthread_exit(NULL);
 	}
@@ -765,7 +792,7 @@ write_dttransport(void *_s)
 	}
 
 	if (initmsg.kind != DTRACED_KIND_DTRACED) {
-		syslog(LOG_ERR, "Expected dtraced kind, got %d\n",
+		dump_errmsg("Expected dtraced kind, got %d",
 		    initmsg.kind);
 		close(sockfd);
 		pthread_exit(NULL);
@@ -775,7 +802,7 @@ write_dttransport(void *_s)
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = DTD_SUB_ELFWRITE;
 	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
-		syslog(LOG_ERR, "Failed to write initmsg to sockfd: %m");
+		dump_errmsg("Failed to write initmsg to sockfd: %m");
 		pthread_exit(NULL);
 	}
 
@@ -785,14 +812,13 @@ write_dttransport(void *_s)
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			syslog(LOG_ERR, "Failed to recv from sub.sock: %m");
+			dump_errmsg("Failed to recv from sub.sock: %m");
 			continue;
 		}
 
 		msg = malloc(len);
 		if (msg == NULL) {
-			syslog(
-			    LOG_ERR, "Failed to allocate a new message: %m\n");
+			dump_errmsg("Failed to allocate a new message: %m");
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
@@ -812,7 +838,7 @@ write_dttransport(void *_s)
 
 		memcpy(&header, msg, DTRACED_MSGHDRSIZE);
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
-			syslog(LOG_ERR, "Received unknown message type: %lu\n",
+			dump_errmsg("Received unknown message type: %lu",
 			    DTRACED_MSG_TYPE(header));
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
@@ -878,7 +904,7 @@ listen_dir(void *_dir)
 	rval = err = kq = 0;
 
 	if ((kq = kqueue()) == -1) {
-		syslog(LOG_ERR, "Failed to create a kqueue %m");
+		dump_errmsg("Failed to create a kqueue %m");
 		return (NULL);
 	}
 
@@ -890,7 +916,7 @@ listen_dir(void *_dir)
 		assert(rval != 0);
 
 		if (rval < 0) {
-			syslog(LOG_ERR, "kevent() failed on %s: %m",
+			dump_errmsg("kevent() failed on %s: %m",
 			    dir->dirpath);
 			if (errno == EINTR)
 				return (s);
@@ -899,7 +925,7 @@ listen_dir(void *_dir)
 		}
 
 		if (ev_data.flags == EV_ERROR) {
-			syslog(LOG_ERR, "kevent() got EV_ERROR on %s: %m",
+			dump_errmsg("kevent() got EV_ERROR on %s: %m",
 			    dir->dirpath);
 			continue;
 		}
@@ -907,8 +933,7 @@ listen_dir(void *_dir)
 		if (rval > 0) {
 			err = file_foreach(dir->dir, dir->processfn, dir);
 			if (err) {
-				syslog(LOG_ERR,
-				    "Failed to process new files in %s",
+				dump_errmsg("Failed to process new files in %s",
 				    dir->dirpath);
 				return (NULL);
 			}
@@ -987,9 +1012,9 @@ process_joblist(void *_s)
 		UNLOCK(&s->joblistmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
-			syslog(LOG_DEBUG, "Job: %s", jobname[curjob->job]);
+			dump_debugmsg("Job: %s", jobname[curjob->job]);
 		else
-			syslog(LOG_WARNING, "Job %u out of bounds", curjob->job);
+			dump_errmsg("Job %u out of bounds", curjob->job);
 
 		switch (curjob->job) {
 		case READ_DATA:
@@ -999,27 +1024,25 @@ process_joblist(void *_s)
 
 			if ((r =
 			    recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
-				syslog(LOG_ERR, "recv() failed with: %m");
+				dump_errmsg("recv() failed with: %m");
 				break;
 			}
 
 			assert(r == sizeof(totalbytes));
-			syslog(LOG_DEBUG, "    %zu bytes from %d", totalbytes,
-			    fd);
+			dump_debugmsg("    %zu bytes from %d", totalbytes, fd);
 
 			nbytes = totalbytes;
 
 			buf = malloc(nbytes);
 			if (buf == NULL) {
-				syslog(LOG_ERR, "malloc() failed with: %m");
+				dump_errmsg("malloc() failed with: %m");
 				break;
 			}
 
 			_buf = buf;
 			while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
 				if (r < 0) {
-					syslog(
-					    LOG_ERR, "recv() failed with: %m");
+					dump_errmsg("recv() failed with: %m");
 					free(buf);
 					buf = NULL;
 					break;
@@ -1035,7 +1058,7 @@ process_joblist(void *_s)
 
 			ack = 1;
 			if (send(fd, &ack, 1, 0) < 0) {
-				syslog(LOG_ERR, "send() failed with: %m");
+				dump_errmsg("send() failed with: %m");
 				if (buf)
 					free(buf);
 				break;
@@ -1048,7 +1071,7 @@ process_joblist(void *_s)
 			EV_SET(change_event, fd, EVFILT_READ,
 			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
-				syslog(LOG_ERR, "kevent() failed with: %m");
+				dump_errmsg("kevent() failed with: %m");
 				free(buf);
 				break;
 			}
@@ -1073,7 +1096,7 @@ process_joblist(void *_s)
 			case DTRACED_MSG_ELF:
 				_buf += DTRACED_MSGHDRSIZE;
 				nbytes -= DTRACED_MSGHDRSIZE;
-				syslog(LOG_DEBUG, "        ELF file");
+				dump_debugmsg("        ELF file");
 
 				if (strcmp(
 				    DTRACED_MSG_LOC(header), "base") == 0)
@@ -1088,7 +1111,7 @@ process_joblist(void *_s)
 					dir = NULL;
 
 				if (dir == NULL) {
-					syslog(LOG_ERR,
+					dump_errmsg(
 					    "unrecognized location: %s",
 					    DTRACED_MSG_LOC(header));
 
@@ -1099,7 +1122,7 @@ process_joblist(void *_s)
 				if (g_ctrlmachine == 0) {
 					newident = malloc(sizeof(identlist_t));
 					if (newident == NULL) {
-						syslog(LOG_ERR,
+						dump_errmsg(
 						    "Failed to allocate new"
 						    " identifier: %m");
 						free(buf);
@@ -1115,11 +1138,11 @@ process_joblist(void *_s)
 				}
 
 				if (write_data(dir, _buf, nbytes))
-					syslog(LOG_ERR, "write_data() failed");
+					dump_errmsg("write_data() failed");
 				break;
 
 			case DTRACED_MSG_KILL:
-				syslog(LOG_DEBUG, "        KILL (%d)",
+				dump_debugmsg("        KILL (%d)",
 				    DTRACED_MSG_KILLPID(header));
 				/*
 				 * We enqueue a KILL message in the joblist
@@ -1140,7 +1163,7 @@ process_joblist(void *_s)
 					job =
 					    malloc(sizeof(struct dtd_joblist));
 					if (job == NULL) {
-						syslog(LOG_ERR,
+						dump_errmsg(
 						    "malloc() failed with: %m");
 						UNLOCK(&s->socklistmtx);
 						break;
@@ -1154,8 +1177,7 @@ process_joblist(void *_s)
 					job->j.kill.pid =
 					    DTRACED_MSG_KILLPID(header);
 
-					syslog(LOG_DEBUG,
-					    "        kill %d to %d",
+					dump_debugmsg("        kill %d to %d",
 					    DTRACED_MSG_KILLPID(header),
 					    fd_list->fd);
 
@@ -1175,7 +1197,7 @@ process_joblist(void *_s)
 			fd = curjob->connsockfd;
 			pid = curjob->j.kill.pid;
 
-			syslog(LOG_DEBUG, "    kill pid %d to %d", pid, fd);
+			dump_debugmsg("    kill pid %d to %d", pid, fd);
 
 			assert(fd != -1);
 			/*
@@ -1185,7 +1207,7 @@ process_joblist(void *_s)
 			msglen = sizeof(pid_t) + DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
 			if (msg == NULL) {
-				syslog(LOG_ERR,
+				dump_errmsg(
 				    "Failed to allocate a kill message: %m");
 				break;
 			}
@@ -1224,7 +1246,7 @@ process_joblist(void *_s)
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
 				} else
-					syslog(LOG_ERR,
+					dump_errmsg(
 					    "Failed to write to %d (%zu): %m",
 					    fd, msglen);
 
@@ -1254,8 +1276,8 @@ process_joblist(void *_s)
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
 				} else
-					syslog(LOG_ERR,
-					    "Failed to write to %d: %m", fd);
+					dump_errmsg("Failed to write to %d: %m",
+					    fd);
 
 				goto killcleanup;
 			}
@@ -1263,9 +1285,8 @@ process_joblist(void *_s)
 			EV_SET(change_event, fd, EVFILT_WRITE,
 			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
-				syslog(LOG_WARNING,
-				    "process_joblist: kevent() "
-				    "failed with: %m");
+				dump_errmsg("process_joblist: kevent() "
+					    "failed with: %m");
 				free(msg);
 				break;
 			}
@@ -1281,7 +1302,7 @@ killcleanup:
 			dir = curjob->j.notify_elfwrite.dir;
 			_nosha = curjob->j.notify_elfwrite.nosha;
 
-			syslog(LOG_DEBUG, "    %s%s to %d", dir->dirpath, path,
+			dump_debugmsg("    %s%s to %d", dir->dirpath, path,
 			    fd);
 			/*
 			 * Sanity assertions.
@@ -1294,13 +1315,13 @@ killcleanup:
 
 			elffd = openat(dir->dirfd, path, O_RDONLY);
 			if (elffd == -1) {
-				syslog(LOG_ERR, "Failed to open %s: %m", path);
+				dump_errmsg("Failed to open %s: %m", path);
 				free(path);
 				break;
 			}
 
 			if (fstat(elffd, &stat) != 0) {
-				syslog(LOG_ERR, "Failed to fstat %s: %m", path);
+				dump_errmsg("Failed to fstat %s: %m", path);
 				free(path);
 				close(elffd);
 				break;
@@ -1312,12 +1333,12 @@ killcleanup:
 			msglen += DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
 
-			syslog(LOG_DEBUG, "    Length of ELF file: %zu",
+			dump_debugmsg("    Length of ELF file: %zu",
 			    elflen);
-			syslog(LOG_DEBUG, "    Message length: %zu", msglen);
+			dump_debugmsg("    Message length: %zu", msglen);
 
 			if (msg == NULL) {
-				syslog(LOG_ERR,
+				dump_errmsg(
 				    "Failed to allocate ELF contents: %m");
 				free(path);
 				close(elffd);
@@ -1332,8 +1353,7 @@ killcleanup:
 			contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
 
 			if ((r = read(elffd, contents, elflen)) < 0) {
-				syslog(
-				    LOG_ERR, "Failed to read ELF contents: %m");
+				dump_errmsg("Failed to read ELF contents: %m");
 				free(path);
 				free(msg);
 				close(elffd);
@@ -1342,7 +1362,7 @@ killcleanup:
 
 			if (_nosha == 0 &&
 			    SHA256(contents, elflen, _msg) == NULL) {
-				syslog(LOG_ERR,
+				dump_errmsg(
 				    "Failed to create a SHA256 of the file");
 				free(path);
 				free(msg);
@@ -1373,7 +1393,7 @@ killcleanup:
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
 				} else
-					syslog(LOG_ERR,
+					dump_errmsg(
 					    "Failed to write to %d (%zu): %m",
 					    fd, msglen);
 
@@ -1403,9 +1423,8 @@ killcleanup:
 					dt_list_delete(&s->sockfds, fde);
 					UNLOCK(&s->socklistmtx);
 				} else
-					syslog(LOG_ERR,
-					    "Failed to write to %d "
-					    "(%s, %zu): %m",
+					dump_errmsg("Failed to write to %d "
+						    "(%s, %zu): %m",
 					    fd, path, pathlen);
 
 				goto elfcleanup;
@@ -1414,9 +1433,8 @@ killcleanup:
 			EV_SET(change_event, fd, EVFILT_WRITE,
 			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
-				syslog(LOG_WARNING,
-				    "process_joblist: kevent() "
-				    "failed with: %m");
+				dump_errmsg("process_joblist: kevent() "
+					    "failed with: %m");
 
 elfcleanup:
 			free(path);
@@ -1425,7 +1443,7 @@ elfcleanup:
 			break;
 
 		default:
-			syslog(LOG_ERR, "Unknown job: %d", curjob->job);
+			dump_errmsg("Unknown job: %d", curjob->job);
 			pthread_exit(NULL);
 		}
 
@@ -1449,34 +1467,34 @@ accept_new_connection(struct dtd_state *s)
 
 	connsockfd = accept(s->sockfd, NULL, 0);
 	if (connsockfd == -1) {
-		syslog(LOG_ERR, "accept() failed: %m");
+		dump_errmsg("accept() failed: %m");
 		return (-1);
 	}
 
 	if (setsockopt(connsockfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on))) {
 		close(connsockfd);
-		syslog(LOG_ERR, "setsockopt() failed: %m");
+		dump_errmsg("setsockopt() failed: %m");
 		return (-1);
 	}
 
 	initmsg.kind = DTRACED_KIND_DTRACED;
 	if (send(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		syslog(LOG_ERR, "send() initmsg to connsockfd failed: %m");
+		dump_errmsg("send() initmsg to connsockfd failed: %m");
 		return (-1);
 	}
 
 	memset(&initmsg, 0, sizeof(initmsg));
 	if (recv(connsockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		close(connsockfd);
-		syslog(LOG_ERR, "recv() get initmsg failed: %m");
+		dump_errmsg("recv() get initmsg failed: %m");
 		return (-1);
 	}
 
 	fde = malloc(sizeof(struct dtd_fdlist));
 	if (fde == NULL) {
 		close(connsockfd);
-		syslog(LOG_ERR, "malloc() failed with: %m");
+		dump_errmsg("malloc() failed with: %m");
 		return (-1);
 	}
 
@@ -1490,7 +1508,7 @@ accept_new_connection(struct dtd_state *s)
 	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
 		close(connsockfd);
 		free(fde);
-		syslog(LOG_ERR, "kevent() adding new connection failed: %m");
+		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
@@ -1499,11 +1517,11 @@ accept_new_connection(struct dtd_state *s)
 	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
 		close(connsockfd);
 		free(fde);
-		syslog(LOG_ERR, "kevent() adding new connection failed: %m");
+		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	syslog(LOG_DEBUG, "Accepted (%d, %x, %x)\n", fde->fd, fde->kind,
+	dump_debugmsg("Accepted (%d, %x, %x)", fde->fd, fde->kind,
 	    fde->subs);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, fde);
@@ -1530,7 +1548,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		 */
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
-			syslog(LOG_ERR, "malloc() failed with: %m");
+			dump_errmsg("malloc() failed with: %m");
 			return (-1);
 		}
 
@@ -1541,7 +1559,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 
-		syslog(LOG_DEBUG, "Dispatching EVFILT_READ on %d", ev->ident);
+		dump_debugmsg("Dispatching EVFILT_READ on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
@@ -1557,13 +1575,13 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		 * we can signal the condition variable and rely on one of our
 		 * workers to pick up and process the event.
 		 */
-		syslog(LOG_DEBUG, "Dispatching EVFILT_WRITE on %d", ev->ident);
+		dump_debugmsg("Dispatching EVFILT_WRITE on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
 	} else {
 		free(job);
-		syslog(LOG_ERR, "unexpected event flags: %d", ev->flags);
+		dump_errmsg("unexpected event flags: %d", ev->flags);
 		return (-1);
 	}
 
@@ -1603,13 +1621,13 @@ process_consumers(void *_s)
 
 	err = listen(s->sockfd, DTRACED_BACKLOG_SIZE);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to listen on %d: %m", s->sockfd);
+		dump_errmsg("Failed to listen on %d: %m", s->sockfd);
 		pthread_exit(NULL);
 	}
 
 	kq = kqueue();
 	if (kq == -1) {
-		syslog(LOG_ERR, "Failed to create dtraced socket kqueue: %m");
+		dump_errmsg("Failed to create dtraced socket kqueue: %m");
 		pthread_exit(NULL);
 	}
 
@@ -1617,8 +1635,7 @@ process_consumers(void *_s)
 	    change_event, s->sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
 
 	if (kevent(kq, change_event, 1, NULL, 0, NULL)) {
-		syslog(
-		    LOG_ERR, "Failed to register listening socket kevent: %m");
+		dump_errmsg("Failed to register listening socket kevent: %m");
 		close(kq);
 		pthread_exit(NULL);
 	}
@@ -1634,7 +1651,7 @@ process_consumers(void *_s)
 			 * to accept any new connections, therefore the daemon
 			 * must exit and report an error.
 			 */
-			syslog(LOG_ERR, "kevent() failed with %m");
+			dump_errmsg("kevent() failed with %m");
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
@@ -1653,7 +1670,7 @@ process_consumers(void *_s)
 				UNLOCK(&s->socklistmtx);
 				free(event[i].udata);
 				close(efd);
-				syslog(LOG_ERR, "event error: %m");
+				dump_errmsg("event error: %m");
 				continue;
 			}
 
@@ -1691,8 +1708,7 @@ process_consumers(void *_s)
 				    EV_DISABLE, 0, 0, event[i].udata);
 				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
 					NULL)) {
-					syslog(LOG_ERR,
-					    "kevent() failed with: %m");
+					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
 
@@ -1702,7 +1718,7 @@ process_consumers(void *_s)
 				 * it and report a warning.
 				 */
 				if ((udata_fde->subs & DTD_SUB_READDATA) == 0) {
-					syslog(LOG_WARNING,
+					dump_warnmsg(
 					    "socket %d tried to READDATA, but "
 					    "is not subscribed (%lx)",
 					    efd, udata_fde->subs);
@@ -1710,8 +1726,7 @@ process_consumers(void *_s)
 				}
 
 				if (dispatch_event(s, &event[i])) {
-					syslog(
-					    LOG_ERR, "dispatch_event() failed");
+					dump_errmsg("dispatch_event() failed");
 					pthread_exit(NULL);
 				}
 
@@ -1723,8 +1738,7 @@ process_consumers(void *_s)
 				    EV_DISABLE, 0, 0, event[i].udata);
 				if (kevent(
 				    kq, change_event, 1, NULL, 0, NULL)) {
-					syslog(LOG_ERR,
-					    "kevent() failed with: %m");
+					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
 
@@ -1752,7 +1766,7 @@ process_consumers(void *_s)
 				 */
 				if (dispatch != 0) {
 					if (dispatch_event(s, &event[i])) {
-						syslog(LOG_ERR,
+						dump_errmsg(
 						    "dispatch_event() failed");
 						pthread_exit(NULL);
 					}
@@ -1775,7 +1789,7 @@ setup_sockfd(struct dtd_state *s)
 	
 	s->sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (s->sockfd == -1) {
-		syslog(LOG_ERR, "Failed to create unix: %m");
+		dump_errmsg("Failed to create unix: %m");
 		return (-1);
 	}
 
@@ -1784,20 +1798,19 @@ setup_sockfd(struct dtd_state *s)
 	addr.sun_family = PF_UNIX;
 	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
-		syslog(LOG_ERR,
-		    "Failed to copy %s into sockaddr (%zu)",
+		dump_errmsg("Failed to copy %s into sockaddr (%zu)",
 		    DTRACED_SOCKPATH, l);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
-			syslog(LOG_ERR, "Failed to destroy sockmtx: %m");
+			dump_errmsg("Failed to destroy sockmtx: %m");
 
 		return (-1);
 	}
 
 	if (remove(DTRACED_SOCKPATH) != 0) {
 		if (errno != ENOENT) {
-			syslog(LOG_ERR, "Failed to remove %s: %m",
+			dump_errmsg("Failed to remove %s: %m",
 			    DTRACED_SOCKPATH);
 			return (-1);
 		}
@@ -1805,16 +1818,16 @@ setup_sockfd(struct dtd_state *s)
 
 	err = bind(s->sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to bind to %d: %m", s->sockfd);
+		dump_errmsg("Failed to bind to %d: %m", s->sockfd);
 		if (close(s->sockfd) != 0) {
-			syslog(LOG_ERR, "Failed to close %d: %m", s->sockfd);
+			dump_errmsg("Failed to close %d: %m", s->sockfd);
 			return (-1);
 		}
 
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
-			syslog(LOG_ERR, "Failed to destroy sockmtx: %m");
+			dump_errmsg("Failed to destroy sockmtx: %m");
 
 		return (-1);
 	}
@@ -1828,14 +1841,14 @@ destroy_sockfd(struct dtd_state *s)
 	int err;
 
 	if (close(s->sockfd) != 0) {
-		syslog(LOG_ERR, "Failed to close %d: %m", s->sockfd);
+		dump_errmsg("Failed to close %d: %m", s->sockfd);
 		return (-1);
 	}
 
 	s->sockfd = -1;
 
 	if (remove(DTRACED_SOCKPATH) != 0)
-		syslog(LOG_ERR, "Failed to remove %s: %m", DTRACED_SOCKPATH);
+		dump_errmsg("Failed to remove %s: %m", DTRACED_SOCKPATH);
 
 	return (0);
 }
@@ -1862,14 +1875,14 @@ expand_paths(dtd_dir_t *dir)
 	assert(OWNED(&dir->dirmtx));
 
 	if (dir == NULL) {
-		syslog(LOG_ERR, "Expand paths called with dir == NULL");
+		dump_errmsg("Expand paths called with dir == NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		syslog(LOG_ERR, "Expand paths called with state == NULL");
+		dump_errmsg("Expand paths called with state == NULL");
 		return (-1);
 	}
 
@@ -1881,8 +1894,8 @@ expand_paths(dtd_dir_t *dir)
 		 * Assert sanity after we multiply the size by two.
 		 */
 		if (dir->efile_size <= dir->efile_len) {
-			syslog(LOG_ERR, "dir->efile_size <= dir->efile_len"
-			    " (%zu <= %zu)\n", dir->efile_size, dir->efile_len);
+			dump_errmsg("dir->efile_size <= dir->efile_len"
+			    " (%zu <= %zu)", dir->efile_size, dir->efile_len);
 			return (-1);
 		}
 
@@ -1892,7 +1905,7 @@ expand_paths(dtd_dir_t *dir)
 		 */
 		newpaths = malloc(dir->efile_size * sizeof(char *));
 		if (newpaths == NULL) {
-			syslog(LOG_ERR, "Failed to malloc newpaths");
+			dump_errmsg("Failed to malloc newpaths");
 			return (-1);
 		}
 
@@ -1927,19 +1940,19 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 	status = 0;
 	if (dir == NULL) {
-		syslog(LOG_ERR, "dir is NULL");
+		dump_errmsg("dir is NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		syslog(LOG_ERR, "state is NULL");
+		dump_errmsg("state is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		syslog(LOG_ERR, "dirent is NULL");
+		dump_errmsg("dirent is NULL");
 		return (-1);
 	}
 
@@ -1958,7 +1971,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
-		syslog(LOG_ERR, "Failed to copy %s into a path string",
+		dump_errmsg("Failed to copy %s into a path string",
 		    dir->dirpath);
 		UNLOCK(&dir->dirmtx);
 		return (-1);
@@ -1970,8 +1983,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	l = strlcpy(
 	    fullpath + dirpathlen, f->d_name, sizeof(fullpath) - dirpathlen);
 	if (l >= sizeof(fullpath) - dirpathlen) {
-		syslog(
-		    LOG_ERR, "Failed to copy %s into a path string", f->d_name);
+		dump_errmsg("Failed to copy %s into a path string", f->d_name);
 		return (-1);
 	}
 	filepathlen = strlen(fullpath);
@@ -2001,7 +2013,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
-				syslog(LOG_ERR, "Failed to malloc a new job");
+				dump_errmsg("Failed to malloc a new job");
 				UNLOCK(&s->socklistmtx);
 				return (-1);
 			}
@@ -2021,9 +2033,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
 			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
-				syslog(LOG_WARNING,
-				    "process_inbound: kevent() "
-				    "failed with: %m");
+				dump_errmsg("process_inbound: kevent() "
+					    "failed with: %m");
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
@@ -2036,7 +2047,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * a message arrives to do so.
 		 */
 		if (pid == -1) {
-			syslog(LOG_ERR, "Failed to fork: %m");
+			dump_errmsg("Failed to fork: %m");
 			return (-1);
 		} else if (pid > 0) {
 			/*
@@ -2098,7 +2109,7 @@ cleanup:
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		dump_errmsg("Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
 	}
@@ -2122,10 +2133,10 @@ dtraced_copyfile(const char *src, const char *dst)
 
 	fd = open(src, O_RDONLY);
 	if (fd == -1)
-		syslog(LOG_ERR, "Failed to open %s: %m", src);
+		dump_errmsg("Failed to open %s: %m", src);
 
 	if (fstat(fd, &sb)) {
-		syslog(LOG_ERR, "Failed to fstat %s (%d): %m", src, fd);
+		dump_errmsg("Failed to fstat %s (%d): %m", src, fd);
 		close(fd);
 		return;
 	}
@@ -2134,7 +2145,7 @@ dtraced_copyfile(const char *src, const char *dst)
 	buf = malloc(len);
 
 	if (read(fd, buf, len) < 0) {
-		syslog(LOG_ERR, "Failed to read %zu bytes from %s (%d): %m",
+		dump_errmsg("Failed to read %zu bytes from %s (%d): %m",
 		    len, src, fd);
 		close(fd);
 		free(buf);
@@ -2145,13 +2156,13 @@ dtraced_copyfile(const char *src, const char *dst)
 
 	newfd = open(dst, O_WRONLY | O_CREAT);
 	if (newfd == -1) {
-		syslog(LOG_ERR, "Failed to open and create %s: %m", dst);
+		dump_errmsg("Failed to open and create %s: %m", dst);
 		free(buf);
 		return;
 	}
 
 	if (write(newfd, buf, len) < 0) {
-		syslog(LOG_ERR, "Failed to write %zu bytes to %s (%d): %m",
+		dump_errmsg("Failed to write %zu bytes to %s (%d): %m",
 		    len, dst, newfd);
 		close(newfd);
 		free(buf);
@@ -2179,7 +2190,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	size_t dirpathlen = 0;
 
 	if (dir == NULL) {
-		syslog(LOG_ERR, "dir is NULL in base "
+		dump_errmsg("dir is NULL in base "
 		    "directory monitoring thread");
 		return (-1);
 	}
@@ -2189,13 +2200,13 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	UNLOCK(&dir->dirmtx);
 
 	if (s == NULL) {
-		syslog(LOG_ERR, "state is NULL in base "
+		dump_errmsg("state is NULL in base "
 		    "directory monitoring thread");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		syslog(LOG_ERR, "dirent is NULL in base "
+		dump_errmsg("dirent is NULL in base "
 		    "directory monitoring thread");
 		return (-1);
 	}
@@ -2228,7 +2239,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	strcpy(donename, outbounddirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
 	if (rename(newname, donename))
-		syslog(LOG_ERR, "Failed to rename %s to %s: %m", newname,
+		dump_errmsg("Failed to rename %s to %s: %m", newname,
 		    donename);
 	free(newname);
 	free(dirpath);
@@ -2238,7 +2249,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	pid = fork();
 
 	if (pid == -1) {
-		syslog(LOG_ERR, "Failed to fork: %m");
+		dump_errmsg("Failed to fork: %m");
 		return (-1);
 	} else if (pid > 0)
 		waitpid(pid, &status, 0);
@@ -2258,7 +2269,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		dump_errmsg("Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
 	}
@@ -2283,19 +2294,19 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	struct kevent change_event[1];
 
 	if (dir == NULL) {
-		syslog(LOG_ERR, "dir is NULL");
+		dump_errmsg("dir is NULL");
 		return (-1);
 	}
 
 	s = dir->state;
 
 	if (s == NULL) {
-		syslog(LOG_ERR, "state is NULL");
+		dump_errmsg("state is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		syslog(LOG_ERR, "dirent is NULL");
+		dump_errmsg("dirent is NULL");
 		return (-1);
 	}
 
@@ -2323,7 +2334,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
-			syslog(LOG_ERR, "Failed to malloc a new job");
+			dump_errmsg("Failed to malloc a new job");
 			UNLOCK(&s->socklistmtx);
 			return (-1);
 		}
@@ -2343,7 +2354,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
 		    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 		if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
-			syslog(LOG_WARNING,
+			dump_errmsg(
 			    "process_outbound:kevent() failed with: %m");
 	}
 	UNLOCK(&s->socklistmtx);
@@ -2352,7 +2363,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		syslog(LOG_ERR, "Failed to expand paths after processing %s",
+		dump_errmsg("Failed to expand paths after processing %s",
 		    f->d_name);
 		return (-1);
 	}
@@ -2370,12 +2381,12 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	int err;
 
 	if (dir == NULL) {
-		syslog(LOG_ERR, "dir is NULL\n");
+		dump_errmsg("dir is NULL");
 		return (-1);
 	}
 
 	if (f == NULL) {
-		syslog(LOG_ERR, "dirent is NULL\n");
+		dump_errmsg("dirent is NULL");
 		return (-1);
 	}
 
@@ -2389,7 +2400,7 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	err = expand_paths(dir);
 	if (err != 0) {
 		UNLOCK(&dir->dirmtx);
-		syslog(LOG_ERR, "Failed to expand paths in initialization");
+		dump_errmsg("Failed to expand paths in initialization");
 		return (-1);
 	}
 
@@ -2426,7 +2437,7 @@ setup_threads(struct dtd_state *s)
 
 	threads = malloc(sizeof(pthread_t) * THREADPOOL_SIZE);
 	if (threads == NULL) {
-		syslog(LOG_ERR, "Failed to allocate thread array");
+		dump_errmsg("Failed to allocate thread array");
 		return (-1);
 	}
 	memset(threads, 0, sizeof(pthread_t) * THREADPOOL_SIZE);
@@ -2434,7 +2445,7 @@ setup_threads(struct dtd_state *s)
 	for (i = 0; i < THREADPOOL_SIZE; i++) {
 		err = pthread_create(&threads[i], NULL, process_joblist, s);
 		if (err != 0) {
-			syslog(LOG_ERR, "Failed to create a new thread: %m");
+			dump_errmsg("Failed to create a new thread: %m");
 			return (-1);
 		}
 	}
@@ -2447,7 +2458,7 @@ setup_threads(struct dtd_state *s)
 		err = pthread_create(
 		    &s->dtt_listentd, NULL, listen_dttransport, s);
 		if (err != 0) {
-			syslog(LOG_ERR,
+			dump_errmsg(
 			    "Failed to create the dttransport thread: %m");
 			return (-1);
 		}
@@ -2459,7 +2470,7 @@ setup_threads(struct dtd_state *s)
 		err = pthread_create(
 		    &s->dtt_writetd, NULL, write_dttransport, s);
 		if (err != 0) {
-			syslog(LOG_ERR,
+			dump_errmsg(
 			    "Failed to create the dttransport thread: %m");
 			return (-1);
 		}
@@ -2467,27 +2478,25 @@ setup_threads(struct dtd_state *s)
 
 	err = pthread_create(&s->socktd, NULL, process_consumers, s);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to create the socket thread: %m");
+		dump_errmsg("Failed to create the socket thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
 	if (err != 0) {
-		syslog(
-		    LOG_ERR, "Failed to create inbound listening thread: %m");
+		dump_errmsg("Failed to create inbound listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
 	if (err != 0) {
-		syslog(LOG_ERR, "Failed to create base listening thread: %m");
+		dump_errmsg("Failed to create base listening thread: %m");
 		return (-1);
 	}
 
 	err = pthread_create(&s->killtd, NULL, manage_children, s);
 	if (err != 0) {
-		syslog(
-		    LOG_ERR, "Failed to create a child management thread: %m");
+		dump_errmsg("Failed to create a child management thread: %m");
 		return (-1);
 	}
 
@@ -2512,7 +2521,7 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 	dir->dirpath = strdup(path);
 	if ((err = mutex_init(
 	    &dir->dirmtx, NULL, dir->dirpath, CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create dir mutex: %m");
+		dump_errmsg("Failed to create dir mutex: %m");
 		return (NULL);
 	}
 
@@ -2522,7 +2531,7 @@ againmkdir:
 	if (dir->dirfd == -1) {
 		if (retry == 0 && errno == ENOENT) {
 			if (mkdir(path, 0700) != 0) {
-				syslog(LOG_ERR, "Failed to mkdir %s: %m", path);
+				dump_errmsg("Failed to mkdir %s: %m", path);
 				free(dir->dirpath);
 				free(dir);
 
@@ -2533,7 +2542,7 @@ againmkdir:
 			}
 		}
 
-		syslog(LOG_ERR, "Failed to open %s: %m", path);
+		dump_errmsg("Failed to open %s: %m", path);
 		free(dir->dirpath);
 		free(dir);
 
@@ -2556,60 +2565,60 @@ init_state(struct dtd_state *s)
 
 	if ((err = mutex_init(
 	    &s->socklistmtx, NULL, "socklist", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create sock list mutex: %m");
+		dump_errmsg("Failed to create sock list mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->sockmtx, NULL, "socket", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create socket mutex: %m");
+		dump_errmsg("Failed to create socket mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->joblistcvmtx, NULL, "joblist condvar", CHECKOWNER_NO)) != 0) {
-		syslog(LOG_ERR, "Failed to create joblist condvar mutex: %m");
+		dump_errmsg("Failed to create joblist condvar mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->joblistmtx, NULL, "joblist", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create joblist mutex: %m");
+		dump_errmsg("Failed to create joblist mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create kill list mutex: %m");
+		dump_errmsg("Failed to create kill list mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->killcvmtx, NULL, "", CHECKOWNER_NO)) != 0) {
-		syslog(LOG_ERR, "Failed to create kill condvar mutex: %m");
+		dump_errmsg("Failed to create kill condvar mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_init(
 	    &s->identlistmtx, NULL, "", CHECKOWNER_YES)) != 0) {
-		syslog(LOG_ERR, "Failed to create identlist mutex: %m");
+		dump_errmsg("Failed to create identlist mutex: %m");
 		return (-1);
 	}
 
 	if ((err = pthread_cond_init(&s->killcv, NULL)) != 0) {
-		syslog(LOG_ERR, "Failed to create kill list condvar: %m");
+		dump_errmsg("Failed to create kill list condvar: %m");
 		return (-1);
 	}
 
 	if ((err = pthread_cond_init(&s->joblistcv, NULL)) != 0) {
-		syslog(LOG_ERR, "Failed to create joblist condvar: %m");
+		dump_errmsg("Failed to create joblist condvar: %m");
 		return (-1);
 	}
 
 	if (g_ctrlmachine == 0) {
 		s->dtt_fd = open("/dev/dttransport", O_RDWR);
 		if (s->dtt_fd == -1) {
-			syslog(LOG_ERR, "Failed to open /dev/dttransport: %m");
+			dump_errmsg("Failed to open /dev/dttransport: %m");
 			return (-1);
 		}
 	}
@@ -2647,7 +2656,7 @@ dtd_closedir(dtd_dir_t *dir)
 
 	err = mutex_destroy(&dir->dirmtx);
 	if (err != 0)
-		syslog(LOG_ERR, "Failed to destroy dirmtx: %m");
+		dump_errmsg("Failed to destroy dirmtx: %m");
 
 	free(dir);
 }
@@ -2668,42 +2677,42 @@ destroy_state(struct dtd_state *s)
 	UNLOCK(&s->joblistmtx);
 
 	if ((err = mutex_destroy(&s->socklistmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy sock list mutex: %m");
+		dump_errmsg("Failed to destroy sock list mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_destroy(&s->sockmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy socket mutex: %m");
+		dump_errmsg("Failed to destroy socket mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_destroy(&s->joblistcvmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy joblist condvar mutex: %m");
+		dump_errmsg("Failed to destroy joblist condvar mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_destroy(&s->joblistmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy joblist mutex: %m");
+		dump_errmsg("Failed to destroy joblist mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_destroy(&s->kill_listmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy kill list mutex: %m");
+		dump_errmsg("Failed to destroy kill list mutex: %m");
 		return (-1);
 	}
 
 	if ((err = mutex_destroy(&s->killcvmtx)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy kill list cv mutex: %m");
+		dump_errmsg("Failed to destroy kill list cv mutex: %m");
 		return (-1);
 	}
 
 	if ((err = pthread_cond_destroy(&s->killcv)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy kill condvar: %m");
+		dump_errmsg("Failed to destroy kill condvar: %m");
 		return (-1);
 	}
 
 	if ((err = pthread_cond_destroy(&s->joblistcv)) != 0) {
-		syslog(LOG_ERR, "Failed to destroy joblist condvar: %m");
+		dump_errmsg("Failed to destroy joblist condvar: %m");
 		return (-1);
 	}
 
@@ -2744,7 +2753,7 @@ static void
 print_version(void)
 {
 
-	printf("dtraced: version %s\n", version());
+	printf("dtraced: version %s", version());
 }
 
 int
@@ -2797,8 +2806,8 @@ main(int argc, char **argv)
 		case 'O':
 			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
 			    NULL, 0)) {
-				syslog(LOG_ERR,
-				    "Failed to get kern.vm_guest: %m\n");
+				dump_errmsg(
+				    "Failed to get kern.vm_guest: %m");
 				return (EX_OSERR);
 			}
 
@@ -2808,7 +2817,7 @@ main(int argc, char **argv)
 				 * overlord. Virtual machines don't have
 				 * minions.
 				 */
-				syslog(LOG_ERR,
+				dump_errmsg(
 				    "Specified '-O' (overlord mode) on a "
 				    "virtual machine. This is not supported... "
 				    "exiting.");
@@ -2825,8 +2834,8 @@ main(int argc, char **argv)
 		case 'm':
 			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
 			    NULL, 0)) {
-				syslog(LOG_ERR,
-				    "Failed to get kern.vm_guest: %m\n");
+				dump_errmsg(
+				    "Failed to get kern.vm_guest: %m");
 				return (EX_OSERR);
 			}
 
@@ -2838,7 +2847,7 @@ main(int argc, char **argv)
 				 * XXX: We only support bhyve for now.
 				 */
 
-				syslog(LOG_WARNING,
+				dump_warnmsg(
 				    "Specified '-m' (minion mode) on a native "
 				    "(bare metal) machine. Did you mean to make"
 				    " this machine an overlord ('-O')?");
@@ -2862,37 +2871,37 @@ main(int argc, char **argv)
 	pfh = pidfile_open(LOCK_FILE, 0600, &otherpid);
 	if (pfh == NULL) {
 		if (errno == EEXIST) {
-			syslog(LOG_ERR,
+			dump_errmsg(
 			    "dtraced is already running as pid %jd (check %s)",
 			    (intmax_t)otherpid, LOCK_FILE);
 			return (EX_OSERR);
 		}
 
-		syslog(LOG_ERR, "Could not open %s: %m", LOCK_FILE);
+		dump_errmsg("Could not open %s: %m", LOCK_FILE);
 		return (EX_OSERR);
 	}
 
 	state.pid_fileh = pfh;
 
 	if (g_ctrlmachine != 0 && g_ctrlmachine != 1) {
-		syslog(LOG_ERR,
+		dump_errmsg(
 		    "You must either specify whether to run the daemon in "
 		    "minion ('-m') or overlord ('-O') mode");
 		return (EX_OSERR);
 	}
 
 	if (daemonize && daemon(0, 0) != 0) {
-		syslog(LOG_ERR, "Failed to daemonize %m");
+		dump_errmsg("Failed to daemonize %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	if (pidfile_write(pfh)) {
-		syslog(LOG_ERR, "Failed to write PID to %s: %m", LOCK_FILE);
+		dump_errmsg("Failed to write PID to %s: %m", LOCK_FILE);
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
@@ -2902,17 +2911,16 @@ againefd:
 	if (efd == -1) {
 		if (retry == 0 && errno == ENOENT) {
 			if (mkdir(elfpath, 0700) != 0)
-				syslog(
-				    LOG_ERR, "Failed to mkdir %s: %m", elfpath);
+				dump_errmsg("Failed to mkdir %s: %m", elfpath);
 			else {
 				retry = 1;
 				goto againefd;
 			}
 		}
 
-		syslog(LOG_ERR, "Failed to open %s: %m", elfpath);
+		dump_errmsg("Failed to open %s: %m", elfpath);
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
@@ -2922,9 +2930,9 @@ againefd:
 
 	errval = init_state(&state);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to initialize the state");
+		dump_errmsg("Failed to initialize the state");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
@@ -2932,35 +2940,35 @@ againefd:
 	state.nosha = nosha;
 
 	if (signal(SIGTERM, sig_term) == SIG_ERR) {
-		syslog(LOG_ERR, "Failed to install SIGTERM handler");
+		dump_errmsg("Failed to install SIGTERM handler");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	if (signal(SIGINT, sig_int) == SIG_ERR) {
-		syslog(LOG_ERR, "Failed to install SIGINT handler");
+		dump_errmsg("Failed to install SIGINT handler");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	if (siginterrupt(SIGTERM, 1) != 0) {
-		syslog(LOG_ERR,
+		dump_errmsg(
 		    "Failed to enable system call interrupts for SIGTERM");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = setup_sockfd(&state);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to set up the socket");
+		dump_errmsg("Failed to set up the socket");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
@@ -2968,9 +2976,9 @@ againefd:
 	errval = file_foreach(
 	    state.outbounddir->dir, populate_existing, state.outbounddir);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to populate outbound existing files");
+		dump_errmsg("Failed to populate outbound existing files");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
@@ -2978,9 +2986,9 @@ againefd:
 	errval = file_foreach(
 	    state.inbounddir->dir, populate_existing, state.inbounddir);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to populate inbound existing files");
+		dump_errmsg("Failed to populate inbound existing files");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
@@ -2988,92 +2996,92 @@ againefd:
 	errval = file_foreach(
 	    state.basedir->dir, populate_existing, state.basedir);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to populate base existing files");
+		dump_errmsg("Failed to populate base existing files");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
 
 	errval = setup_threads(&state);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to set up threads");
+		dump_errmsg("Failed to set up threads");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	if (listen_dir(state.outbounddir) == NULL) {
-		syslog(LOG_ERR, "listen_dir() on %s failed",
+		dump_errmsg("listen_dir() on %s failed",
 		    state.outbounddir->dirpath);
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
 
 	errval = pthread_kill(state.socktd, SIGTERM);
 	if (errval != 0)
-		syslog(LOG_ERR, "Failed to interrupt socktd: %m");
+		dump_errmsg("Failed to interrupt socktd: %m");
 
 	errval = pthread_join(state.socktd, (void **)&retval);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join socktd: %m");
+		dump_errmsg("Failed to join socktd: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = pthread_kill(state.dtt_listentd, SIGTERM);
 	if (errval != 0)
-		syslog(LOG_ERR, "Failed to interrupt dtt_listentd: %m");
+		dump_errmsg("Failed to interrupt dtt_listentd: %m");
 
 	errval = pthread_join(state.dtt_listentd, (void **)&retval);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join dtt_listentd: %m");
+		dump_errmsg("Failed to join dtt_listentd: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = pthread_kill(state.dtt_writetd, SIGTERM);
 	if (errval != 0 && errval != ESRCH)
-		syslog(LOG_ERR, "Failed to interrupt dtt_writetd: %m");
+		dump_errmsg("Failed to interrupt dtt_writetd: %m");
 
 	errval = pthread_join(state.dtt_writetd, (void **)&retval);
 	if (errval != 0 && errval != ESRCH) {
-		syslog(LOG_ERR, "Failed to join dtt_writetd: %m");
+		dump_errmsg("Failed to join dtt_writetd: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = pthread_kill(state.inboundtd, SIGTERM);
 	if (errval != 0)
-		syslog(LOG_ERR, "Failed to interrupt inboundtd: %m");
+		dump_errmsg("Failed to interrupt inboundtd: %m");
 
 	errval = pthread_join(state.inboundtd, (void **)&retval);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join inboundtd: %m");
+		dump_errmsg("Failed to join inboundtd: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = pthread_kill(state.basetd, SIGTERM);
 	if (errval != 0)
-		syslog(LOG_ERR, "Failed to interrupt basetd: %m");
+		dump_errmsg("Failed to interrupt basetd: %m");
 
 	errval = pthread_join(state.basetd, (void **)&retval);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join basetd: %m");
+		dump_errmsg("Failed to join basetd: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
@@ -3085,9 +3093,9 @@ againefd:
 	for (i = 0; i < THREADPOOL_SIZE; i++) {
 		errval = pthread_join(state.workers[i], (void **)&retval);
 		if (errval != 0) {
-			syslog(LOG_ERR, "Failed to join threads: %m");
+			dump_errmsg("Failed to join threads: %m");
 			if (pidfile_remove(pfh))
-				syslog(LOG_ERR, "Could not remove %s: %m",
+				dump_errmsg("Could not remove %s: %m",
 				    LOCK_FILE);
 
 			return (EX_OSERR);
@@ -3096,35 +3104,34 @@ againefd:
 
 	errval = pthread_kill(state.killtd, SIGTERM);
 	if (errval != 0)
-		syslog(LOG_ERR, "Failed to interrupt killtd: %m");
+		dump_errmsg("Failed to interrupt killtd: %m");
 
 	errval = pthread_join(state.killtd, (void **)&retval);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to join child management thread: %m");
+		dump_errmsg("Failed to join child management thread: %m");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EX_OSERR);
 	}
 
 	errval = destroy_state(&state);
 	if (errval != 0) {
-		syslog(LOG_ERR, "Failed to clean up state");
+		dump_errmsg("Failed to clean up state");
 		if (pidfile_remove(pfh))
-			syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 		return (EXIT_FAILURE);
 	}
 
 	if (closedir(elfdir))
-		syslog(LOG_ERR, "Could not close directory %s: %m",
-		    elfpath);
+		dump_errmsg("Could not close directory %s: %m", elfpath);
 
 	if (close(efd))
-		syslog(LOG_ERR, "Could not close %s: %m", elfpath);
+		dump_errmsg("Could not close %s: %m", elfpath);
 
 	if (pidfile_remove(pfh))
-		syslog(LOG_ERR, "Could not remove %s: %m", LOCK_FILE);
+		dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 	return (0);
 }
