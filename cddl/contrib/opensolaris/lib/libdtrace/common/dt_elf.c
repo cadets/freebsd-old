@@ -2514,6 +2514,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	if (chk && found == 0) {
 		*err = ENOENT;
+		fprintf(stderr, "identifier not found\n");
 		return (NULL);
 	}
 
@@ -2539,7 +2540,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 		if (needsclosing)
 			close(fd);
-
+		fprintf(stderr, "the program has no statements\n");
 		return (NULL);
 	}
 
@@ -2552,6 +2553,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		if (needsclosing)
 			close(fd);
 
+		fprintf(stderr, "failed getting options\n");
 		return (NULL);
 	}
 
