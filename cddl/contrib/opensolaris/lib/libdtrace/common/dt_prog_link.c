@@ -724,6 +724,11 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	r0node = dt_ifg_node_alloc(NULL, NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
+	/*
+	 * Regenerate the identifier, since it's no longer the same program.
+	 */
+	dt_prog_generate_ident(pgp);
+
 	for (i = 0; i < DIFV_NSCOPES; i++) {
 		biggest_vartype[i] = malloc(
 		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
