@@ -1036,9 +1036,6 @@ process_prog:
 
 		newprog->dp_vmid = vmid;
 
-		if (!done && newprog == NULL && err != EACCES)
-			fatal("failed to parse elf file");
-
 		/*
 		 * If this program was not meant for us, we simply move on.
 		 */
