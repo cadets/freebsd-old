@@ -545,7 +545,7 @@ manage_children(void *_s)
 			assert(errno != EPERM);
 
 			if (errno == ESRCH) {
-				fprintf(stderr, "pid %d does not exist",
+				dump_errmsg("pid %d does not exist",
 				    kill_entry->pid);
 			}
 		}
@@ -1138,6 +1138,7 @@ process_joblist(void *_s)
 					memcpy(newident->ident,
 					    DTRACED_MSG_IDENT(header),
 					    DTRACED_PROGIDENTLEN);
+
 					LOCK(&s->identlistmtx);
 					dt_list_append(&s->identlist, newident);
 					UNLOCK(&s->identlistmtx);
