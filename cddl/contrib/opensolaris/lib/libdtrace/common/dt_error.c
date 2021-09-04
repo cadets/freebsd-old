@@ -359,8 +359,8 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	if (lseek(tmpfd , 0, SEEK_SET))
 		errx(EXIT_FAILURE, "lseek() failed: %s\n", strerror(errno));
 
-	if (send_elf(tmpfd, dtraced_sock, "outbound"))
-		errx(EXIT_FAILURE, "send_elf() failed\n");
+	if (dtrace_send_elf(pgp, tmpfd, dtraced_sock, "outbound", 0))
+		errx(EXIT_FAILURE, "dtrace_send_elf() failed\n");
 
 	close(tmpfd);
 	close(dtraced_sock);

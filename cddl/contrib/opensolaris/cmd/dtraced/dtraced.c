@@ -66,9 +66,10 @@
 
 #include "dtraced.h"
 
-#define DTRACED_INBOUNDDIR      "/var/ddtrace/inbound/"
-#define DTRACED_OUTBOUNDDIR     "/var/ddtrace/outbound/"
-#define DTRACED_BASEDIR         "/var/ddtrace/base/"
+char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
+char DTRACED_OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
+char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
+
 #define DTRACED_BACKTRACELEN    128
 #define DTRACED_BACKLOG_SIZE    4
 
@@ -80,10 +81,15 @@
 #define EXISTS_CHANGED           1
 #define EXISTS_EQUAL             2
 
+static int quiet = 0;
+
 static void
 dump_errmsg(const char *msg, ...)
 {
 	va_list ap;
+
+	if (quiet)
+		return;
 
 	va_start(ap, msg);
 	if (msg) {
@@ -101,6 +107,9 @@ dump_warnmsg(const char *msg, ...)
 {
 	va_list ap;
 
+	if (quiet)
+		return;
+
 	va_start(ap, msg);
 	if (msg) {
 		vfprintf(stderr, msg, ap);
@@ -116,6 +125,9 @@ static void
 dump_debugmsg(const char *msg, ...)
 {
 	va_list ap;
+
+	if (quiet)
+		return;
 
 	va_start(ap, msg);
 	if (msg) {
@@ -178,7 +190,7 @@ dump_debugmsg(const char *msg, ...)
 typedef struct mutex {
 	pthread_mutex_t _m;       /* pthread mutex */
 	_Atomic pthread_t _owner; /* owner thread of _m */
-	char _name[32];           /* name of the mutex */
+	char _name[MAXPATHLEN];   /* name of the mutex */
 	int _checkowner;          /* do we want to check who owns the mutex? */
 #define CHECKOWNER_NO     0
 #define CHECKOWNER_YES    1
@@ -310,6 +322,7 @@ struct dtd_joblist {
 
 		struct {
 			pid_t pid;      /* pid to kill */
+			uint16_t vmid;  /* vmid to kill the pid on */
 		}
 		kill;
 
@@ -361,8 +374,8 @@ mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
 	if (name == NULL)
 		return (-1);
 
-	l = strlcpy(m->_name, name, 32);
-	if (l >= 32)
+	l = strlcpy(m->_name, name, MAXPATHLEN);
+	if (l >= MAXPATHLEN)
 		return (-1);
 
 	m->_checkowner = checkowner;
@@ -977,6 +990,7 @@ process_joblist(void *_s)
 	struct dtd_joblist *job;
 	struct dtd_fdlist *fd_list;
 	identlist_t *newident;
+	uint16_t vmid;
 	const char *jobname[] = {
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
@@ -1135,13 +1149,16 @@ process_joblist(void *_s)
 						pthread_exit(NULL);
 					}
 
-					memcpy(newident->ident,
-					    DTRACED_MSG_IDENT(header),
-					    DTRACED_PROGIDENTLEN);
+					if (DTRACED_MSG_IDENT_PRESENT(header)) {
+						memcpy(newident->ident,
+						    DTRACED_MSG_IDENT(header),
+						    DTRACED_PROGIDENTLEN);
 
-					LOCK(&s->identlistmtx);
-					dt_list_append(&s->identlist, newident);
-					UNLOCK(&s->identlistmtx);
+						LOCK(&s->identlistmtx);
+						dt_list_append(&s->identlist,
+						    newident);
+						UNLOCK(&s->identlistmtx);
+					}
 				}
 
 				if (write_data(dir, _buf, nbytes))
@@ -1183,6 +1200,8 @@ process_joblist(void *_s)
 					job->connsockfd = fd_list->fd;
 					job->j.kill.pid =
 					    DTRACED_MSG_KILLPID(header);
+					job->j.kill.vmid =
+					    DTRACED_MSG_KILLVMID(header);
 
 					dump_debugmsg("        kill %d to %d",
 					    DTRACED_MSG_KILLPID(header),
@@ -1203,6 +1222,7 @@ process_joblist(void *_s)
 		case KILL:
 			fd = curjob->connsockfd;
 			pid = curjob->j.kill.pid;
+			vmid = curjob->j.kill.vmid;
 
 			dump_debugmsg("    kill pid %d to %d", pid, fd);
 
@@ -1211,7 +1231,7 @@ process_joblist(void *_s)
 			 * If we end up with pid <= 1, something went wrong.
 			 */
 			assert(pid > 1);
-			msglen = sizeof(pid_t) + DTRACED_MSGHDRSIZE;
+			msglen = DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
 			if (msg == NULL) {
 				dump_errmsg(
@@ -1225,10 +1245,10 @@ process_joblist(void *_s)
 			 * this might change.
 			 */
 			DTRACED_MSG_TYPE(header) = DTRACED_MSG_KILL;
+			DTRACED_MSG_KILLPID(header) = pid;
+			DTRACED_MSG_KILLVMID(header) = vmid;
+			
 			memcpy(msg, &header, DTRACED_MSGHDRSIZE);
-			contents = msg + DTRACED_MSGHDRSIZE;
-
-			memcpy(contents, &pid, sizeof(pid));
 
 			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 				if (errno == EPIPE) {
@@ -2075,7 +2095,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
 			argv[2] = strdup(fullpath);
-
+			
 			num_idents = 0;
 			for (ident_entry = dt_list_next(&s->identlist);
 			     ident_entry;
@@ -2083,9 +2103,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				num_idents++;
 
 			if (num_idents > 0) {
-				argv[3] = strdup("-N");
 				argv[4] = malloc(
-				    num_idents * DTRACED_PROGIDENTLEN);
+				    num_idents * DTRACED_PROGIDENTLEN +
+				    num_idents - 1);
 				memset(argv[4], 0,
 				    num_idents * DTRACED_PROGIDENTLEN);
 
@@ -2096,10 +2116,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 					    ident_entry);
 					ident = ident_entry->ident;
 
-					l = strlcpy(curptr, ident,
+					memcpy(curptr, ident,
 					    DTRACED_PROGIDENTLEN);
-					assert(l < DTRACED_PROGIDENTLEN);
-					curptr += l;
+					curptr += DTRACED_PROGIDENTLEN;
+					if (dt_list_next(ident_entry) != NULL)
+						*curptr++ = ',';
 				}
 
 				argv[5] = NULL;
@@ -2766,7 +2787,7 @@ print_version(void)
 int
 main(int argc, char **argv)
 {
-	const char elfpath[MAXPATHLEN] = "/var/ddtrace";
+	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	int efd, errval, rval, kq, retry;
 	DIR *elfdir;
 	size_t i;
@@ -2778,6 +2799,7 @@ main(int argc, char **argv)
 	char hypervisor[128];
 	int daemonize = 0;
 	size_t len = sizeof(hypervisor);
+	size_t optlen;
 	struct pidfh *pfh;
 	pid_t otherpid;
 
@@ -2785,7 +2807,7 @@ main(int argc, char **argv)
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
 
-	while ((ch = getopt(argc, argv, "Oa:de:hmvZ")) != -1) {
+	while ((ch = getopt(argc, argv, "D:Oa:de:hmvqZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -2794,6 +2816,17 @@ main(int argc, char **argv)
 		case 'v':
 			print_version();
 			exit(0);
+
+		case 'D':
+			optlen = strlen(optarg);
+			strcpy(elfpath, optarg);
+			strcpy(DTRACED_INBOUNDDIR, optarg);
+			strcpy(DTRACED_INBOUNDDIR + optlen, "/inbound/");
+			strcpy(DTRACED_OUTBOUNDDIR, optarg);
+			strcpy(DTRACED_OUTBOUNDDIR + optlen, "/outbound/");
+			strcpy(DTRACED_BASEDIR, optarg);
+			strcpy(DTRACED_BASEDIR + optlen, "/base/");
+			break;
 
 		case 'e':
 			/*
@@ -2868,6 +2901,10 @@ main(int argc, char **argv)
 
 		case 'Z':
 			nosha = 1;
+			break;
+
+		case 'q':
+			quiet = 1;
 			break;
 
 		default:

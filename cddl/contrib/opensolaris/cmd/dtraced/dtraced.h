@@ -52,10 +52,14 @@ typedef struct dtraced_hdr {
 	struct {
 		char location[DTRACED_LOCSIZE];   /* elf location */
 		char ident[DTRACED_PROGIDENTLEN]; /* program identifier */
+		int ident_present;                /* identifier present? */
+		int filter_by_vmid;               /* should we filter? */
+		uint16_t vmid;                    /* which VM? (if filtered) */
 	} elf;
 
 	struct {
-		pid_t pid; /* process id to kill */
+		pid_t pid;     /* process id to kill */
+		uint16_t vmid; /* vmid to kill the pid on */
 	} kill;
 } dtraced_hdr_t;
 
@@ -76,6 +80,8 @@ typedef struct dtd_initmsg {
 #define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
 #define	DTRACED_MSG_LOC(m)             ((m).elf.location)
 #define	DTRACED_MSG_IDENT(m)           ((m).elf.ident)
+#define	DTRACED_MSG_IDENT_PRESENT(m)   ((m).elf.ident_present)
 #define DTRACED_MSG_KILLPID(m)         ((m).kill.pid)
+#define DTRACED_MSG_KILLVMID(m)        ((m).kill.vmid)
 
 #endif // __DTRACED_H_

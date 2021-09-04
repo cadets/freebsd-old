@@ -49,6 +49,8 @@
 
 #define DTELF_MAXOPTNAME	64
 
+static char g_saved_srcident[DT_PROG_IDENTLEN];
+
 /*
  * Helper structs
  */
@@ -1540,6 +1542,7 @@ skipstmt:
 	prog->dtep_rflags = dt_prog->dp_rflags;
 	memcpy(prog->dtep_ident, dt_prog->dp_ident, DT_PROG_IDENTLEN);
 	memcpy(prog->dtep_srcident, dt_prog->dp_srcident, DT_PROG_IDENTLEN);
+
 	prog->dtep_exec = dt_prog->dp_exec;
 	/*
 	 * FIXME: We should make sure that we don't leak host pids here, rather
@@ -2286,11 +2289,9 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 	if (memcmp(checksum, elf_checksum, SHA256_DIGEST_LENGTH) != 0) {
 		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
 			sprintf(chk + (i * 2), "%02x", checksum[i]);
-		fprintf(stderr, "%s\n", chk);
 
 		for (i = 0; i < SHA256_DIGEST_LENGTH; i++)
 			sprintf(chk + (i * 2), "%02x", elf_checksum[i]);
-		fprintf(stderr, "%s\n", chk);
 
 		/*
 		 * FIXME(dstolfa): This should be an error log somewhere else.
@@ -2313,6 +2314,14 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 		errx(EXIT_FAILURE, "Failed to write ELF contents into tmp");
 	
 	return (elf_fd);
+}
+
+char *
+dt_get_srcident(char *buf)
+{
+
+	memcpy(buf, g_saved_srcident, DT_PROG_IDENTLEN);
+	return (buf);
 }
 
 dtrace_prog_t *
@@ -2488,8 +2497,21 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) &&
 	    (memcmp(eprog->dtep_srcident,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0))) {
-		*err = EACCES;
-		fprintf(stderr, "identifier mismatch\n");
+		*err = EAGAIN;
+		memcpy(g_saved_srcident, eprog->dtep_srcident,
+		    DT_PROG_IDENTLEN);
+#ifdef VERBOSE
+		fprintf(stderr,
+		    "identifier mismatch (first three bytes): \n"
+		    "\t%hhx %hhx %hhx != %hhx %hhx %hhx ||\n"
+		    "\t%hhx %hhx %hhx != %hhx %hhx %hhx\n",
+		    eprog->dtep_ident[0], eprog->dtep_ident[1],
+		    eprog->dtep_ident[2], oldpgp->dp_ident[0],
+		    oldpgp->dp_ident[1], oldpgp->dp_ident[2],
+		    eprog->dtep_srcident[0], eprog->dtep_srcident[1],
+		    eprog->dtep_srcident[2], oldpgp->dp_ident[0],
+		    oldpgp->dp_ident[1], oldpgp->dp_ident[2]);
+#endif
 		return (NULL);
 	}
 
@@ -2514,7 +2536,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	if (chk && found == 0) {
 		*err = ENOENT;
-		fprintf(stderr, "identifier not found\n");
 		return (NULL);
 	}
 

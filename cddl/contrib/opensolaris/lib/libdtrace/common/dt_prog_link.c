@@ -725,8 +725,10 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
 	/*
-	 * Regenerate the identifier, since it's no longer the same program.
+	 * Regenerate the identifier, since it's no longer the same program. Set
+	 * the srcident to the original identifier.
 	 */
+	memcpy(pgp->dp_srcident, pgp->dp_ident, DT_PROG_IDENTLEN);
 	dt_prog_generate_ident(pgp);
 
 	for (i = 0; i < DIFV_NSCOPES; i++) {

@@ -1024,7 +1024,13 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 			    vprobe->dtpd_provider, vprobe->dtpd_mod,
 			    vprobe->dtpd_func, vprobe->dtpd_name);
 			if (id == DTRACE_IDNONE) {
-				dtrace_vprobespace_destroy(vmid);
+				/*
+				 * We don't even try to do anything here. Trying
+				 * to clean up the virtual probe space might
+				 * result in panics, because we'd end up with a
+				 * race condition between the currently enabled
+				 * probes and us cleaning them up.
+				 */
 				mutex_exit(&dtrace_lock);
 				mutex_exit(&cpu_lock);
 				return (EINVAL);

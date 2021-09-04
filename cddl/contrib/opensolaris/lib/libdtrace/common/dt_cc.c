@@ -1750,7 +1750,6 @@ dt_setcontext(dtrace_hdl_t *dtp, dtrace_probedesc_t *pdp)
 
 	if (dt_hypertrace_enabled(dtp) == 0 && err == EDT_NOPROBE &&
 	    !(yypcb->pcb_cflags & DTRACE_C_ZDEFS)) {
-		printf("expected xyerror\n");
 		xyerror(D_PDESC_ZERO,
 		    "probe description %s:%s:%s:%s:%s does not "
 		    "match any probes\n",
@@ -2649,15 +2648,15 @@ dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents)
 	if (idents[0] == '\0')
 		return (-1);
 
-	ident = strtok(idents, ",");
-	while (ident != NULL) {
+	ident = idents;
+	while (ident != NULL && ident[0] != '\0') {
 		ident_entry = malloc(sizeof(dt_identlist_t));
 		if (ident_entry == NULL)
 			return (errno);
 
 		memcpy(ident_entry->dtil_ident, ident, DT_PROG_IDENTLEN);
 		dt_list_append(&dtp->dt_compile_idents, ident_entry);
-		ident = strtok(NULL, ",");
+		ident += DT_PROG_IDENTLEN;
 	}
 
 	return (0);

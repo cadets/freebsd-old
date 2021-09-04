@@ -1107,8 +1107,6 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	if (newpgp == NULL)
 		return (NULL);
 
-	memset(newpgp, 0, sizeof(dtrace_prog_t));
-
 	for (stmt = dt_list_next(&pgp->dp_stmts);
 	     stmt; stmt = dt_list_next(stmt)) {
 		curstmtdesc = stmt->ds_desc;
@@ -1162,7 +1160,6 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	}
 
 	newpgp->dp_rflags = pgp->dp_rflags;
-	dt_prog_generate_ident(newpgp);
 
 	return (newpgp);
 }
@@ -1190,5 +1187,7 @@ dt_vprog_from(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, int pgp_kind)
 	 */
 	memcpy(newpgp->dp_srcident, pgp->dp_ident, DT_PROG_IDENTLEN);
 	newpgp->dp_dofversion = pgp->dp_dofversion;
+	newpgp->dp_vmid = pgp->dp_vmid;
+
 	return (newpgp);
 }

@@ -789,6 +789,7 @@ pci_vtdtr_events(void *xsc)
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	size_t len;
 	dtraced_hdr_t header;
+	uint16_t curvmid;
 
 	buf = NULL;
 	sc = xsc;
@@ -825,6 +826,10 @@ pci_vtdtr_events(void *xsc)
 
 		switch (DTRACED_MSG_TYPE(header)) {
 		case DTRACED_MSG_KILL:
+			curvmid = vm_get_vmid(sc->vsd_vmctx);
+			if (DTRACED_MSG_KILLVMID(header) != curvmid)
+				break;
+
 			ctrl = vtdtr_kill_event(DTRACED_MSG_KILLPID(header));
 			ctrl_entry->ctrl = ctrl;
 

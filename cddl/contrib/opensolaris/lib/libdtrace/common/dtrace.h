@@ -620,8 +620,7 @@ extern int dtrace_type_fcompile(dtrace_hdl_t *,
 extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
     struct dt_node *);
 
-extern int dt_filter(dtrace_hdl_t *, dtrace_machine_filter_t *);
-
+extern int dtrace_compile_idents_set(dtrace_hdl_t *, char *);
 
 /*
  * DTrace Probe Interface
@@ -705,7 +704,8 @@ extern void dt_enable_hypertrace(dtrace_hdl_t *);
 extern int dt_hypertrace_enabled(dtrace_hdl_t *);
 extern int dt_hypertrace_options_update(dtrace_hdl_t *);
 extern int open_dtraced(uint64_t);
-extern int send_elf(int, int, const char *);
+extern int dtrace_send_elf(dtrace_prog_t *, int, int, const char *, int);
+extern char *dt_get_srcident(char *);
 
 extern const char *const _dtrace_version;
 extern int _dtrace_debug;

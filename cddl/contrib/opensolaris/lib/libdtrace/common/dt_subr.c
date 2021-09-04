@@ -1062,7 +1062,8 @@ open_dtraced(uint64_t subs)
 }
 
 int
-dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location)
+dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location,
+    int send_ident)
 {
 	unsigned char *buf, *_buf;
 	size_t total_size;
@@ -1108,6 +1109,11 @@ dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location)
 		return (-1);
 	}
 
+	DTRACED_MSG_IDENT_PRESENT(header) = send_ident;
+	if (send_ident)
+		memcpy(DTRACED_MSG_IDENT(header), pgp->dp_ident,
+		    DT_PROG_IDENTLEN);
+
 	if (send(tofd, &total_size, sizeof(total_size), 0) < 0) {
 		fprintf(stderr, "send() to %d failed: %s\n", tofd,
 		    strerror(errno));
@@ -1116,7 +1122,7 @@ dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location)
 	}
 
 	/*
-	 * populate the header to the buffer that we will send to dtraced.
+	 * Populate the header to the buffer that we will send to dtraced.
 	 */
 	memcpy(buf, &header, DTRACED_MSGHDRSIZE);
 	if (send(tofd, buf, total_size, 0) < 0) {

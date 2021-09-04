@@ -87,12 +87,8 @@ typedef struct dtd_arg {
 typedef struct dt_pgplist {
 	dt_list_t list;
 	dtrace_prog_t *pgp;
-	/*
-	 * NOTE: We call this "guest program" because even though for now it's
-	 * just a list, we might want to do some work in the future to achieve
-	 * more type-checking, etc.
-	 */
 	dtrace_prog_t *gpgp;
+	dtrace_prog_t *response;
 	uint16_t vmid;
 } dt_pgplist_t;
 
@@ -107,6 +103,11 @@ typedef struct dt_probelist {
 #define	DMODE_LINK	3	/* compile program for linking with ELF (-G) */
 #define	DMODE_LIST	4	/* compile program and list probes (-l) */
 #define	DMODE_HEADER	5	/* compile program for headergen (-h) */
+
+#define	PGPL_ALLOC	0x01	/* allocate a new entry */
+#define	PGPL_SRCIDENT	0x02	/* use srcident */
+#define	PGPL_HOST	0x04	/* search for the host program */
+#define	PGPL_GUEST	0x08	/* search for the guest program */
 
 #define	E_SUCCESS	0
 #define	E_ERROR		1
@@ -772,22 +773,31 @@ checkmodref(int action_modref, int cumulative_modref,
 }
 
 static dt_pgplist_t *
-get_pgplist_entry(char *ident, uint16_t vmid, int *found)
+get_pgplist_entry(char *ident, uint16_t vmid, int *found, int flags)
 {
 	dt_pgplist_t *pgpl;
 	dtrace_prog_t *pgp;
+	int use_srcident;
+	char *_ident;
+	int err;
 
 	*found = 0;
+	use_srcident = flags & PGPL_SRCIDENT;
 	for (pgpl = dt_list_next(&g_pgplist); pgpl;
 	    pgpl = dt_list_next(pgpl)) {
-		pgp = pgpl->pgp;
+		pgp = flags & PGPL_HOST ? pgpl->pgp :
+		    flags & PGPL_GUEST ? pgpl->gpgp : NULL;
+		_ident = use_srcident ? pgp->dp_srcident : pgp->dp_ident;
 
-		if (memcmp(pgp->dp_ident, ident, DT_PROG_IDENTLEN) == 0 &&
+		if (memcmp(_ident, ident, DT_PROG_IDENTLEN) == 0 &&
 		    pgp->dp_vmid == vmid) {
 			*found = 1;
 			return (pgpl);
 		}
 	}
+
+	if ((flags & PGPL_ALLOC) == 0)
+		return (NULL);
 
 	pgpl = malloc(sizeof(dt_pgplist_t));
 	if (pgpl == NULL)
@@ -803,8 +813,8 @@ pgpl_valid(dt_pgplist_t *pgpl)
 	if (pgpl == NULL)
 		return (0);
 
-	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp) ||
-	    (pgpl->vmid == 0 && pgpl->pgp));
+	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp &&
+	    pgpl->response) || (pgpl->vmid == 0 && pgpl->pgp));
 }
 
 static int
@@ -835,6 +845,7 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 
 	DTRACED_MSG_TYPE(msg) = DTRACED_MSG_KILL;
 	DTRACED_MSG_KILLPID(msg) = pid_to_kill;
+	DTRACED_MSG_KILLVMID(msg) = pgp->dp_vmid;
 
 	nbytes = DTRACED_MSGHDRSIZE;
 	if (send(tofd, &nbytes, sizeof(nbytes), 0) < 0) {
@@ -903,6 +914,7 @@ listen_dtraced(void *arg)
 	verictx = dt_verictx_init(g_dtp);
 
 	do {
+		newpgpl = NULL;
 		/*
 		 * Now that we have created an ELF file, we wait for dtraced
 		 * to give us the new ELF file that contains all the applied
@@ -1031,23 +1043,40 @@ process_prog:
 			fatal("failed to sync file");
 
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
-		if (newprog == NULL)
+		if (newprog == NULL && err != EAGAIN) {
+			close(fd);
 			continue;
+		}
+
+		if (newprog == NULL) {
+			char buf[DT_PROG_IDENTLEN];
+
+			(void) dt_get_srcident(buf);
+			newpgpl = get_pgplist_entry(buf, vmid, &found,
+			    PGPL_GUEST);
+
+			if (found == 0)
+				continue;
+
+			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
+			    newpgpl->gpgp);
+			if (newprog == NULL) {
+				close(fd);
+				continue;
+			}
+		}
 
 		newprog->dp_vmid = vmid;
-
-		/*
-		 * If this program was not meant for us, we simply move on.
-		 */
-		if (err == EACCES && newprog == NULL)
-			continue;
 
 		/*
 		 * srcident only is not sufficient here, as it's an one-to-many
 		 * relation. However, scoping it with vmid as well *should* give
 		 * us a unique program.
 		 */
-		newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid, &found);
+		if (newpgpl == NULL)
+			newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid,
+			    &found, PGPL_ALLOC | PGPL_HOST);
+
 		if (newpgpl == NULL)
 			fatal("malloc of newpgpl failed");
 
@@ -1067,7 +1096,7 @@ process_prog:
 		}
 
 		if (found) {
-			newpgpl->gpgp = newprog;
+			newpgpl->response = newprog;
 		} else {
 			if (dt_prog_verify(verictx, hostpgp, newprog)) {
 				fprintf(stderr,
@@ -1110,13 +1139,14 @@ process_prog:
 				pthread_exit(NULL);
 			}
 
-			if (dtrace_send_elf(
-			    guestpgp, tmpfd, wx_sockfd, "outbound")) {
+			if (dtrace_send_elf(guestpgp, tmpfd, wx_sockfd,
+			    "outbound", 0)) {
 				fprintf(stderr, "failed to dtrace_send_elf()\n");
 				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
 
+			newpgpl->gpgp = guestpgp;
 			close(tmpfd);
 		}
 
@@ -1346,13 +1376,13 @@ dtc_work(void *arg)
 }
 
 static void
-process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
+process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 {
 	static size_t n_pgps = 0;
 	dtrace_proginfo_t dpi;
 	int i, n;
 
-	if (gpgp == NULL && pgp->dp_vmid != 0) {
+	if (gpgp_resp == NULL && pgp->dp_vmid != 0) {
 		atomic_store(&g_intr, 1);
 		fprintf(stderr,
 		    "the guest program can only be NULL if program's vmid "
@@ -1360,11 +1390,11 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 		    pgp->dp_vmid);
 	}
 
-	if (gpgp && (pgp->dp_vmid != gpgp->dp_vmid)) {
+	if (gpgp_resp && (pgp->dp_vmid != gpgp_resp->dp_vmid)) {
 		atomic_store(&g_intr, 1);
 		fprintf(stderr,
-		    "mismatch between pgp and gpgp vmids (%u != %u)",
-		    pgp->dp_vmid, gpgp->dp_vmid);
+		    "mismatch between pgp and gpgp_resp vmids (%u != %u)",
+		    pgp->dp_vmid, gpgp_resp->dp_vmid);
 	}
 
 	if (pgp->dp_vmid != 0) {
@@ -1372,15 +1402,15 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp)
 		 * If no probes were enabled for this program, we don't need to
 		 * do anything.
 		 */
-		if (gpgp->dp_neprobes == 0) {
+		if (gpgp_resp->dp_neprobes == 0) {
 			if (g_quiet == 0)
 				fprintf(stderr,
 				    "Ignoring 0 probes from VMID %u\n",
-				    gpgp->dp_vmid);
+				    gpgp_resp->dp_vmid);
 			return;
 		}
 
-		n = dt_vprobes_create(g_dtp, gpgp);
+		n = dt_vprobes_create(g_dtp, gpgp_resp);
 		if (n == -1) {
 			atomic_store(&g_intr, 1);
 			fprintf(stderr, "failed to create vprobes: %s\n",
@@ -1438,6 +1468,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	int tmpfd;
 	uint64_t subs = 0;
 	void *verictx;
+	dtrace_prog_t *resp;
 
 	dcp->dc_prog->dp_rflags = rslv;
 
@@ -1477,8 +1508,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 * things to happen:
 		 *  (1) We write our ELF file to /var/ddtrace/outbound
 		 *  (2) dtraced forwards it to the traced machine (can be host)
-		 *  (3) traced DTrace applies relocations to the program
-		 *  (4) traced dtraced sends it back to host dtraced
+		 *  (3) dtraced DTrace applies relocations to the program
+		 *  (4) dtraced dtraced sends it back to host dtraced
 		 *  (5) dtraced writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
@@ -1512,7 +1543,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (lseek(tmpfd, 0, SEEK_SET))
 			fatal("lseek() failed");
 
-		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base"))
+		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base", 0))
 			fatal("failed to dtrace_send_elf()");
 
 		close(tmpfd);
@@ -1584,24 +1615,26 @@ again:
 				goto again;
 			}
 
-			process_new_pgp(pgpl->pgp, pgpl->gpgp);
-
 			pthread_mutex_lock(&g_pgplistmtx);
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
 
+			process_new_pgp(pgpl->pgp, pgpl->response);
 
-			dt_list_append(&g_kill_list, pgpl);
+			/*
+			 * FIXME: This is no longer the case.
+			 */
+
+
+			/*
+			 * FIXME: We need to make a new entry here... I think.
+			 */
+			dt_list_append(&g_kill_list, pgpl->response);
 		}
 
-		/*
-		 * XXX: We could free(pgpl) here, but we're exiting the program
-		 * after this loop anyway, so we simpify the code by just
-		 * letting the OS do its magic.
-		 */
-		for (pgpl = dt_list_next(&g_kill_list); pgpl;
-		     pgpl = dt_list_next(pgpl)) {
-			if (pgpl->gpgp && send_kill(wx_sock, pgpl->gpgp))
+		for (resp = dt_list_next(&g_kill_list); resp;
+		     resp = dt_list_next(resp)) {
+			if (send_kill(wx_sock, resp))
 				fprintf(stderr, "send_kill() failed with: %s\n",
 				    strerror(errno));
 		}
@@ -1917,8 +1950,9 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (lseek(tmpfd, 0, SEEK_SET))
 		fatal("lseek() failed");
 
-	if (dtrace_send_elf(
-	    dcp->dc_prog, tmpfd, dtraced_sock, host ? "inbound" : "outbound"))
+	if (dtrace_send_elf(dcp->dc_prog, tmpfd, dtraced_sock,
+	    host ? "inbound" : "outbound",
+	    host ? 0 : prog_exec == DT_PROG_EXEC ? 0 : 1))
 		fatal("failed to dtrace_send_elf()");
 
 	close(tmpfd);
