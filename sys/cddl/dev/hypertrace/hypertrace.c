@@ -120,8 +120,9 @@ static dtrace_pattr_t hypertrace_attr = {
 	  DTRACE_CLASS_UNKNOWN },
 };
 
-static struct cdev *hypertrace_cdev;
+static struct cdev          *hypertrace_cdev;
 static int         __unused hypertrace_verbose = 0;
+static hypertrace_map_t     hypertrace_map;
 
 static void
 hypertrace_load(void *dummy __unused)
@@ -194,31 +195,46 @@ hypertrace_open(struct cdev *dev __unused, int oflags __unused,
 static void
 hypertrace_destroy(void *arg, dtrace_id_t id, void *parg)
 {
-
 }
 
 static void
 hypertrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
 
+	ht_probe = hypertrace_map[vmid][id];
+	ht_probe->dthp_enabled = 1;
+	ht_probe->dthp->running = 1;
 }
 
 static void
 hypertrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
-	
+
 }
 
 static void
 hypertrace_suspend(void *arg, dtrace_id_t id, void *parg)
 {
 
+	ht_probe = hypertrace_map[vmid][id];
+	ht_probe->dthp_running = 0;
 }
 
 static void
 hypertrace_resume(void *arg, dtrace_id_t id, void *parg)
 {
 
+	ht_probe = hypertrace_map[vmid][id];
+	ht_probe->dthp_running = 1;
+}
+
+static void
+hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
+{
+
+	ht_probe = hypertrace_map[vmid][id];
+	if (ht_probe->dthp_enabled != 0 && ht_probe->dthp_running == 1)
+		dtrace_vprobe(vmhdl, id, dtv_args);
 }
 
 SYSINIT(hypertrace_load, SI_SUB_DTRACE_PROVIDER,
