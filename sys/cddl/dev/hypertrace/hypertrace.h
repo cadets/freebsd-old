@@ -40,6 +40,8 @@
 #ifndef _HYPERTRACE_H_
 #define _HYPERTRACE_H_
 
+#include <sys/hypertrace.h>
+
 /*
  * XXX: We are currently just going to strdup every provider -- not great, but
  * if it becomes a problem, we can always just deduplicate it and create
@@ -50,8 +52,22 @@ typedef const char *hypertrace_provider_t;
 typedef struct hypertrace_probe {
 	hypertrace_provider_t htpb_provider;  /* Provider for this probe */
 	dtrace_id_t htpb_id;                  /* id of the probe */
+	int htpb_running;                     /* is the probe allowed to run? */
+	int htpb_enabled;                     /* is the probe enabled? */
 } hypertrace_probe_t;
 
 extern dtrace_provider_id_t hypertrace_id;
+
+typedef struct hypertrace_map {
+	hypertrace_probe_t **probes[HYPERTRACE_MAX_VMS];
+	size_t             nprobes[HYPERTRACE_MAX_VMS];
+} hypertrace_map_t;
+
+hypertrace_map_t *init_map(void);
+void teardown_map(hypertrace_map_t *);
+
+hypertrace_probe_t *map_get(hypertrace_map_t *, uint16_t, dtrace_id_t);
+void map_insert(hypertrace_map_t *, hypertrace_probe_t *, uint16_t);
+
 
 #endif /* _HYPERTRACE_H_ */

@@ -46,6 +46,8 @@
 #include <sys/kernel.h>
 #include <sys/module.h>
 
+#include <dtvirt.h>
+
 #include "hypertrace.h"
 
 static d_open_t hypertrace_open;
@@ -200,40 +202,63 @@ hypertrace_destroy(void *arg, dtrace_id_t id, void *parg)
 static void
 hypertrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
+	hypertrace_probe_t *ht_probe;
+	uint16_t vmid;
 
-	ht_probe = hypertrace_map[vmid][id];
-	ht_probe->dthp_enabled = 1;
-	ht_probe->dthp->running = 1;
+	vmid = dtvirt_getns(parg);
+
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe->htpb_enabled = 1;
+	ht_probe->htpb_running = 1;
 }
 
 static void
 hypertrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
+	hypertrace_probe_t *ht_probe;
+	uint16_t vmid;
 
+	vmid = dtvirt_getns(parg);
+	
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe->htpb_running = 0;
+	ht_probe->htpb_enabled = 0;
 }
 
 static void
 hypertrace_suspend(void *arg, dtrace_id_t id, void *parg)
 {
+	hypertrace_probe_t *ht_probe;
+	uint16_t vmid;
 
-	ht_probe = hypertrace_map[vmid][id];
-	ht_probe->dthp_running = 0;
+	vmid = dtvirt_getns(parg);
+
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe->htpb_running = 0;
 }
 
 static void
 hypertrace_resume(void *arg, dtrace_id_t id, void *parg)
 {
+	hypertrace_probe_t *ht_probe;
+	uint16_t vmid;
 
-	ht_probe = hypertrace_map[vmid][id];
-	ht_probe->dthp_running = 1;
+	vmid = dtvirt_getns(parg);
+
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe->htpb_running = 1;
 }
 
 static void
 hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 {
+	hypertrace_probe_t *ht_probe;
+	uint16_t vmid;
 
-	ht_probe = hypertrace_map[vmid][id];
-	if (ht_probe->dthp_enabled != 0 && ht_probe->dthp_running == 1)
+	vmid = dtvirt_getns(vmhdl);
+
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1)
 		dtrace_vprobe(vmhdl, id, dtv_args);
 }
 

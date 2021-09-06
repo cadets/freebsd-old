@@ -2590,6 +2590,19 @@ extern void dtrace_helpers_destroy(proc_t *);
 #define	DTRACE_CPUFLAG_CLEAR(flag) \
 	(cpu_core[curcpu].cpuc_dtrace_flags &= ~(flag))
 
+inline size_t
+dtrace_nextpow2(size_t n)
+{
+	n--;
+	n |= n >> 1;
+	n |= n >> 2;
+	n |= n >> 4;
+	n |= n >> 8;
+	n |= n >> 16;
+	return (++n);
+}
+
+	
 #endif /* _KERNEL */
 
 #endif	/* _ASM */

@@ -5,12 +5,15 @@ SYSDIR?=	${SRCTOP}/sys
 .PATH:		${SYSDIR}/cddl/dev/hypertrace
 
 KMOD=		hypertrace
-SRCS=		hypertrace.c
+SRCS=		hypertrace.c \
+		hypertrace_map.c
+
 SRCS+=		vnode_if.h
 
 
-CFLAGS+= 	${OPENZFS_CFLAGS}
-CFLAGS+=  -I${SYSDIR}/cddl/dev/hypertrace
+CFLAGS+=	${OPENZFS_CFLAGS}
+CFLAGS+=	-I${SYSDIR}/cddl/dev/hypertrace
+CFLAGS+=	-I${SRCTOP}/sys/cddl/dev/dtvirt
 
 .include <bsd.kmod.mk>
 
