@@ -10,6 +10,7 @@ SUBDIR=		dtaudit		\
 		dtraceall	\
 		dtrace_test	\
 		dtvirt		\
+		hypertrace	\
 		profile		\
 		prototype	\
 		sdt		\
