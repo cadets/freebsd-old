@@ -10542,6 +10542,8 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 		dtrace_hash_remove(dtrace_byfunc[vmid], probe);
 		dtrace_hash_remove(dtrace_byname[vmid], probe);
 
+		dtrace_sync();
+
 		kmem_free((char *)probe->dtpr_vprovider,
 		    strlen((char *)probe->dtpr_vprovider) + 1);
 		kmem_free(probe->dtpr_mod, strlen(probe->dtpr_mod) + 1);
@@ -10551,10 +10553,13 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 	}
 
 	if (should_free) {
-		kmem_free(dtrace_vprobes[vmid],
-		    dtrace_nvprobes[vmid] * sizeof(dtrace_probe_t *));
 		dtrace_nvprobes[vmid] = 0;
 		dtrace_vprobes[vmid] = NULL;
+
+		dtrace_sync();
+
+		kmem_free(dtrace_vprobes[vmid],
+		    dtrace_nvprobes[vmid] * sizeof(dtrace_probe_t *));
 	}
 }
 
