@@ -44,13 +44,14 @@
 #include <sys/hypertrace.h>
 
 typedef struct hypertrace_vprovider {
-	char *name;     /* Provider name */
-	size_t nprobes; /* Number of probes this vprovider handles. */
+	char name[DTRACE_PROVNAMELEN]; /* Provider name */
+	size_t nprobes;                /* Number of probes */
 } hypertrace_vprovider_t;
 
 typedef struct hypertrace_probe {
 	hypertrace_vprovider_t *htpb_provider; /* Provider for this probe */
 	dtrace_id_t htpb_id;                   /* id of the probe */
+	uint16_t htpb_vmid;                    /* vmid of the probe */
 	int htpb_running;                      /* is the probe allowed to run */
 	int htpb_enabled;                      /* is the probe enabled? */
 } hypertrace_probe_t;
@@ -62,11 +63,12 @@ typedef struct hypertrace_map {
 	size_t             nprobes[HYPERTRACE_MAX_VMS];
 } hypertrace_map_t;
 
-hypertrace_map_t *init_map(void);
-void teardown_map(hypertrace_map_t *);
+hypertrace_map_t *map_init(void);
+void map_teardown(hypertrace_map_t *);
 
 hypertrace_probe_t *map_get(hypertrace_map_t *, uint16_t, dtrace_id_t);
-void map_insert(hypertrace_map_t *, hypertrace_probe_t *, uint16_t);
+void map_insert(hypertrace_map_t *, hypertrace_probe_t *);
+void map_rm(hypertrace_map_t *, hypertrace_probe_t *);
 
 
 #endif /* _HYPERTRACE_H_ */

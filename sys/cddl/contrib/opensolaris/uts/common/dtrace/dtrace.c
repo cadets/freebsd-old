@@ -10533,6 +10533,12 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 		dtrace_sync();
 
+		if (hypertrace_rmprobe(probe->dtpr_vmid, probe->dtpr_id) != 0)
+			panic("Failed to remove %u:%s:%s:%s:%s\n",
+			    probe->dtpr_vmid, (char *)probe->dtpr_vprovider,
+			    probe->dtpr_mod, probe->dtpr_func,
+			    probe->dtpr_name);
+
 		kmem_free((char *)probe->dtpr_vprovider,
 		    strlen((char *)probe->dtpr_vprovider) + 1);
 		kmem_free(probe->dtpr_mod, strlen(probe->dtpr_mod) + 1);

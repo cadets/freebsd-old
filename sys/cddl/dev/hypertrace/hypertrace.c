@@ -94,6 +94,10 @@ hypertrace_load(void *dummy __unused)
 	 */
 	hypertrace_cdev = make_dev(&hypertrace_cdevsw, 0, UID_ROOT, GID_WHEEL,
 	    0600, "dtrace/hypertrace");
+
+	/*
+	 * TODO: Initialize the map.
+	 */
 }
 
 static int
@@ -256,7 +260,7 @@ hypertrace_get_vprovider(const char *provider)
 	vprov = kmem_zalloc(sizeof(hypertrace_vprovider_t), KM_SLEEP);
 	ASSERT(vprov != NULL);
 
-	vprov->name = strdup(provider, M_HYPERTRACE);
+	memcpy(vprov->name, provider, DTRACE_PROVNAMELEN);
 	ASSERT(vprov->name != NULL);
 	
 	return (vprov);
@@ -302,8 +306,33 @@ hypertrace_create_probes(void *_vprobes, size_t nvprobes)
 
 		htp->htpb_provider = vprov;
 		htp->htpb_id = id;
+		htp->htpb_vmid = vmid;
+		map_insert(&hypertrace_map, htp);
 	}
 
+	return (0);
+}
+
+int
+hypertrace_rmprobe(uint16_t vmid, int id)
+{
+	hypertrace_vprovider_t *vprov;
+	hypertrace_probe_t *ht_probe;
+	
+	ht_probe = map_get(&hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (ESRCH);
+
+	map_rm(&hypertrace_map, ht_probe);
+
+	vprov = ht_probe->htpb_provider;
+	if (vprov == NULL)
+		panic("probe's provider is NULL.");
+
+	if (--vprov->nprobes == 0)
+		kmem_free(vprov, sizeof(hypertrace_vprovider_t));
+
+	kmem_free(ht_probe, sizeof(hypertrace_probe_t));
 	return (0);
 }
 

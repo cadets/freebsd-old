@@ -45,14 +45,14 @@
 #define MAP_BUCKETSIZE 4096
 
 hypertrace_map_t *
-init_map(void)
+map_init(void)
 {
 
 	return (kmem_zalloc(sizeof(hypertrace_map_t), KM_SLEEP));
 }
 
 void
-teardown_map(hypertrace_map_t *map)
+map_teardown(hypertrace_map_t *map)
 {
 	size_t i, j;
 	hypertrace_probe_t *probe;
@@ -85,12 +85,14 @@ teardown_map(hypertrace_map_t *map)
 }
 
 void
-map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe, uint16_t vmid)
+map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 {
 	size_t nprobes;
 	hypertrace_probe_t **new_probes;
 	dtrace_id_t id;
-	
+	uint16_t vmid;
+
+	vmid = probe->htpb_vmid;
 	nprobes = map->nprobes[vmid];
 
 	id = probe->htpb_id;
@@ -153,4 +155,25 @@ map_get(hypertrace_map_t *map, uint16_t vmid, dtrace_id_t id)
 		return (NULL);
 
 	return (map->probes[vmid][id - 1]);
+}
+
+void
+map_rm(hypertrace_map_t *map, hypertrace_probe_t *probe)
+{
+	if (map == NULL)
+		return;
+
+	if (map->probes[probe->htpb_vmid] == NULL)
+		return;
+
+	if (map->nprobes[probe->htpb_vmid] <= probe->htpb_id)
+		panic("%u: nprobes = %zu, probe id = %d", probe->htpb_vmid,
+		    map->nprobes[probe->htpb_vmid], probe->htpb_id);
+
+	if (map->probes[probe->htpb_vmid][probe->htpb_id - 1] == NULL)
+		panic("Attempting to remove a NULL entry: %u, %d\n",
+		    probe->htpb_vmid, probe->htpb_id);
+
+	map->probes[probe->htpb_vmid][probe->htpb_id - 1] = NULL;
+	kmem_free(probe, sizeof(hypertrace_probe_t));
 }

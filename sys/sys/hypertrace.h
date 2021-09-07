@@ -11,6 +11,7 @@
  * Public interfaces to HyperTrace
  */ 
 int hypertrace_create_probes(void *, size_t);
+int hypertrace_rmprobe(uint16_t, int);
 
 
 #endif // __HYPERTRACE_H_
