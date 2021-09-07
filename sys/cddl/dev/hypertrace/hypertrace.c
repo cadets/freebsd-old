@@ -308,6 +308,7 @@ hypertrace_create_probes(void *_vprobes, size_t nvprobes)
 		htp->htpb_id = id;
 		htp->htpb_vmid = vmid;
 		map_insert(&hypertrace_map, htp);
+		vprov->nprobes++;
 	}
 
 	return (0);
