@@ -52,6 +52,7 @@
 
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
+static void     hypertrace_dummy_provide(void *, dtrace_probedesc_t *);
 static void     hypertrace_destroy(void *, dtrace_id_t, void *);
 static void     hypertrace_enable(void *, dtrace_id_t, void *);
 static void     hypertrace_disable(void *, dtrace_id_t, void *);
@@ -73,7 +74,7 @@ static struct cdevsw hypertrace_cdevsw = {
  * consumers through hypertrace_provide().
  */
 static dtrace_pops_t hypertrace_pops = {
-	.dtps_provide =		NULL,
+	.dtps_provide =		hypertrace_dummy_provide,
 	.dtps_provide_module =	NULL,
 	.dtps_enable =		hypertrace_enable,
 	.dtps_disable =		hypertrace_disable,
@@ -260,6 +261,95 @@ hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1)
 		dtrace_vprobe(vmhdl, id, dtv_args);
+}
+
+/*
+ * Get a vprovider with a given provider name. We assume provider names are
+ * unique and correctly deduplicated already. This subroutine is meant to be as
+ * a main interface to allocate, or get an existing vprovider.
+ */
+static hypertrace_vprovider_t *
+hypertrace_get_vprovider(const char *provider, int *register_provider)
+{
+	hypertrace_vprovider_t *vprov;
+	uint32_t hash;
+
+	*register_provider = 0;
+	hash = HASHINIT;
+	do {
+		hash = murmur3_32_hash(provider, DTRACE_PROVNAMELEN, HASHINIT);
+		hash_ndx = hash & HASH_MASK;
+		vprov = provtab[hash_ndx];
+	} while (vprov &&
+	    memcmp(provider, vprov->name, DTRACE_PROVNAMELEN) != 0);
+
+	if (vprov != NULL)
+		return (vprov);
+
+	*register_provider = 1;
+	vprov = kmem_zalloc(sizeof(hypertrace_vprovider_t), KM_SLEEP);
+	ASSERT(vprov != NULL);
+
+	vprov->name = strdup(provider, M_HYPERTRACE_PROVIDER);
+	ASSERT(vprov->name != NULL);
+	
+	return (vprov);
+}
+
+int
+hypertrace_provide(dtrace_probedesc_t *vprobes, size_t nvprobes)
+{
+	size_t i;
+	dtrace_probedesc_t *vprobe;
+	hypertrace_probe_t *htp;
+	hypertrace_vprovider_t *vprov;
+	dtrace_id_t id;
+	int reg;
+	uint16_t vmid;
+
+	for (i = 0; i < nvprobes; i++) {
+		vprobe = &vprobes[i];
+
+		/*
+		 * We require that all of the vmids match. We don't really do
+		 * any cleanup here yet, but we need to.
+		 */
+		if (i > 0 && vmid != vprobes->dtpd_vmid)
+			return (EINVAL);
+
+		vmid = vprobes->dtpd_vmid;
+
+		if (vprobe == NULL)
+			continue;
+
+		vprov = hypertrace_get_vprovider(vprobe->dtpd_provider, &reg);
+		ASSERT(vprov != NULL);
+
+		if (reg != 0 &&
+		    dtrace_register(vprov->name, &hypertrace_attr,
+		    DTRACE_PRIV_USER, NULL, &vprov_pops, NULL,
+		    &vprov->id) != 0)
+			return (-1);
+		}
+		id = dtrace_vprobe_create(vmid, vprobe->dtpd_id,
+		    vprobe->dtpd_provider, vprobe->dtpd_mod, vprobe->dtpd_func,
+		    vprobe->dtpd_name);
+		if (id == DTRACE_IDNONE)
+			return (EINVAL);
+
+		htp = kmem_zalloc(sizeof(hypertrace_probe_t), KM_SLEEP);
+		ASSERT(htp != NULL);
+
+		htp->htpb_provider = vprov;
+		htp->htpb_id = id;
+	}
+
+	return (0);
+}
+
+static void
+hypertrace_dummy_provide(void *arg __unused, dtrace_probedesc_t *pd __unused)
+{
 }
 
 SYSINIT(hypertrace_load, SI_SUB_DTRACE_PROVIDER,

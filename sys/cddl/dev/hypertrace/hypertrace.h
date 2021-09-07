@@ -42,18 +42,16 @@
 
 #include <sys/hypertrace.h>
 
-/*
- * XXX: We are currently just going to strdup every provider -- not great, but
- * if it becomes a problem, we can always just deduplicate it and create
- * providers a bit more "smartly".
- */
-typedef const char *hypertrace_provider_t;
+typedef struct hypertrace_vprovider {
+	char *name;              /* Provider name */
+	dtrace_provider_id_t id; /* id of the provider */
+} hypertrace_vprovider_t;
 
 typedef struct hypertrace_probe {
-	hypertrace_provider_t htpb_provider;  /* Provider for this probe */
-	dtrace_id_t htpb_id;                  /* id of the probe */
-	int htpb_running;                     /* is the probe allowed to run? */
-	int htpb_enabled;                     /* is the probe enabled? */
+	hypertrace_vprovider_t *htpb_provider; /* Provider for this probe */
+	dtrace_id_t htpb_id;                   /* id of the probe */
+	int htpb_running;                      /* is the probe allowed to run */
+	int htpb_enabled;                      /* is the probe enabled? */
 } hypertrace_probe_t;
 
 extern dtrace_provider_id_t hypertrace_id;
