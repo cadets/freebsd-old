@@ -1034,7 +1034,7 @@ struct dtrace_predicate;
 
 typedef struct dtrace_probedesc {
 	dtrace_id_t dtpd_id;			  /* probe identifier */
-	dtrace_vmid_t dtpd_vmid;			  /* where is the probe? */
+	dtrace_vmid_t dtpd_vmid;		  /* where is the probe? */
 	char dtpd_target[DTRACE_TARGETNAMELEN];   /* probe target name */
 	char dtpd_provider[DTRACE_PROVNAMELEN];   /* probe provider name */
 	char dtpd_mod[DTRACE_MODNAMELEN];	  /* probe module name */
