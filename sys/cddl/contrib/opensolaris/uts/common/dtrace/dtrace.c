@@ -125,6 +125,7 @@
 #include <sys/eventhandler.h>
 #include <sys/limits.h>
 #include <sys/linker.h>
+#include <sys/hypertrace.h>
 #include <sys/kdb.h>
 #include <sys/jail.h>
 #include <sys/kernel.h>

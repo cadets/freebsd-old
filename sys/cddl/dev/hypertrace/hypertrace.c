@@ -43,6 +43,7 @@
 #include <sys/conf.h>
 #include <sys/dtrace.h>
 #include <sys/dtrace_bsd.h>
+#include <sys/hash.h>
 #include <sys/kernel.h>
 #include <sys/module.h>
 
@@ -50,9 +51,10 @@
 
 #include "hypertrace.h"
 
+static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
+
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
-static void     hypertrace_dummy_provide(void *, dtrace_probedesc_t *);
 static void     hypertrace_destroy(void *, dtrace_id_t, void *);
 static void     hypertrace_enable(void *, dtrace_id_t, void *);
 static void     hypertrace_disable(void *, dtrace_id_t, void *);
@@ -67,65 +69,22 @@ static struct cdevsw hypertrace_cdevsw = {
 };
 
 /*
- * The HyperTrace provider is a tad special in the sense that it doesn't
- * actually know anything about providing host probes -- and therefore can't
- * implement dtps_provide() and dtps_provide_module(). Instead, the consumption
- * of this provider should be directly done by the DTrace Framework or other
- * consumers through hypertrace_provide().
+ * A sensible hash size seems to be around 4096 (for providers, anyway).
+ *
+ * FIXME: Currently, there is an attack on this hash table where a guest could
+ * just find a provider that matches and simply keep appending a number to it so
+ * that the hash table fills up and the host creates a bunch of providers. We
+ * need a few heuristics in the kernel that will prevent this -- e.g. allowing a
+ * maximum number of providers on each guest and simply kicking everything out
+ * if it's exceeded.
  */
-static dtrace_pops_t hypertrace_pops = {
-	.dtps_provide =		hypertrace_dummy_provide,
-	.dtps_provide_module =	NULL,
-	.dtps_enable =		hypertrace_enable,
-	.dtps_disable =		hypertrace_disable,
-	.dtps_suspend =		hypertrace_suspend,
-	.dtps_resume =		hypertrace_resume,
-	.dtps_getargdesc =	NULL,
-	.dtps_getargval =	NULL,
-	.dtps_usermode =	NULL,
-	.dtps_destroy =		hypertrace_destroy
-};
+#define HASH_SIZE 4096
+#define HASH_MASK (HASH_SIZE - 1)
 
-static dtrace_pattr_t hypertrace_attr = {
-	/*
-	 * Provider stability
-	 */
-	{ DTRACE_STABILITY_PRIVATE,
-	  DTRACE_STABILITY_PRIVATE,
-	  DTRACE_CLASS_UNKNOWN },
-
-	/*
-	 * Module stability
-	 */	
-	{ DTRACE_STABILITY_PRIVATE,
-	  DTRACE_STABILITY_PRIVATE,
-	  DTRACE_CLASS_UNKNOWN },
-	
-	/*
-	 * Function stability
-	 */
-	{ DTRACE_STABILITY_PRIVATE,
-	  DTRACE_STABILITY_PRIVATE,
-	  DTRACE_CLASS_UNKNOWN },
-	
-	/*
-	 * Name stability
-	 */
-	{ DTRACE_STABILITY_PRIVATE,
-	  DTRACE_STABILITY_PRIVATE,
-	  DTRACE_CLASS_UNKNOWN },
-	
-	/*
-	 * args[] stability
-	 */
-	{ DTRACE_STABILITY_PRIVATE,
-	  DTRACE_STABILITY_PRIVATE,
-	  DTRACE_CLASS_UNKNOWN },
-};
-
-static struct cdev          *hypertrace_cdev;
-static int         __unused hypertrace_verbose = 0;
-static hypertrace_map_t     hypertrace_map;
+static struct cdev            *hypertrace_cdev;
+static int         __unused   hypertrace_verbose = 0;
+static hypertrace_map_t       hypertrace_map;
+static hypertrace_vprovider_t *provtab;
 
 static void
 hypertrace_load(void *dummy __unused)
@@ -135,13 +94,6 @@ hypertrace_load(void *dummy __unused)
 	 */
 	hypertrace_cdev = make_dev(&hypertrace_cdevsw, 0, UID_ROOT, GID_WHEEL,
 	    0600, "dtrace/hypertrace");
-
-	/*
-	 * Register with DTrace.
-	 */
-	if (dtrace_register("hypertrace", &hypertrace_attr, DTRACE_PRIV_USER,
-	    NULL, &hypertrace_pops, NULL, &hypertrace_id) != 0)
-		return;
 }
 
 static int
@@ -206,6 +158,9 @@ hypertrace_enable(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
+	if (dtvirt_getns == NULL)
+		return;
+
 	vmid = dtvirt_getns(parg);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
@@ -218,6 +173,9 @@ hypertrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
+
+	if (dtvirt_getns == NULL)
+		return;
 
 	vmid = dtvirt_getns(parg);
 	
@@ -232,6 +190,9 @@ hypertrace_suspend(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
+	if (dtvirt_getns == NULL)
+		return;
+
 	vmid = dtvirt_getns(parg);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
@@ -243,6 +204,9 @@ hypertrace_resume(void *arg, dtrace_id_t id, void *parg)
 {
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
+
+	if (dtvirt_getns == NULL)
+		return;
 
 	vmid = dtvirt_getns(parg);
 
@@ -256,6 +220,9 @@ hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
+	if (dtvirt_getns == NULL)
+		return;
+	
 	vmid = dtvirt_getns(vmhdl);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
@@ -269,43 +236,42 @@ hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
  * a main interface to allocate, or get an existing vprovider.
  */
 static hypertrace_vprovider_t *
-hypertrace_get_vprovider(const char *provider, int *register_provider)
+hypertrace_get_vprovider(const char *provider)
 {
 	hypertrace_vprovider_t *vprov;
 	uint32_t hash;
+	uint32_t hash_ndx;
 
-	*register_provider = 0;
 	hash = HASHINIT;
 	do {
 		hash = murmur3_32_hash(provider, DTRACE_PROVNAMELEN, HASHINIT);
 		hash_ndx = hash & HASH_MASK;
-		vprov = provtab[hash_ndx];
+		vprov = &provtab[hash_ndx];
 	} while (vprov &&
 	    memcmp(provider, vprov->name, DTRACE_PROVNAMELEN) != 0);
 
 	if (vprov != NULL)
 		return (vprov);
 
-	*register_provider = 1;
 	vprov = kmem_zalloc(sizeof(hypertrace_vprovider_t), KM_SLEEP);
 	ASSERT(vprov != NULL);
 
-	vprov->name = strdup(provider, M_HYPERTRACE_PROVIDER);
+	vprov->name = strdup(provider, M_HYPERTRACE);
 	ASSERT(vprov->name != NULL);
 	
 	return (vprov);
 }
 
 int
-hypertrace_provide(dtrace_probedesc_t *vprobes, size_t nvprobes)
+hypertrace_create_probes(void *_vprobes, size_t nvprobes)
 {
 	size_t i;
 	dtrace_probedesc_t *vprobe;
 	hypertrace_probe_t *htp;
 	hypertrace_vprovider_t *vprov;
 	dtrace_id_t id;
-	int reg;
 	uint16_t vmid;
+	dtrace_probedesc_t *vprobes = (dtrace_probedesc_t *)_vprobes;
 
 	for (i = 0; i < nvprobes; i++) {
 		vprobe = &vprobes[i];
@@ -322,15 +288,9 @@ hypertrace_provide(dtrace_probedesc_t *vprobes, size_t nvprobes)
 		if (vprobe == NULL)
 			continue;
 
-		vprov = hypertrace_get_vprovider(vprobe->dtpd_provider, &reg);
+		vprov = hypertrace_get_vprovider(vprobe->dtpd_provider);
 		ASSERT(vprov != NULL);
 
-		if (reg != 0 &&
-		    dtrace_register(vprov->name, &hypertrace_attr,
-		    DTRACE_PRIV_USER, NULL, &vprov_pops, NULL,
-		    &vprov->id) != 0)
-			return (-1);
-		}
 		id = dtrace_vprobe_create(vmid, vprobe->dtpd_id,
 		    vprobe->dtpd_provider, vprobe->dtpd_mod, vprobe->dtpd_func,
 		    vprobe->dtpd_name);
@@ -345,11 +305,6 @@ hypertrace_provide(dtrace_probedesc_t *vprobes, size_t nvprobes)
 	}
 
 	return (0);
-}
-
-static void
-hypertrace_dummy_provide(void *arg __unused, dtrace_probedesc_t *pd __unused)
-{
 }
 
 SYSINIT(hypertrace_load, SI_SUB_DTRACE_PROVIDER,

@@ -40,11 +40,12 @@
 #ifndef _HYPERTRACE_H_
 #define _HYPERTRACE_H_
 
+#include <sys/dtrace.h>
 #include <sys/hypertrace.h>
 
 typedef struct hypertrace_vprovider {
-	char *name;              /* Provider name */
-	dtrace_provider_id_t id; /* id of the provider */
+	char *name;     /* Provider name */
+	size_t nprobes; /* Number of probes this vprovider handles. */
 } hypertrace_vprovider_t;
 
 typedef struct hypertrace_probe {

@@ -991,9 +991,14 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		    sizeof(dtrace_probedesc_t) * n_vprobes_to_create))
 			return (EFAULT);
 
+		mutex_enter(&dtrace_provider_lock);
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 
+		hypertrace_create_probes(
+		    vprobes_to_create, n_vprobes_to_create);
+
+#if 0
 		/*
 		 * Find out if we need to increment the dtrace_nvmids counter.
 		 * We don't do it here because creating probes can fail, in
@@ -1033,16 +1038,18 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 				 */
 				mutex_exit(&dtrace_lock);
 				mutex_exit(&cpu_lock);
+				mutex_exit(&dtrace_provider_lock);
 				return (EINVAL);
 			}
 		}
 
 		if (needs_increment)
 			dtrace_nvmids++;
-
+#endif
 		mutex_exit(&dtrace_lock);
 		mutex_exit(&cpu_lock);
-
+		mutex_exit(&dtrace_provider_lock);
+		
 		return (0);
 	}
 	default:
