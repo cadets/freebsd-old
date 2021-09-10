@@ -47,11 +47,15 @@
 #include <sys/kernel.h>
 #include <sys/module.h>
 
-#include <dtvirt.h>
+#include <machine/vmm.h>
 
 #include "hypertrace.h"
 
 static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
+
+static lwpid_t    hypertrace_priv_gettid(void *);
+static uint16_t   hypertrace_priv_getns(void *);
+static const char *hypertrace_priv_getname(void *);
 
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
@@ -115,7 +119,6 @@ hypertrace_unload()
 	return (error);
 }
 
-
 static int
 hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 {
@@ -123,9 +126,15 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 
 	switch (type) {
 	case MOD_LOAD:
+		hypertrace_gettid  = hypertrace_priv_gettid;
+		hypertrace_getns   = hypertrace_priv_getns;
+		hypertrace_getname = hypertrace_priv_getname;
 		break;
 
 	case MOD_UNLOAD:
+		hypertrace_gettid  = NULL;
+		hypertrace_getns   = NULL;
+		hypertrace_getname = NULL;
 		break;
 
 	case MOD_SHUTDOWN:
@@ -162,10 +171,7 @@ hypertrace_enable(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
-	if (dtvirt_getns == NULL)
-		return;
-
-	vmid = dtvirt_getns(parg);
+	vmid = hypertrace_priv_getns(parg);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	ht_probe->htpb_enabled = 1;
@@ -178,10 +184,7 @@ hypertrace_disable(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
-	if (dtvirt_getns == NULL)
-		return;
-
-	vmid = dtvirt_getns(parg);
+	vmid = hypertrace_priv_getns(parg);
 	
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 0;
@@ -194,10 +197,7 @@ hypertrace_suspend(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
-	if (dtvirt_getns == NULL)
-		return;
-
-	vmid = dtvirt_getns(parg);
+	vmid = hypertrace_priv_getns(parg);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 0;
@@ -209,29 +209,51 @@ hypertrace_resume(void *arg, dtrace_id_t id, void *parg)
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
-	if (dtvirt_getns == NULL)
-		return;
-
-	vmid = dtvirt_getns(parg);
+	vmid = hypertrace_priv_getns(parg);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 1;
 }
 
-static void
-hypertrace_probe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
+void
+hypertrace_probe(void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_args)
 {
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
 
-	if (dtvirt_getns == NULL)
-		return;
-	
-	vmid = dtvirt_getns(vmhdl);
+	vmid = hypertrace_priv_getns(vmhdl);
 
 	ht_probe = map_get(&hypertrace_map, vmid, id);
 	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1)
 		dtrace_vprobe(vmhdl, id, dtv_args);
+}
+
+/*
+ * Get the thread ID of the VM.
+ */
+static lwpid_t
+hypertrace_priv_gettid(void *vmhdl)
+{
+
+	return (vmm_gettid == NULL ? 0 : vmm_gettid(vmhdl));
+}
+
+/*
+ * Get a unique identifier of each vm (uint16_t). This is used to scope
+ * thread-local storage in the DTrace probe context.
+ */
+static uint16_t
+hypertrace_priv_getns(void *vmhdl)
+{
+
+	return (vmm_getid == NULL ? 0 : vmm_getid(vmhdl));
+}
+
+static const char *
+hypertrace_priv_getname(void *vmhdl)
+{
+
+	return (vmm_getname == NULL ? 0 : vmm_getname(vmhdl));
 }
 
 /*

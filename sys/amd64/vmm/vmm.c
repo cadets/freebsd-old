@@ -35,66 +35,63 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/hypertrace.h>
 #include <sys/kernel.h>
-#include <sys/module.h>
-#include <sys/sysctl.h>
-#include <sys/malloc.h>
-#include <sys/pcpu.h>
 #include <sys/lock.h>
+#include <sys/malloc.h>
+#include <sys/module.h>
 #include <sys/mutex.h>
+#include <sys/pcpu.h>
 #include <sys/proc.h>
 #include <sys/rwlock.h>
 #include <sys/sched.h>
 #include <sys/smp.h>
+#include <sys/sysctl.h>
 #include <sys/vnode.h>
-#include <sys/systm.h>
 
 #include <vm/vm.h>
-#include <vm/vm_param.h>
-#include <vm/vm_extern.h>
-#include <vm/vm_object.h>
-#include <vm/vm_page.h>
 #include <vm/pmap.h>
-#include <vm/vm_map.h>
-#include <vm/vm_pager.h>
-#include <vm/vm_kern.h>
-#include <vm/vnode_pager.h>
 #include <vm/swap_pager.h>
 #include <vm/uma.h>
+#include <vm/vm_extern.h>
+#include <vm/vm_kern.h>
+#include <vm/vm_map.h>
+#include <vm/vm_object.h>
+#include <vm/vm_page.h>
+#include <vm/vm_pager.h>
+#include <vm/vm_param.h>
+#include <vm/vnode_pager.h>
 
+#include <machine/bhyve_hypercall.h>
 #include <machine/cpu.h>
+#include <machine/md_var.h>
 #include <machine/pcb.h>
 #include <machine/smp.h>
-#include <machine/md_var.h>
-#include <machine/bhyve_hypercall.h>
-#include <x86/psl.h>
-#include <x86/apicreg.h>
-#include <x86/ifunc.h>
-
 #include <machine/vmm.h>
 #include <machine/vmm_dev.h>
 #include <machine/vmm_instruction_emul.h>
 #include <machine/vmm_snapshot.h>
 
-#include <dtvirt.h>
+#include <x86/apicreg.h>
+#include <x86/ifunc.h>
+#include <x86/psl.h>
 
-#include "vmm_ioport.h"
-#include "vmm_ktr.h"
-#include "vmm_host.h"
-#include "vmm_mem.h"
-#include "vmm_util.h"
+#include "io/iommu.h"
+#include "io/ppt.h"
 #include "vatpic.h"
 #include "vatpit.h"
 #include "vhpet.h"
 #include "vioapic.h"
 #include "vlapic.h"
+#include "vmm_host.h"
+#include "vmm_ioport.h"
+#include "vmm_ktr.h"
+#include "vmm_lapic.h"
+#include "vmm_mem.h"
+#include "vmm_stat.h"
+#include "vmm_util.h"
 #include "vpmtmr.h"
 #include "vrtc.h"
-#include "vmm_stat.h"
-#include "vmm_lapic.h"
-
-#include "io/ppt.h"
-#include "io/iommu.h"
 
 struct vlapic;
 
@@ -569,7 +566,7 @@ static moduledata_t vmm_kmod = {
  */
 DECLARE_MODULE(vmm, vmm_kmod, SI_SUB_SMP + 1, SI_ORDER_ANY);
 MODULE_VERSION(vmm, 1);
-MODULE_DEPEND(vmm, dtvirt, 1, 1, 1);
+MODULE_DEPEND(vmm, hypertrace, 1, 1, 1);
 
 static void
 vm_init(struct vm *vm, bool create)
@@ -1926,7 +1923,7 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	    struct vm_hdl), M_VM, M_ZERO | M_WAITOK);
 	struct seg_desc ds_desc;
 	uintptr_t dt_probe_args[5];
-	struct dtvirt_args dtv_args;
+	hypertrace_args_t htr_args;
 	int err;
 
 	vhdl->vm = vm;
@@ -1942,11 +1939,11 @@ hc_handle_dtrace_probe(struct vm *vm, int vcpuid,
 	    __func__, err));
 
 	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base,
-	    args[1], sizeof(struct dtvirt_args), paging, &dtv_args);
+	    args[1], sizeof(hypertrace_args_t), paging, &htr_args);
 	KASSERT(err == 0, ("%s: error %d copying the arguments",
 	    __func__, err));
 
-	dtvirt_probe(vhdl, (int)args[0], &dtv_args);
+	hypertrace_probe(vhdl, (int)args[0], &htr_args);
 	return (HYPERCALL_RET_SUCCESS);
 }
 

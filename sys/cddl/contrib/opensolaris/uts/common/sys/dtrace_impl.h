@@ -83,7 +83,7 @@ struct dtrace_action;
 struct dtrace_provider;
 struct dtrace_dist;
 struct dtrace_state;
-struct dtvirt_args;
+struct hypertrace_args;
 
 typedef struct dtrace_probe dtrace_probe_t;
 typedef struct dtrace_ecb dtrace_ecb_t;
@@ -970,7 +970,7 @@ typedef struct dtrace_mstate {
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
 	void *dtms_vmhdl;			/* current VM handle */
-	struct dtvirt_args *dtms_dtvargs;	/* VM args */
+	struct hypertrace_args *dtms_htrargs;	/* HyperTrace arguments */
 } dtrace_mstate_t;
 
 #define	DTRACE_COND_OWNER	0x1

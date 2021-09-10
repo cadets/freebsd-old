@@ -139,8 +139,6 @@
 #include <sys/sysctl.h>
 #include <sys/hash.h>
 #include <machine/vmm.h>
-#include <dtvirt.h>
-
 
 #include <sys/mount.h>
 #undef AT_UID
@@ -414,13 +412,13 @@ static dtrace_helptrace_t *dtrace_helptrace_buffer;
 static uint32_t		dtrace_helptrace_next = 0;
 static int		dtrace_helptrace_wrapped = 0;
 
-/*
- * DTrace DTVIRT hooks.
- */
 
-lwpid_t (*dtvirt_gettid)(void *);
-uint16_t (*dtvirt_getns)(void *);
-const char *(*dtvirt_getname)(void *);
+/*
+ * HyperTrace hooks.
+ */
+lwpid_t    (*hypertrace_gettid)(void *);
+uint16_t   (*hypertrace_getns)(void *);
+const char *(*hypertrace_getname)(void *);
 
 /*
  * DTrace Error Hashing
@@ -479,38 +477,42 @@ static kmutex_t dtrace_errlock;
  * signature.
  */
 #ifdef illumos
-#define	DTRACE_TLS_THRKEY(where) { \
-	uint_t intr = 0; \
-	uint_t actv = CPU->cpu_intr_actv >> (LOCK_LEVEL + 1); \
-	for (; actv; actv >>= 1) \
-		intr++; \
-	ASSERT(intr < (1 << 3)); \
-	(where) = ((curthread->t_tid + DIF_VARIABLE_MAX) & \
-	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
-}
+#define DTRACE_TLS_THRKEY(where)                                      \
+	{                                                             \
+		uint_t intr = 0;                                      \
+		uint_t actv = CPU->cpu_intr_actv >> (LOCK_LEVEL + 1); \
+		for (; actv; actv >>= 1)                              \
+			intr++;                                       \
+		ASSERT(intr < (1 << 3));                              \
+		(where) = ((curthread->t_tid + DIF_VARIABLE_MAX) &    \
+			      (((uint64_t)1 << 61) - 1)) |            \
+		    ((uint64_t)intr << 61);                           \
+	}
 #else
 
-#define	DTRACE_TLS_THRKEY(mstate, where) {	  \
-	solaris_cpu_t *_c = &solaris_cpu[curcpu]; \
-	uint_t intr = 0; \
-	uint_t actv = _c->cpu_intr_actv; \
-	lwpid_t tid; \
-	uint16_t ns; \
-	void *vmhdl = mstate->dtms_vmhdl; \
-	for (; actv; actv >>= 1) \
-		intr++; \
-	ASSERT(intr < (1 << 3)); \
-	if (vmhdl) { \
-		tid = dtvirt_gettid(vmhdl); \
-		ns = dtvirt_getns(vmhdl); \
-	} \
-	else { \
-		tid = curthread->td_tid; \
-		ns = 0; \
-	} \
-	(where) = (((uint64_t)ns << 33) | (tid + DIF_VARIABLE_MAX) & \
-	    (((uint64_t)1 << 61) - 1)) | ((uint64_t)intr << 61); \
-}
+#define DTRACE_TLS_THRKEY(mstate, where)                       \
+	{                                                      \
+		solaris_cpu_t *_c = &solaris_cpu[curcpu];      \
+		uint_t intr = 0;                               \
+		uint_t actv = _c->cpu_intr_actv;               \
+		lwpid_t tid;                                   \
+		uint16_t ns;                                   \
+		void *vmhdl = mstate->dtms_vmhdl;              \
+		for (; actv; actv >>= 1)                       \
+			intr++;                                \
+		ASSERT(intr < (1 << 3));                       \
+		if (vmhdl) {                                   \
+			tid = hypertrace_gettid(vmhdl);        \
+			ns = hypertrace_getns(vmhdl);          \
+		} else {                                       \
+			tid = curthread->td_tid;               \
+			ns = 0;                                \
+		}                                              \
+		(where) = (((uint64_t)ns << 33) |              \
+			      (tid + DIF_VARIABLE_MAX) &       \
+				  (((uint64_t)1 << 61) - 1)) | \
+		    ((uint64_t)intr << 61);                    \
+	}
 #endif
 
 #define	DT_BSWAP_8(x)	((x) & 0xff)
@@ -3553,7 +3555,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		}
 
 		retval.dttr_value =
-		    (uint64_t)(uintptr_t)mstate->dtms_dtvargs->dtv_curthread;
+		    (uint64_t)(uintptr_t)mstate->dtms_htrargs->htr_curthread;
 		retval.dttr_vmhdl = mstate->dtms_vmhdl;
 		return (retval);
 
@@ -3820,7 +3822,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		if (mstate->dtms_probe->dtpr_vmid == 0)
 			retval.dttr_value = (uint64_t)curproc->p_pid;
 		else
-			retval.dttr_value = (uint64_t)mstate->dtms_dtvargs->dtv_pid;
+			retval.dttr_value = (uint64_t)mstate->dtms_htrargs->htr_pid;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -3852,9 +3854,9 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			else
 				retval.dttr_value = curproc->p_pptr->p_pid;
 		else {
-			if (mstate->dtms_dtvargs->dtv_pid == 0)
+			if (mstate->dtms_htrargs->htr_pid == 0)
 				return (nullretval);
-			retval.dttr_value = mstate->dtms_dtvargs->dtv_ppid;
+			retval.dttr_value = mstate->dtms_htrargs->htr_ppid;
 		}
 
 		retval.dttr_vmhdl = NULL;
@@ -3874,7 +3876,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			retval.dttr_value = (uint64_t)curthread->t_tid;
 		else
 			retval.dttr_value =
-			    (uint64_t)mstate->dtms_dtvargs->dtv_tid;
+			    (uint64_t)mstate->dtms_htrargs->htr_tid;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -3893,12 +3895,12 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 				p_args->ar_length, state, mstate);
 			retval.dttr_vmhdl = NULL;
 		} else {
-			if (mstate->dtms_dtvargs->dtv_execargs == NULL)
+			if (mstate->dtms_htrargs->htr_execargs == NULL)
 				return (nullretval);
 
 			retval.dttr_value = dtrace_dif_varstrz(
-			    (uintptr_t)mstate->dtms_dtvargs->dtv_execargs,
-			    mstate->dtms_dtvargs->dtv_execargs_len, state,
+			    (uintptr_t)mstate->dtms_htrargs->htr_execargs,
+			    mstate->dtms_htrargs->htr_execargs_len, state,
 			    mstate);
 			retval.dttr_vmhdl = mstate->dtms_vmhdl;
 		}
@@ -3935,7 +3937,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			retval.dttr_vmhdl = NULL;
 		} else {
 			retval.dttr_value = dtrace_dif_varstr(
-			    (uintptr_t)mstate->dtms_dtvargs->dtv_execname,
+			    (uintptr_t)mstate->dtms_htrargs->htr_execname,
 			    state, mstate);
 			retval.dttr_vmhdl = mstate->dtms_vmhdl;
 		}
@@ -3980,7 +3982,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			retval.dttr_vmhdl = NULL;
 		} else {
 			retval.dttr_value = dtrace_dif_varstr(
-			    (uintptr_t)mstate->dtms_dtvargs->dtv_jailname,
+			    (uintptr_t)mstate->dtms_htrargs->htr_jailname,
 			    state, mstate);
 			retval.dttr_vmhdl = mstate->dtms_vmhdl;
 		}
@@ -3996,7 +3998,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			    (uint64_t)curthread->td_ucred->cr_prison->pr_id;
 		else
 			retval.dttr_value =
-			    (uint64_t)mstate->dtms_dtvargs->dtv_jid;
+			    (uint64_t)mstate->dtms_htrargs->htr_jid;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -4031,7 +4033,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			retval.dttr_value = (uint64_t)curthread->td_ucred->cr_uid;
 		else
 			retval.dttr_value =
-			    (uint64_t)mstate->dtms_dtvargs->dtv_uid;
+			    (uint64_t)mstate->dtms_htrargs->htr_uid;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -4065,7 +4067,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			    (uint64_t)curthread->td_ucred->cr_gid;
 		else
 			retval.dttr_value =
-			    (uint64_t)mstate->dtms_dtvargs->dtv_gid;
+			    (uint64_t)mstate->dtms_htrargs->htr_gid;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -4098,7 +4100,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		if (mstate->dtms_probe->dtpr_vmid == 0)
 			retval.dttr_value = curthread->td_errno;
 		else
-			retval.dttr_value = mstate->dtms_dtvargs->dtv_errno;
+			retval.dttr_value = mstate->dtms_htrargs->htr_errno;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -4110,7 +4112,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		if (mstate->dtms_probe->dtpr_vmid == 0)
 			retval.dttr_value = curcpu;
 		else
-			retval.dttr_value = mstate->dtms_dtvargs->dtv_curcpu;
+			retval.dttr_value = mstate->dtms_htrargs->htr_curcpu;
 
 		retval.dttr_vmhdl = NULL;
 		return (retval);
@@ -4122,7 +4124,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			    (uintptr_t) "host", state, mstate);
 		else
 			retval.dttr_value = dtrace_dif_varstr(
-			    (uintptr_t)dtvirt_getname(mstate->dtms_vmhdl),
+			    (uintptr_t)hypertrace_getname(mstate->dtms_vmhdl),
 			    state, mstate);
 
 		retval.dttr_vmhdl = NULL;
@@ -7745,8 +7747,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				ASSERT(mstate->dtms_probe != NULL);
 				ASSERT(curthread != NULL);
 				ASSERT(curthread->td_ucred != NULL);
-				struct dtvirt_args dtv_args = {
-					.dtv_args = {
+				hypertrace_args_t htr_args = {
+					.htr_args = {
 						mstate->dtms_arg[0],
 						mstate->dtms_arg[1],
 						mstate->dtms_arg[2],
@@ -7758,48 +7760,48 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 						0,
 						0
 					},
-					.dtv_curthread = curthread,
-					.dtv_execname = NULL, /* needs check */
-					.dtv_execargs = NULL, /* needs check */
-					.dtv_tid = curthread->td_tid,
-					.dtv_pid = 0, /* needs check */
-					.dtv_ppid = 0, /* needs check */
-					.dtv_uid = 0, /* needs check */
-					.dtv_gid = 0, /* needs check */
-					.dtv_errno = curthread->td_errno,
-					.dtv_curcpu = curcpu,
-					.dtv_execargs_len = 0, /* needs check */
-					.dtv_jid = jail->pr_id,
-					.dtv_jailname = jail->pr_name,
+					.htr_curthread = curthread,
+					.htr_execname = NULL, /* needs check */
+					.htr_execargs = NULL, /* needs check */
+					.htr_tid = curthread->td_tid,
+					.htr_pid = 0, /* needs check */
+					.htr_ppid = 0, /* needs check */
+					.htr_uid = 0, /* needs check */
+					.htr_gid = 0, /* needs check */
+					.htr_errno = curthread->td_errno,
+					.htr_curcpu = curcpu,
+					.htr_execargs_len = 0, /* needs check */
+					.htr_jid = jail->pr_id,
+					.htr_jailname = jail->pr_name,
 				};
 
 				if (curproc != NULL) {
-					dtv_args.dtv_execname =
+					htr_args.htr_execname =
 					    curproc->p_comm;
-					dtv_args.dtv_pid = curproc->p_pid;
+					htr_args.htr_pid = curproc->p_pid;
 
 					if (curproc->p_args != NULL) {
-						dtv_args.dtv_execargs =
+						htr_args.htr_execargs =
 						    curproc->p_args->ar_args;
-						dtv_args.dtv_execargs_len =
+						htr_args.htr_execargs_len =
 						    curproc->p_args->ar_length;
 					}
 
 					if (curproc->p_pid != proc0.p_pid)
-						dtv_args.dtv_ppid =
+						htr_args.htr_ppid =
 						    curproc->p_pptr->p_pid;
 				}
 
 				if (curthread->td_ucred) {
-					dtv_args.dtv_uid =
+					htr_args.htr_uid =
 					    curthread->td_ucred->cr_uid;
-					dtv_args.dtv_gid =
+					htr_args.htr_gid =
 					    curthread->td_ucred->cr_gid;
 				}
 
 				hypercall_dtrace_probe(
 				    mstate->dtms_probe->dtpr_id,
-				    (uintptr_t)&dtv_args, curthread->td_tid);
+				    (uintptr_t)&htr_args, curthread->td_tid);
 			}
 			
 			break;
@@ -8262,7 +8264,7 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
+dtrace_vprobe(void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 {
 	processorid_t cpuid;
 	dtrace_icookie_t cookie;
@@ -8294,15 +8296,15 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 #endif
 
 	/*
-	 * In the case of vmhdl being NULL, dtvirt_getns will return 0
+	 * In the case of vmhdl being NULL, hypertrace_getns will return 0
 	 * giving us the host's probes.
 	 */
 	if (vmhdl) {
 		/*
 		 * Make sure this doesn't get pulled from under us.
 		 */
-		ASSERT(dtvirt_getns != NULL);
-		vmid = dtvirt_getns(vmhdl);
+		ASSERT(hypertrace_getns != NULL);
+		vmid = hypertrace_getns(vmhdl);
 		if (vmid >= HYPERTRACE_MAX_VMS) {
 			if (dtrace_err_verbose)
 				cmn_err(CE_WARN,
@@ -8392,18 +8394,18 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, struct dtvirt_args *dtv_args)
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
 	mstate.dtms_strtok = 0;
-	arg0 = dtv_args->dtv_args[0];
-	arg1 = dtv_args->dtv_args[1];
-	arg2 = dtv_args->dtv_args[2];
-	arg3 = dtv_args->dtv_args[3];
-	arg4 = dtv_args->dtv_args[4];
-	mstate.dtms_arg[0] = dtv_args->dtv_args[0];
-	mstate.dtms_arg[1] = dtv_args->dtv_args[1];
-	mstate.dtms_arg[2] = dtv_args->dtv_args[2];
-	mstate.dtms_arg[3] = dtv_args->dtv_args[3];
-	mstate.dtms_arg[4] = dtv_args->dtv_args[4];
+	arg0 = htr_args->htr_args[0];
+	arg1 = htr_args->htr_args[1];
+	arg2 = htr_args->htr_args[2];
+	arg3 = htr_args->htr_args[3];
+	arg4 = htr_args->htr_args[4];
+	mstate.dtms_arg[0] = htr_args->htr_args[0];
+	mstate.dtms_arg[1] = htr_args->htr_args[1];
+	mstate.dtms_arg[2] = htr_args->htr_args[2];
+	mstate.dtms_arg[3] = htr_args->htr_args[3];
+	mstate.dtms_arg[4] = htr_args->htr_args[4];
 	mstate.dtms_vmhdl = vmhdl;
-	mstate.dtms_dtvargs = dtv_args;
+	mstate.dtms_htrargs = htr_args;
 
 	flags = (volatile uint16_t *)&cpu_core[cpuid].cpuc_dtrace_flags;
 
@@ -9032,11 +9034,11 @@ dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
 {
 
-	struct dtvirt_args dtv_args = {
+	hypertrace_args_t htr_args = {
 		{ arg0, arg1, arg2, arg3, arg4, 0, 0, 0, 0 },
 	};
 
-	dtrace_vprobe(NULL, id, &dtv_args);
+	dtrace_vprobe(NULL, id, &htr_args);
 }
 
 

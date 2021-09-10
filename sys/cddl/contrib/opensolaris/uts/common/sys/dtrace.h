@@ -115,7 +115,7 @@ typedef int64_t dtrace_aggvarid_t;	/* aggregation variable identifier */
 typedef uint16_t dtrace_actkind_t;	/* action kind */
 typedef int64_t dtrace_optval_t;	/* option value */
 typedef uint32_t dtrace_cacheid_t;	/* predicate cache identifier */
-struct dtvirt_args;
+struct hypertrace_args;
 
 typedef enum dtrace_probespec {
 	DTRACE_PROBESPEC_NONE = -1,
@@ -2324,7 +2324,7 @@ extern void dtrace_vprobespace_destroy(uint16_t);
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
-extern void dtrace_vprobe(void *, dtrace_id_t, struct dtvirt_args *);
+extern void dtrace_vprobe(void *, dtrace_id_t, struct hypertrace_args *);
 
 /*
  * DTrace Meta Provider API

@@ -1,10 +1,10 @@
-#ifndef _DTVIRT_H_
-#define _DTVIRT_H_
+#ifndef _HYPERTRACE_IMPL_H_
+#define _HYPERTRACE_IMPL_H_
 
 #include <sys/types.h>
 #include <sys/proc.h>
 
-#define	DTVIRT_ARGS_MAX	10
+#define	HYPERTRACE_ARGS_MAX	10
 
 /*
  * The arguments that we pass in from the guest to host to implement builtin
@@ -13,26 +13,26 @@
  * rather than the guest. However, for simplicity's sake they are all set in the
  * guest currently.
  */
-struct dtvirt_args {
-	uintptr_t dtv_args[DTVIRT_ARGS_MAX];	/* guest probe args */
-	void *dtv_curthread;			/* guest thread */
-	char *dtv_execname;			/* (v) guest execname */
-	char *dtv_execargs;			/* (v) guest execargs */
-	lwpid_t dtv_tid;			/* guest tid */
-	pid_t dtv_pid;				/* guest pid */
-	pid_t dtv_ppid;				/* guest ppid */
-	uid_t dtv_uid;				/* guest uid */
-	gid_t dtv_gid;				/* guest gid */
-	int dtv_errno;				/* guest errno */
-	u_int dtv_curcpu;			/* (h) guest curcpu */
-	u_int dtv_execargs_len;			/* (v) guest execargs */
-	char *dtv_jailname;			/* (v) guest jailname */
-	int dtv_jid;				/* guest jid */
+struct hypertrace_args {
+	uintptr_t htr_args[HYPERTRACE_ARGS_MAX]; /* guest probe args */
+	void *htr_curthread;                     /* guest thread */
+	char *htr_execname;                      /* (v) guest execname */
+	char *htr_execargs;                      /* (v) guest execargs */
+	lwpid_t htr_tid;                         /* guest tid */
+	pid_t htr_pid;                           /* guest pid */
+	pid_t htr_ppid;                          /* guest ppid */
+	uid_t htr_uid;                           /* guest uid */
+	gid_t htr_gid;                           /* guest gid */
+	int htr_errno;                           /* guest errno */
+	u_int htr_curcpu;                        /* (h) guest curcpu */
+	u_int htr_execargs_len;                  /* (v) guest execargs */
+	char *htr_jailname;                      /* (v) guest jailname */
+	int htr_jid;                             /* guest jid */
 };
 
-extern void dtvirt_probe(void *, int, struct dtvirt_args *);
-extern lwpid_t (*dtvirt_gettid)(void *);
-extern uint16_t (*dtvirt_getns)(void *);
-extern const char *(*dtvirt_getname)(void *);
+extern void hypertrace_probe(void *, int, struct hypertrace_args *);
+extern lwpid_t (*hypertrace_gettid)(void *);
+extern uint16_t (*hypertrace_getns)(void *);
+extern const char *(*hypertrace_getname)(void *);
 
-#endif
+#endif /* _HYPERTRACE_IMPL_H_ */

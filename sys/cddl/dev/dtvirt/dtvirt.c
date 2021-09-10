@@ -1,11 +1,24 @@
 /*-
- * Copyright (c) 2018 Domagoj Stolfa
+ * Copyright (c) 2018, 2021 Domagoj Stolfa
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
  * Computer Laboratory, and Memorial University under DARPA/AFRL contract
  * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
  * (TC) research program.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +42,7 @@
  * SUCH DAMAGE.
  */
 
-/*
- * dtvirt.c is a simple proxy between DTrace and vmm due to linking problems.
- * It exposes a number of interfaces via function pointers to access internal
- * vmm state from the DTrace probe context.
- */
-
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -45,37 +51,37 @@ __FBSDID("$FreeBSD$");
 #include <sys/dtrace.h>
 #include <machine/vmm.h>
 
-#include "dtvirt.h"
+#include "hypertrace.h"
 
-static MALLOC_DEFINE(M_DTVIRT, "dtvirt", "");
-static lwpid_t dtvirt_priv_gettid(void *);
-static uint16_t dtvirt_priv_getns(void *);
-static const char *dtvirt_priv_getname(void *);
+static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
+static lwpid_t hypertrace_priv_gettid(void *);
+static uint16_t hypertrace_priv_getns(void *);
+static const char *hypertrace_priv_getname(void *);
 
 lwpid_t (*vmm_gettid)(void *vmhdl);
 uint16_t (*vmm_getid)(void *vmhdl);
 const char *(*vmm_getname)(void *vmhdl);
 
 void
-dtvirt_probe(void *vmhdl, int probeid, struct dtvirt_args *dtv_args)
+hypertrace_probe(void *vmhdl, int probeid, struct hypertrace_args *htr_args)
 {
 
-	dtrace_vprobe(vmhdl, probeid, dtv_args);
+	dtrace_vprobe(vmhdl, probeid, htr_args);
 }
 
 static int
-dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
+hypertrace_handler(module_t mod __unused, int what, void *arg __unused)
 {
 	switch (what) {
 	case MOD_LOAD:
-		dtvirt_gettid = dtvirt_priv_gettid;
-		dtvirt_getns = dtvirt_priv_getns;
-		dtvirt_getname = dtvirt_priv_getname;
+		hypertrace_gettid = hypertrace_priv_gettid;
+		hypertrace_getns = hypertrace_priv_getns;
+		hypertrace_getname = hypertrace_priv_getname;
 		break;
 	case MOD_UNLOAD:
-		dtvirt_gettid = NULL;
-		dtvirt_getns = NULL;
-		dtvirt_getname = NULL;
+		hypertrace_gettid = NULL;
+		hypertrace_getns = NULL;
+		hypertrace_getname = NULL;
 		break;
 	default:
 		break;
@@ -87,7 +93,7 @@ dtvirt_handler(module_t mod __unused, int what, void *arg __unused)
  * Get the thread ID of the VM.
  */
 static lwpid_t
-dtvirt_priv_gettid(void *vmhdl)
+hypertrace_priv_gettid(void *vmhdl)
 {
 
 	return (vmm_gettid == NULL ? 0 : vmm_gettid(vmhdl));
@@ -98,25 +104,25 @@ dtvirt_priv_gettid(void *vmhdl)
  * thread-local storage in the DTrace probe context.
  */
 static uint16_t
-dtvirt_priv_getns(void *vmhdl)
+hypertrace_priv_getns(void *vmhdl)
 {
 
 	return (vmm_getid == NULL ? 0 : vmm_getid(vmhdl));
 }
 
 static const char *
-dtvirt_priv_getname(void *vmhdl)
+hypertrace_priv_getname(void *vmhdl)
 {
 
 	return (vmm_getname == NULL ? 0 : vmm_getname(vmhdl));
 }
 
-static moduledata_t dtvirt_kmod = {
-	"dtvirt",
-	dtvirt_handler,
+static moduledata_t hypertrace_kmod = {
+	"hypertrace",
+	hypertrace_handler,
 	NULL
 };
 
-DECLARE_MODULE(dtvirt, dtvirt_kmod, SI_SUB_DTRACE + 1, SI_ORDER_ANY);
-MODULE_VERSION(dtvirt, 1);
-MODULE_DEPEND(dtvirt, dtrace, 1, 1, 1);
+DECLARE_MODULE(hypertrace, hypertrace_kmod, SI_SUB_DTRACE + 1, SI_ORDER_ANY);
+MODULE_VERSION(hypertrace, 1);
+MODULE_DEPEND(hypertrace, dtrace, 1, 1, 1);

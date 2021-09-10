@@ -9,7 +9,6 @@ SUBDIR=		dtaudit		\
 		dtrace		\
 		dtraceall	\
 		dtrace_test	\
-		dtvirt		\
 		hypertrace	\
 		profile		\
 		prototype	\

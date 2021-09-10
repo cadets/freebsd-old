@@ -37,8 +37,8 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _HYPERTRACE_H_
-#define _HYPERTRACE_H_
+#ifndef __HYPERTRACE_IMPL_H_
+#define __HYPERTRACE_IMPL_H_
 
 #include <sys/dtrace.h>
 #include <sys/hypertrace.h>
@@ -71,4 +71,4 @@ void map_insert(hypertrace_map_t *, hypertrace_probe_t *);
 void map_rm(hypertrace_map_t *, hypertrace_probe_t *);
 
 
-#endif /* _HYPERTRACE_H_ */
+#endif /* __HYPERTRACE_IMPL_H_ */
