@@ -419,6 +419,8 @@ static int		dtrace_helptrace_wrapped = 0;
 lwpid_t    (*hypertrace_gettid)(void *);
 uint16_t   (*hypertrace_getns)(void *);
 const char *(*hypertrace_getname)(void *);
+int        (*hypertrace_rmprobe)(uint16_t, int);
+int        (*hypertrace_create_probes)(void *, size_t);
 
 /*
  * DTrace Error Hashing

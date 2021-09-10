@@ -12,12 +12,6 @@
 #define	HYPERTRACE_ARGS_MAX     10
 
 /*
- * Public interfaces to HyperTrace
- */ 
-int hypertrace_create_probes(void *, size_t);
-int hypertrace_rmprobe(uint16_t, int);
-
-/*
  * XXX: This should be defined to dtrace_id_t, but because of annoying linking
  * issues, we have to do it this way. It should be fixed, but for now we just
  * have to manually keep dtrace_id_t and hypertrace_id_t in sync.
@@ -52,12 +46,15 @@ typedef struct hypertrace_args {
  * Handles that depend on hypertrace.ko being loaded. This would normally not be
  * needed, but the weird interfaces between CDDL and BSD code in the kernel make
  * it necessary for anything to work. Maybe there is a better way, but this will
- * do for now.
+ * do for now. This acts as a public interface to HyperTrace for both FreeBSD
+ * and DTrace.
  */
-extern void      hypertrace_probe(void *, hypertrace_id_t, hypertrace_args_t *);
-extern lwpid_t   (*hypertrace_gettid)(void *);
-extern uint16_t  (*hypertrace_getns)(void *);
+extern void       hypertrace_probe(void *, hypertrace_id_t, hypertrace_args_t *);
+extern lwpid_t    (*hypertrace_gettid)(void *);
+extern uint16_t   (*hypertrace_getns)(void *);
 extern const char *(*hypertrace_getname)(void *);
+extern int        (*hypertrace_create_probes)(void *, size_t);
+extern int        (*hypertrace_rmprobe)(uint16_t, int);
 
 
 #endif // __HYPERTRACE_H_

@@ -56,6 +56,8 @@ static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
 static lwpid_t    hypertrace_priv_gettid(void *);
 static uint16_t   hypertrace_priv_getns(void *);
 static const char *hypertrace_priv_getname(void *);
+static int        hypertrace_priv_rmprobe(uint16_t, int);
+static int        hypertrace_priv_create_probes(void *, size_t);
 
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
@@ -126,15 +128,19 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 
 	switch (type) {
 	case MOD_LOAD:
-		hypertrace_gettid  = hypertrace_priv_gettid;
-		hypertrace_getns   = hypertrace_priv_getns;
-		hypertrace_getname = hypertrace_priv_getname;
+		hypertrace_gettid        = hypertrace_priv_gettid;
+		hypertrace_getns         = hypertrace_priv_getns;
+		hypertrace_getname       = hypertrace_priv_getname;
+		hypertrace_rmprobe       = hypertrace_priv_rmprobe;
+		hypertrace_create_probes = hypertrace_priv_create_probes;
 		break;
 
 	case MOD_UNLOAD:
-		hypertrace_gettid  = NULL;
-		hypertrace_getns   = NULL;
-		hypertrace_getname = NULL;
+		hypertrace_gettid        = NULL;
+		hypertrace_getns         = NULL;
+		hypertrace_getname       = NULL;
+		hypertrace_rmprobe       = NULL;
+		hypertrace_create_probes = NULL;
 		break;
 
 	case MOD_SHUTDOWN:
@@ -288,8 +294,8 @@ hypertrace_get_vprovider(const char *provider)
 	return (vprov);
 }
 
-int
-hypertrace_create_probes(void *_vprobes, size_t nvprobes)
+static int
+hypertrace_priv_create_probes(void *_vprobes, size_t nvprobes)
 {
 	size_t i;
 	dtrace_probedesc_t *vprobe;
@@ -336,8 +342,8 @@ hypertrace_create_probes(void *_vprobes, size_t nvprobes)
 	return (0);
 }
 
-int
-hypertrace_rmprobe(uint16_t vmid, int id)
+static int
+hypertrace_priv_rmprobe(uint16_t vmid, int id)
 {
 	hypertrace_vprovider_t *vprov;
 	hypertrace_probe_t *ht_probe;
