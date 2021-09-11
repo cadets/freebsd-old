@@ -37,6 +37,14 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * The HyperTrace module is meant to be called from a tracing framework, such as
+ * DTrace. It is responsible for managing virtual probes and providers in a way
+ * that allows the tracing system to enable and disable virtual probes in a
+ * race-free way (assuming the system relies on memory barriers and syncs with
+ * an asynchronous way to fully disable tracing).
+ */
+
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -56,17 +64,20 @@ static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
 static lwpid_t    hypertrace_priv_gettid(void *);
 static uint16_t   hypertrace_priv_getns(void *);
 static const char *hypertrace_priv_getname(void *);
-static int        hypertrace_priv_rmprobe(uint16_t, int);
-static int        hypertrace_priv_create_probes(void *, size_t);
+static int        hypertrace_priv_rmprobe(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_create_probes(uint16_t, void *, size_t);
+static void       hypertrace_priv_enable(uint16_t, hypertrace_id_t);
+static void       hypertrace_priv_disable(uint16_t, hypertrace_id_t);
+static void       hypertrace_priv_suspend(uint16_t, hypertrace_id_t);
+static void       hypertrace_priv_resume(uint16_t, hypertrace_id_t);
+
+lwpid_t    (*vmm_gettid)(void *);
+uint16_t   (*vmm_getid)(void *);
+const char *(*vmm_getname)(void *);
 
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
-static void     hypertrace_destroy(void *, dtrace_id_t, void *);
-static void     hypertrace_enable(void *, dtrace_id_t, void *);
-static void     hypertrace_disable(void *, dtrace_id_t, void *);
 static void     hypertrace_load(void *);
-static void     hypertrace_suspend(void *, dtrace_id_t, void *);
-static void     hypertrace_resume(void *, dtrace_id_t, void *);
 
 static struct cdevsw hypertrace_cdevsw = {
 	.d_version         = D_VERSION,
@@ -89,8 +100,8 @@ static struct cdevsw hypertrace_cdevsw = {
 
 static struct cdev            *hypertrace_cdev;
 static int         __unused   hypertrace_verbose = 0;
-static hypertrace_map_t       hypertrace_map;
-static hypertrace_vprovider_t *provtab;
+static hypertrace_map_t       *hypertrace_map;
+static hypertrace_vprovider_t **provtab;
 
 static void
 hypertrace_load(void *dummy __unused)
@@ -109,16 +120,9 @@ hypertrace_load(void *dummy __unused)
 static int
 hypertrace_unload()
 {
-	int error = 0;
-
-	/*
-	 * Unregister the provider.
-	 */
-	if ((error = dtrace_unregister(hypertrace_id)) != 0)
-		return (error);
 
 	destroy_dev(hypertrace_cdev);
-	return (error);
+	return (0);
 }
 
 static int
@@ -128,19 +132,47 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 
 	switch (type) {
 	case MOD_LOAD:
+		/*
+		 * Initialize the provtab and initialize the probe map.
+		 */
+		provtab = kmem_zalloc(
+		    sizeof(hypertrace_vprovider_t *) * HASH_SIZE, KM_SLEEP);
+
+		hypertrace_map = map_init();
+		/*
+		 * Set up the hooks.
+		 */
 		hypertrace_gettid        = hypertrace_priv_gettid;
 		hypertrace_getns         = hypertrace_priv_getns;
 		hypertrace_getname       = hypertrace_priv_getname;
 		hypertrace_rmprobe       = hypertrace_priv_rmprobe;
 		hypertrace_create_probes = hypertrace_priv_create_probes;
+		hypertrace_enable        = hypertrace_priv_enable;
+		hypertrace_disable       = hypertrace_priv_disable;
+		hypertrace_suspend       = hypertrace_priv_suspend;
+		hypertrace_resume        = hypertrace_priv_resume;
 		break;
 
 	case MOD_UNLOAD:
+		/*
+		 * Destroy the hooks.
+		 */
 		hypertrace_gettid        = NULL;
 		hypertrace_getns         = NULL;
 		hypertrace_getname       = NULL;
 		hypertrace_rmprobe       = NULL;
 		hypertrace_create_probes = NULL;
+		hypertrace_enable        = NULL;
+		hypertrace_disable       = NULL;
+		hypertrace_suspend       = NULL;
+		hypertrace_resume        = NULL;
+
+		/*
+		 * Free the provtab and tear down the probe map.	
+		 */
+		kmem_free(
+		    provtab, sizeof(hypertrace_vprovider_t *) * HASH_SIZE);
+		map_teardown(hypertrace_map);
 		break;
 
 	case MOD_SHUTDOWN:
@@ -167,57 +199,40 @@ hypertrace_open(struct cdev *dev __unused, int oflags __unused,
 }
 
 static void
-hypertrace_destroy(void *arg, dtrace_id_t id, void *parg)
-{
-}
-
-static void
-hypertrace_enable(void *arg, dtrace_id_t id, void *parg)
+hypertrace_priv_enable(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
-	uint16_t vmid;
 
-	vmid = hypertrace_priv_getns(parg);
-
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
 	ht_probe->htpb_enabled = 1;
 	ht_probe->htpb_running = 1;
 }
 
 static void
-hypertrace_disable(void *arg, dtrace_id_t id, void *parg)
+hypertrace_priv_disable(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
-	uint16_t vmid;
 
-	vmid = hypertrace_priv_getns(parg);
-	
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 0;
 	ht_probe->htpb_enabled = 0;
 }
 
 static void
-hypertrace_suspend(void *arg, dtrace_id_t id, void *parg)
+hypertrace_priv_suspend(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
-	uint16_t vmid;
 
-	vmid = hypertrace_priv_getns(parg);
-
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 0;
 }
 
 static void
-hypertrace_resume(void *arg, dtrace_id_t id, void *parg)
+hypertrace_priv_resume(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
-	uint16_t vmid;
 
-	vmid = hypertrace_priv_getns(parg);
-
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
 	ht_probe->htpb_running = 1;
 }
 
@@ -229,7 +244,10 @@ hypertrace_probe(void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_args)
 
 	vmid = hypertrace_priv_getns(vmhdl);
 
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return;
+
 	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1)
 		dtrace_vprobe(vmhdl, id, dtv_args);
 }
@@ -278,7 +296,7 @@ hypertrace_get_vprovider(const char *provider)
 	do {
 		hash = murmur3_32_hash(provider, DTRACE_PROVNAMELEN, HASHINIT);
 		hash_ndx = hash & HASH_MASK;
-		vprov = &provtab[hash_ndx];
+		vprov = provtab[hash_ndx];
 	} while (vprov &&
 	    memcmp(provider, vprov->name, DTRACE_PROVNAMELEN) != 0);
 
@@ -290,32 +308,27 @@ hypertrace_get_vprovider(const char *provider)
 
 	memcpy(vprov->name, provider, DTRACE_PROVNAMELEN);
 	ASSERT(vprov->name != NULL);
-	
+
+	/*
+	 * Insert the provider into our provider table.
+	 */
+	provtab[hash_ndx] = vprov;
+
 	return (vprov);
 }
 
 static int
-hypertrace_priv_create_probes(void *_vprobes, size_t nvprobes)
+hypertrace_priv_create_probes(uint16_t vmid, void *_vprobes, size_t nvprobes)
 {
 	size_t i;
 	dtrace_probedesc_t *vprobe;
 	hypertrace_probe_t *htp;
-	hypertrace_vprovider_t *vprov;
+	hypertrace_vprovider_t *vprov = NULL;
 	dtrace_id_t id;
-	uint16_t vmid;
 	dtrace_probedesc_t *vprobes = (dtrace_probedesc_t *)_vprobes;
 
 	for (i = 0; i < nvprobes; i++) {
 		vprobe = &vprobes[i];
-
-		/*
-		 * We require that all of the vmids match. We don't really do
-		 * any cleanup here yet, but we need to.
-		 */
-		if (i > 0 && vmid != vprobes->dtpd_vmid)
-			return (EINVAL);
-
-		vmid = vprobes->dtpd_vmid;
 
 		if (vprobe == NULL)
 			continue;
@@ -335,7 +348,16 @@ hypertrace_priv_create_probes(void *_vprobes, size_t nvprobes)
 		htp->htpb_provider = vprov;
 		htp->htpb_id = id;
 		htp->htpb_vmid = vmid;
-		map_insert(&hypertrace_map, htp);
+
+		/*
+		 * Probes are enabled by default.
+		 *
+		 * XXX: Implement a user-controlled thing based on
+		 * /dev/dtrace/hypertrace.
+		 */
+		htp->htpb_enabled = 1;
+		htp->htpb_running = 1;
+		map_insert(hypertrace_map, htp);
 		vprov->nprobes++;
 	}
 
@@ -343,16 +365,19 @@ hypertrace_priv_create_probes(void *_vprobes, size_t nvprobes)
 }
 
 static int
-hypertrace_priv_rmprobe(uint16_t vmid, int id)
+hypertrace_priv_rmprobe(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_vprovider_t *vprov;
 	hypertrace_probe_t *ht_probe;
 	
-	ht_probe = map_get(&hypertrace_map, vmid, id);
+	ht_probe = map_get(hypertrace_map, vmid, id);
 	if (ht_probe == NULL)
 		return (ESRCH);
 
-	map_rm(&hypertrace_map, ht_probe);
+	if (ht_probe->htpb_enabled)
+		return (EAGAIN);
+
+	map_rm(hypertrace_map, ht_probe);
 
 	vprov = ht_probe->htpb_provider;
 	if (vprov == NULL)

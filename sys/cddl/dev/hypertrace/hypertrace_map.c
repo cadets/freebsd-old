@@ -175,5 +175,4 @@ map_rm(hypertrace_map_t *map, hypertrace_probe_t *probe)
 		    probe->htpb_vmid, probe->htpb_id);
 
 	map->probes[probe->htpb_vmid][probe->htpb_id - 1] = NULL;
-	kmem_free(probe, sizeof(hypertrace_probe_t));
 }

@@ -53,8 +53,12 @@ extern void       hypertrace_probe(void *, hypertrace_id_t, hypertrace_args_t *)
 extern lwpid_t    (*hypertrace_gettid)(void *);
 extern uint16_t   (*hypertrace_getns)(void *);
 extern const char *(*hypertrace_getname)(void *);
-extern int        (*hypertrace_create_probes)(void *, size_t);
-extern int        (*hypertrace_rmprobe)(uint16_t, int);
+extern int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
+extern int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
+extern void       (*hypertrace_enable)(uint16_t, hypertrace_id_t);
+extern void       (*hypertrace_disable)(uint16_t, hypertrace_id_t);
+extern void       (*hypertrace_suspend)(uint16_t, hypertrace_id_t);
+extern void       (*hypertrace_resume)(uint16_t, hypertrace_id_t);
 
 
 #endif // __HYPERTRACE_H_

@@ -995,8 +995,8 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		mutex_enter(&cpu_lock);
 		mutex_enter(&dtrace_lock);
 
-		hypertrace_create_probes(
-		    vprobes_to_create, n_vprobes_to_create);
+		hypertrace_create_probes(vmid, vprobes_to_create,
+		    n_vprobes_to_create);
 
 #if 0
 		/*

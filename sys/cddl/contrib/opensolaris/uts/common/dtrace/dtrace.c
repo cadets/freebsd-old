@@ -419,8 +419,12 @@ static int		dtrace_helptrace_wrapped = 0;
 lwpid_t    (*hypertrace_gettid)(void *);
 uint16_t   (*hypertrace_getns)(void *);
 const char *(*hypertrace_getname)(void *);
-int        (*hypertrace_rmprobe)(uint16_t, int);
-int        (*hypertrace_create_probes)(void *, size_t);
+int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
+void       (*hypertrace_enable)(uint16_t, hypertrace_id_t);
+void       (*hypertrace_disable)(uint16_t, hypertrace_id_t);
+void       (*hypertrace_suspend)(uint16_t, hypertrace_id_t);
+void       (*hypertrace_resume)(uint16_t, hypertrace_id_t);
 
 /*
  * DTrace Error Hashing
@@ -12554,6 +12558,8 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 		if (prov)
 			prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
+		else if (probe->dtpr_vmid > 0)
+			hypertrace_enable(probe->dtpr_vmid, probe->dtpr_id);
 	} else {
 		/*
 		 * This probe is already active.  Swing the last pointer to
@@ -13223,6 +13229,8 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 		if (prov)
 			prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
+		else if (probe->dtpr_vmid > 0)
+			hypertrace_disable(probe->dtpr_vmid, probe->dtpr_id);
 
 		dtrace_sync();
 	} else {
