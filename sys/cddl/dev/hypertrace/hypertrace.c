@@ -309,6 +309,8 @@ hypertrace_get_vprovider(const char *provider)
 	memcpy(vprov->name, provider, DTRACE_PROVNAMELEN);
 	ASSERT(vprov->name != NULL);
 
+	vprov->hash_ndx = hash_ndx;
+
 	/*
 	 * Insert the provider into our provider table.
 	 */
@@ -383,8 +385,10 @@ hypertrace_priv_rmprobe(uint16_t vmid, hypertrace_id_t id)
 	if (vprov == NULL)
 		panic("probe's provider is NULL.");
 
-	if (--vprov->nprobes == 0)
+	if (--vprov->nprobes == 0) {
+		provtab[vprov->hash_ndx] = NULL;
 		kmem_free(vprov, sizeof(hypertrace_vprovider_t));
+	}
 
 	kmem_free(ht_probe, sizeof(hypertrace_probe_t));
 	return (0);

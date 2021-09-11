@@ -998,54 +998,6 @@ dtrace_ioctl(struct cdev *dev, u_long cmd, caddr_t addr,
 		hypertrace_create_probes(vmid, vprobes_to_create,
 		    n_vprobes_to_create);
 
-#if 0
-		/*
-		 * Find out if we need to increment the dtrace_nvmids counter.
-		 * We don't do it here because creating probes can fail, in
-		 * which case we don't want to increment anything.
-		 */
-		if (dtrace_vprobes[vmid] == NULL)
-			needs_increment = 1;
-
-		for (i = 0; i < n_vprobes_to_create; i++) {
-			vprobe = &vprobes_to_create[i];
-
-			/*
-			 * While NULL definitions don't make much sense, we have
-			 * to account for the fact that the guest might fill in
-			 * some bogus data and try things with NULL probe
-			 * descriptions.
-			 */
-			if (vprobe == NULL)
-				continue;
-
-			/*
-			 * We don't need to actually save any of the probe IDs.
-			 * We might wish to report that they were created, but
-			 * it's not really necessary as the subsequent ENABLE
-			 * will give us just that.
-			 */
-			id = dtrace_vprobe_create(vmid, vprobe->dtpd_id,
-			    vprobe->dtpd_provider, vprobe->dtpd_mod,
-			    vprobe->dtpd_func, vprobe->dtpd_name);
-			if (id == DTRACE_IDNONE) {
-				/*
-				 * We don't even try to do anything here. Trying
-				 * to clean up the virtual probe space might
-				 * result in panics, because we'd end up with a
-				 * race condition between the currently enabled
-				 * probes and us cleaning them up.
-				 */
-				mutex_exit(&dtrace_lock);
-				mutex_exit(&cpu_lock);
-				mutex_exit(&dtrace_provider_lock);
-				return (EINVAL);
-			}
-		}
-
-		if (needs_increment)
-			dtrace_nvmids++;
-#endif
 		mutex_exit(&dtrace_lock);
 		mutex_exit(&cpu_lock);
 		mutex_exit(&dtrace_provider_lock);

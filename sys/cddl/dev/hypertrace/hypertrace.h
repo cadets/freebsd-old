@@ -46,6 +46,7 @@
 typedef struct hypertrace_vprovider {
 	char name[DTRACE_PROVNAMELEN]; /* Provider name */
 	size_t nprobes;                /* Number of probes */
+	uint32_t hash_ndx;             /* Index in the hash table */
 } hypertrace_vprovider_t;
 
 typedef struct hypertrace_probe {
