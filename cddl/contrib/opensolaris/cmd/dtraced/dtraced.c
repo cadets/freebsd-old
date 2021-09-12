@@ -2103,11 +2103,13 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				num_idents++;
 
 			if (num_idents > 0) {
+				argv[3] = strdup("-N");
 				argv[4] = malloc(
 				    num_idents * DTRACED_PROGIDENTLEN +
 				    num_idents - 1);
 				memset(argv[4], 0,
-				    num_idents * DTRACED_PROGIDENTLEN);
+				    num_idents * DTRACED_PROGIDENTLEN +
+				    num_idents - 1);
 
 				curptr = argv[4];
 				while ((ident_entry = dt_list_next(
