@@ -114,7 +114,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:N:o:p:P:qs:SU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:N:o:p:P:qrs:SU:vVwx:y:Y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -129,6 +129,8 @@ static int g_pslive;
 static char *g_pname;
 static int g_quiet;
 static int g_flowindent;
+static int g_allow_root_srcident;
+static int g_has_idents;
 static _Atomic int g_intr;
 static _Atomic int g_impatient;
 static _Atomic int g_newline;
@@ -1912,7 +1914,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
-	if (prog_exec == DT_PROG_EXEC) {
+	if ((prog_exec == DT_PROG_EXEC && g_allow_root_srcident) ||
+	    (prog_exec == DT_PROG_EXEC && g_has_idents)) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
 			dfatal("failed to enable program");
 		} else {
@@ -1931,7 +1934,6 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		setup_tracing();
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	}
-
 
 	dtraced_sock = open_dtraced(DTD_SUB_READDATA);
 	if (dtraced_sock == -1)
@@ -2679,6 +2681,7 @@ main(int argc, char *argv[])
 
 			case 'N':
 				dtrace_compile_idents_set(g_dtp, optarg);
+				g_has_idents = 1;
 				break;
 
 			case 'P':
@@ -2691,6 +2694,10 @@ main(int argc, char *argv[])
 			case 'q':
 				if (dtrace_setopt(g_dtp, "quiet", 0) != 0)
 					dfatal("failed to set -q");
+				break;
+
+			case 'r':
+				g_allow_root_srcident = 1;
 				break;
 
 			case 'o':
