@@ -93,6 +93,7 @@ dump_errmsg(const char *msg, ...)
 
 	va_start(ap, msg);
 	if (msg) {
+		fprintf(stderr, "ERROR:    ");
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
@@ -112,6 +113,7 @@ dump_warnmsg(const char *msg, ...)
 
 	va_start(ap, msg);
 	if (msg) {
+		fprintf(stderr, "WARNING:  ");
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
@@ -131,6 +133,7 @@ dump_debugmsg(const char *msg, ...)
 
 	va_start(ap, msg);
 	if (msg) {
+		fprintf(stdout, "DEBUG:    ");
 		vfprintf(stdout, msg, ap);
 		va_end(ap);
 		fprintf(stdout, "\n");
