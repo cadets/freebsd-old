@@ -840,6 +840,7 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 
 	assert(pgp != NULL);
 	pid_to_kill = pgp->dp_pid;
+
 	/*
 	 * It is highly unlikely we will have dtrace running as pid0 or init...
 	 */
