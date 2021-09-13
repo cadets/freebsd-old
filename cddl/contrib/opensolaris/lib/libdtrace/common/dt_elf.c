@@ -2498,6 +2498,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	    (memcmp(eprog->dtep_srcident,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0))) {
 		*err = EAGAIN;
+		errno = *err;
 		memcpy(g_saved_srcident, eprog->dtep_srcident,
 		    DT_PROG_IDENTLEN);
 #ifdef VERBOSE
@@ -2526,7 +2527,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		ident = ident_entry->dtil_ident;
 		assert(ident != NULL);
 
-		if (memcmp(ident, eprog->dtep_srcident, DT_PROG_IDENTLEN) == 0) {
+		if (memcmp(ident, eprog->dtep_srcident,
+		    DT_PROG_IDENTLEN) == 0) {
 			found = 1;
 			break;
 		}
@@ -2536,7 +2538,18 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	if (chk && found == 0) {
 		*err = ENOENT;
+		errno = *err;
 		return (NULL);
+	}
+
+	/*
+	 * Write the srcident to stdout. This is necessary for dtraced to get
+	 * the information it needs. This should only ever happen when dtraced
+	 * calls us -- command line users have no reason to pass '-N'.
+	 */
+	if (chk && found) {
+		write(STDOUT_FILENO, eprog->dtep_srcident, DT_PROG_IDENTLEN);
+		fsync(STDOUT_FILENO);
 	}
 
 	dtelf_state->s_rflags = eprog->dtep_rflags;
