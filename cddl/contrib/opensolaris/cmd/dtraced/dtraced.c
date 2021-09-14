@@ -172,7 +172,7 @@ dump_debugmsg(const char *msg, ...)
 		}                                                  \
 	}
 
-#define SWAIT(s)                                                    \
+#define SEMWAIT(s)                                                  \
 	{                                                           \
 		int err;                                            \
 		err = sem_wait(s);                                  \
@@ -181,7 +181,7 @@ dump_debugmsg(const char *msg, ...)
 		}                                                   \
 	}
 
-#define SPOST(s)                                                    \
+#define SEMPOST(s)                                                  \
 	{                                                           \
 		int err;                                            \
 		err = sem_post(s);                                  \
@@ -800,7 +800,7 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 	}
 
-	SWAIT(&s->socksema);
+	SEMWAIT(&s->socksema);
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
@@ -1671,7 +1671,7 @@ process_consumers(void *_s)
 	}
 
 	s->kq_hdl = kq;
-	SPOST(&s->socksema);
+	SEMPOST(&s->socksema);
 
 	while (atomic_load(&s->shutdown) == 0) {
 		new_events = kevent(kq, NULL, 0, event, 1, NULL);
