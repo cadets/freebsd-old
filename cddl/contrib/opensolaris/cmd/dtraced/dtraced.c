@@ -302,6 +302,7 @@ struct dtd_state {
 	mutex_t killcvmtx;     /* kill list condvar mutex */
 	dt_list_t kill_list;   /* a list of pids to kill */
 	pthread_cond_t killcv; /* kill list condvar */
+	pthread_t reaptd;      /* handle reaping children */
 
 	/*
 	 * Consumer threads
@@ -547,6 +548,7 @@ manage_children(void *_s)
 {
 	struct dtd_state *s = (struct dtd_state *)_s;
 	pidlist_t *kill_entry;
+	int status;
 
 	while (atomic_load(&s->shutdown) == 0) {
 		/*
@@ -591,6 +593,19 @@ manage_children(void *_s)
 	}
 
 	return (_s);
+}
+
+static void *
+reap_children(void *_s)
+{
+	int status, rv;
+
+	for (;;) {
+		sleep(30);
+		do {
+			rv = waitpid(-1, &status, WNOHANG);
+		} while (rv != -1 && rv != 0);
+	}
 }
 
 static int
@@ -2625,6 +2640,12 @@ setup_threads(struct dtd_state *s)
 		return (-1);
 	}
 
+	err = pthread_create(&s->reaptd, NULL, reap_children, s);
+	if (err != 0) {
+		dump_errmsg("Failed to create reaper thread: %m");
+		return (-1);
+	}
+
 	return (0);
 }
 
@@ -3255,6 +3276,20 @@ againefd:
 
 		return (EX_OSERR);
 	}
+
+	errval = pthread_kill(state.reaptd, SIGTERM);
+	if (errval != 0)
+		dump_errmsg("Failed to interrupt reaptd: %m");
+
+	errval = pthread_join(state.reaptd, (void **)&retval);
+	if (errval != 0) {
+		dump_errmsg("Failed to join reaper thread: %m");
+		if (pidfile_remove(pfh))
+			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
+
+		return (EX_OSERR);
+	}
+
 
 	errval = destroy_state(&state);
 	if (errval != 0) {
