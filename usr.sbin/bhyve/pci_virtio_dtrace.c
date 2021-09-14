@@ -813,6 +813,7 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
+		assert(len >= DTRACED_MSGHDRSIZE);
 		memcpy(&header, buf, DTRACED_MSGHDRSIZE);
 		/*
 		 * We don't need the header anymore...
@@ -888,6 +889,8 @@ pci_vtdtr_events(void *xsc)
 			break;
 
 		default:
+			fprintf(stderr, "Unknown message: %llu\n",
+			    DTRACED_MSG_TYPE(header));
 			assert(0);
 		}
 
