@@ -62,6 +62,7 @@
 #include <strings.h>
 #include <sysexits.h>
 #include <syslog.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dtraced.h"
@@ -75,7 +76,7 @@ char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
 #define LOCK_FILE                "/var/run/dtraced.pid"
 #define SOCKFD_NAME              "sub.sock"
-#define THREADPOOL_SIZE          1
+#define THREADPOOL_SIZE          4
 
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1
@@ -83,17 +84,25 @@ char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
 static int quiet = 0;
 
+
+
 static void
 dump_errmsg(const char *msg, ...)
 {
 	va_list ap;
+	time_t __time;
+	char *__time_s;
 
 	if (quiet)
 		return;
 
+	__time = time(NULL);
+	__time_s = asctime(localtime(&__time));
+	__time_s[strlen(__time_s) - 1] = '\0';
+
 	va_start(ap, msg);
 	if (msg) {
-		fprintf(stderr, "ERROR:    ");
+		fprintf(stderr, "ERROR(%s):    ", __time_s);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
@@ -107,13 +116,19 @@ static void
 dump_warnmsg(const char *msg, ...)
 {
 	va_list ap;
+	time_t __time;
+	char *__time_s;
 
 	if (quiet)
 		return;
 
+	__time = time(NULL);
+	__time_s = asctime(localtime(&__time));
+	__time_s[strlen(__time_s) - 1] = '\0';
+
 	va_start(ap, msg);
 	if (msg) {
-		fprintf(stderr, "WARNING:  ");
+		fprintf(stderr, "WARNING(%s):  ", __time_s);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
@@ -127,13 +142,19 @@ static void
 dump_debugmsg(const char *msg, ...)
 {
 	va_list ap;
+	time_t __time;
+	char *__time_s;
 
 	if (quiet)
 		return;
 
+	__time = time(NULL);
+	__time_s = asctime(localtime(&__time));
+	__time_s[strlen(__time_s) - 1] = '\0';
+
 	va_start(ap, msg);
 	if (msg) {
-		fprintf(stdout, "DEBUG:    ");
+		fprintf(stdout, "DEBUG(%s):    ", __time_s);
 		vfprintf(stdout, msg, ap);
 		va_end(ap);
 		fprintf(stdout, "\n");
