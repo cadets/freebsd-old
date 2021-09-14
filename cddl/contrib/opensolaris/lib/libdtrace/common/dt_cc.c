@@ -2637,10 +2637,11 @@ dtrace_type_fcompile(dtrace_hdl_t *dtp, FILE *fp, dtrace_typeinfo_t *dtt)
 }
 
 int
-dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents)
+dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents, size_t num_idents)
 {
 	char *ident;
 	dt_identlist_t *ident_entry;
+	size_t i;
 
 	if (idents == NULL)
 		return (-1);
@@ -2649,7 +2650,7 @@ dtrace_compile_idents_set(dtrace_hdl_t *dtp, char *idents)
 		return (-1);
 
 	ident = idents;
-	while (ident != NULL && ident[0] != '\0') {
+	for (i = 0; i < num_idents; i++) {
 		ident_entry = malloc(sizeof(dt_identlist_t));
 		if (ident_entry == NULL)
 			return (errno);

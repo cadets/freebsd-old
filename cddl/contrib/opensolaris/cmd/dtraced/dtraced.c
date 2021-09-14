@@ -1960,13 +1960,16 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	struct dtd_joblist *job;
 	struct dtd_state *s;
 	int idx;
-	pid_t pid, parent;
+	pid_t pid;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status;
 	size_t l, dirpathlen, filepathlen;
 	char *argv[6] = { 0 };
 	identlist_t *ident_entry;
 	struct kevent change_event[1];
+	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
+
+	memset(ident_to_delete, 0, sizeof(ident_to_delete));
 
 	status = 0;
 	if (dir == NULL) {
@@ -2068,7 +2071,31 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		}
 		UNLOCK(&s->socklistmtx);
 	} else {
-		parent = getpid();
+		int stdout_rdr[2];
+		int stdin_rdr[2];
+		size_t num_idents;
+
+		if (pipe(stdout_rdr) != 0) {
+			dump_errmsg("pipe(stdout) failed: %m");
+			return (-1);
+		}
+
+		if (pipe(stdin_rdr) != 0) {
+			dump_errmsg("pipe(stdin) failed: %m");
+			return (-1);
+		}
+
+		/*
+		 * Count up how many identifiers we have. We will need to use
+		 * this both in the child and parent.
+		 */
+		num_idents = 0;
+		LOCK(&s->identlistmtx);
+		for (ident_entry = dt_list_next(&s->identlist); ident_entry;
+		     ident_entry = dt_list_next(ident_entry))
+			num_idents++;
+		UNLOCK(&s->identlistmtx);
+
 		pid = fork();
 
 		/*
@@ -2080,57 +2107,102 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			dump_errmsg("Failed to fork: %m");
 			return (-1);
 		} else if (pid > 0) {
+			size_t current;
+
+			close(stdin_rdr[0]);
+			close(stdout_rdr[1]);
+
+			if (write(stdin_rdr[1], &num_idents,
+			    sizeof(num_idents)) == -1) {
+				dump_errmsg("write(%zu) failed: %m",
+				    num_idents);
+				return (-1);
+			}
+
 			/*
-			 * Clean up the pidlist.
+			 * There is a race condition between the fork and
+			 * traversal of this list. We could have added a new
+			 * identifier to our list. However, because we always
+			 * append to the list rather than randomly insert them,
+			 * we can simply count up how many identifiers we've
+			 * sent and don't need to worry about snapshotting the
+			 * original state of the list in another list.
 			 */
 			LOCK(&s->identlistmtx);
-			while ((ident_entry =
-			    dt_list_next(&s->identlist)) != NULL) {
-				dt_list_delete(&s->identlist, ident_entry);
-				free(ident_entry);
+			for (ident_entry = dt_list_next(&s->identlist),
+			     current = 0;
+			     ident_entry && current < num_idents;
+			     ident_entry = dt_list_next(ident_entry),
+			     current++) {
+				if (write(stdin_rdr[1], ident_entry->ident,
+				    DTRACED_PROGIDENTLEN) == -1) {
+					dump_errmsg("write(stdin) failed: %m");
+					return (-1);
+				}
+			}
+			UNLOCK(&s->identlistmtx);
+			close(stdin_rdr[1]);
+
+			/*
+			 * This will give us the identifier that matched and
+			 * needs to be deleted.
+			 */
+			if (read(stdout_rdr[0], ident_to_delete,
+			    DTRACED_PROGIDENTLEN) == -1) {
+				dump_errmsg("read() failed: %m");
+				return (-1);
+			}
+
+			close(stdout_rdr[0]);
+
+			/*
+			 * Remove the entry that the child tells us from the
+			 * pidlist.
+			 */
+			LOCK(&s->identlistmtx);
+			for (ident_entry = dt_list_next(&s->identlist);
+			     ident_entry;
+			     ident_entry = dt_list_next(ident_entry)) {
+				if (memcmp(ident_to_delete, ident_entry->ident,
+				    DTRACED_PROGIDENTLEN) == 0) {
+					dt_list_delete(
+					    &s->identlist, ident_entry);
+					free(ident_entry);
+					break;
+				}
 			}
 			UNLOCK(&s->identlistmtx);
 		} else if (pid == 0) {
 			char *curptr;
 			char *ident;
-			size_t num_idents;
 
+			close(stdout_rdr[0]);
+			if (dup2(stdout_rdr[1], STDOUT_FILENO) == -1) {
+				dump_errmsg("dup2(stdout) failed: %m");
+				exit(EXIT_FAILURE);
+			}
+
+			close(stdin_rdr[1]);
+			if (dup2(stdin_rdr[0], STDIN_FILENO) == -1) {
+				dump_errmsg("dup2(stdin) failed: %m");
+				exit(EXIT_FAILURE);
+			}
+
+			/*
+			 * We want dtrace to be as quiet as possible, so we pass
+			 * the '-q' flag.
+			 */
 			argv[0] = strdup("/usr/sbin/dtrace");
 			argv[1] = strdup("-Y");
 			argv[2] = strdup(fullpath);
+			argv[3] = strdup("-q");
 			
-			num_idents = 0;
-			for (ident_entry = dt_list_next(&s->identlist);
-			     ident_entry;
-			     ident_entry = dt_list_next(ident_entry))
-				num_idents++;
+			if (num_idents > 0)
+				argv[4] = strdup("-N");
+			else
+				argv[4] = NULL;
 
-			if (num_idents > 0) {
-				argv[3] = strdup("-N");
-				argv[4] = malloc(
-				    num_idents * DTRACED_PROGIDENTLEN +
-				    num_idents - 1);
-				memset(argv[4], 0,
-				    num_idents * DTRACED_PROGIDENTLEN +
-				    num_idents - 1);
-
-				curptr = argv[4];
-				while ((ident_entry = dt_list_next(
-				    &s->identlist)) != NULL) {
-					dt_list_delete(&s->identlist,
-					    ident_entry);
-					ident = ident_entry->ident;
-
-					memcpy(curptr, ident,
-					    DTRACED_PROGIDENTLEN);
-					curptr += DTRACED_PROGIDENTLEN;
-					if (dt_list_next(ident_entry) != NULL)
-						*curptr++ = ',';
-				}
-
-				argv[5] = NULL;
-			} else
-				argv[3] = NULL, argv[4] = NULL, argv[5] = NULL;
+			argv[5] = NULL;
 
 			execve("/usr/sbin/dtrace", argv, NULL);
 			exit(EXIT_FAILURE);
@@ -2214,7 +2286,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char *newname;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status = 0;
-	pid_t pid, parent;
+	pid_t pid;
 	char *argv[4];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
@@ -2278,7 +2350,6 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	free(dirpath);
 	free(outbounddirpath);
 
-	parent = getpid();
 	pid = fork();
 
 	if (pid == -1) {

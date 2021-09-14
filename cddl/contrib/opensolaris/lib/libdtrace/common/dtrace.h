@@ -620,7 +620,7 @@ extern int dtrace_type_fcompile(dtrace_hdl_t *,
 extern struct dt_node *dt_compile_sugar(dtrace_hdl_t *,
     struct dt_node *);
 
-extern int dtrace_compile_idents_set(dtrace_hdl_t *, char *);
+extern int dtrace_compile_idents_set(dtrace_hdl_t *, char *, size_t);
 
 /*
  * DTrace Probe Interface

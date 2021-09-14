@@ -40,6 +40,7 @@
 #include <assert.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
+#include <dt_program.h>
 #include <dtrace.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -114,7 +115,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:N:o:p:P:qrs:SU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SU:vVwx:y:Y:X:Z";
 
 static char **g_argv;
 static int g_argc;
@@ -2342,6 +2343,8 @@ main(int argc, char *argv[])
 	struct ps_prochandle *P;
 	pid_t pid;
 	size_t len1, len2;
+	size_t idents_to_read;
+	unsigned char *idents;
 
 	p2 = NULL;
 
@@ -2681,7 +2684,23 @@ main(int argc, char *argv[])
 				break;
 
 			case 'N':
-				dtrace_compile_idents_set(g_dtp, optarg);
+				if (read(STDIN_FILENO, &idents_to_read,
+				    sizeof(idents_to_read)) == -1)
+					fatal(
+"failed to read number of identifiers");
+
+				idents =
+				    malloc(idents_to_read * DT_PROG_IDENTLEN);
+				if (idents == NULL)
+					fatal("failed to allocate idents");
+
+				if (read(STDIN_FILENO, idents,
+				    idents_to_read * DT_PROG_IDENTLEN) == -1)
+					fatal("failed to read identifiers");
+
+				dtrace_compile_idents_set(
+				    g_dtp, idents, idents_to_read);
+				free(idents);
 				g_has_idents = 1;
 				break;
 
