@@ -38,6 +38,7 @@
 #include <machine/vmm.h>
 
 #include <assert.h>
+#include <dt_benchmark.h>
 #include <dt_elf.h>
 #include <dt_resolver.h>
 #include <dt_program.h>
@@ -117,6 +118,7 @@ typedef struct dt_probelist {
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SU:vVwx:y:Y:X:Z";
 
+static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
 static int g_argc;
 static int g_guest = 0;
@@ -1535,6 +1537,12 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (wx_sock == -1)
 			fatal("failed to open wx_sock");
 
+		g_e2ebench = dt_bench_new("hypertrace_end2end",
+		    "HyperTrace end to end benchmark (timing)",
+		    DT_BENCHKIND_TIME, 2);
+		if (g_e2ebench == NULL)
+			fatal("failed to create new benchmark");
+
 		tmpfd = mkstemp(template);
 		if (tmpfd == -1)
 			fatal("failed to mkstemp()");
@@ -1547,6 +1555,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (lseek(tmpfd, 0, SEEK_SET))
 			fatal("lseek() failed");
 
+		__dt_bench_snapshot_time(g_e2ebench);
 		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base", 0))
 			fatal("failed to dtrace_send_elf()");
 
