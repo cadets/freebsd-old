@@ -1,12 +1,12 @@
+#include <sys/dtrace.h>
+
+#include <dt_impl.h>
+#include <dtrace.h>
+#include <libxo/xo.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <time.h>
-#include <libxo/xo.h>
-
-#include <sys/dtrace.h>
-#include <dtrace.h>
 
 #include "dt_benchmark.h"
 
@@ -120,7 +120,7 @@ dt_bench_snapshot(dt_benchmark_t *bench)
 }
 
 int
-dt_bench_dump(dt_benchmark_t *bench, const char *fullpath)
+dt_bench_dump(dt_benchmark_t *bench, const char *fullpath, char *script)
 {
 	double timespent;
 	FILE *fp;
@@ -139,16 +139,28 @@ dt_bench_dump(dt_benchmark_t *bench, const char *fullpath)
 		return (1);
 	}
 
+	xo_open_container_h(hdl, "dtrace");
+	xo_open_container_h(hdl, "benchmark");
 	switch (bench->dtbe_kind) {
 	case DT_BENCHKIND_TIME:
-		timespent = ((double)(bench->dtbe_starttime -
-		    bench->dtbe_endtime)) / CLOCKS_PER_SEC;
-		xo_emit_h(hdl, " {:name/%s} {:desc/%s} {:time/%lf}",
+		timespent = ((double)(bench->dtbe_endtime -
+		    bench->dtbe_starttime)) / CLOCKS_PER_SEC;
+		xo_emit_h(hdl, " {:name/%s} {:desc/%s} {:time/%lf} ",
 		    bench->dtbe_name, bench->dtbe_desc, timespent);
 		break;
 	default:
 		break;
 	}
+	xo_close_container_h(hdl, "benchmark");
+	/*
+	 * TODO: Put options into the file.
+	 */
+	xo_open_list_h(hdl, "options");
+	xo_close_list_h(hdl, "options");
+
+	xo_emit_h(hdl, " {:script/%s} ", script);
+	xo_close_container_h(hdl, "dtrace");
+	xo_finish_h(hdl);
 
 	xo_destroy(hdl);
 	fclose(fp);

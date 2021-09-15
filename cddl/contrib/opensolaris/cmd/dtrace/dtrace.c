@@ -118,6 +118,7 @@ typedef struct dt_probelist {
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SU:vVwx:y:Y:X:Z";
 
+static char *g_script;
 static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
 static int g_argc;
@@ -1564,7 +1565,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		close(tmpfd);
 
 		__dt_bench_stop_time(g_e2ebench);
-		(void)dt_bench_dump(g_e2ebench, "/root/benchmark.json");
+		(void)dt_bench_dump(g_e2ebench, "/root/benchmark.json",
+		    g_script);
 		dt_bench_free(g_e2ebench);
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
@@ -2696,6 +2698,7 @@ main(int argc, char *argv[])
 				dcp->dc_func = compile_str;
 				dcp->dc_spec = DTRACE_PROBESPEC_NAME;
 				dcp->dc_arg = optarg;
+				g_script = strdup(optarg);
 				break;
 
 			case 'N':
