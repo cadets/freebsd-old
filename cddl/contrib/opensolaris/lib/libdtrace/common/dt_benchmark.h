@@ -31,7 +31,7 @@ int            dt_bench_start(dt_benchmark_t *);
 int            dt_bench_stop(dt_benchmark_t *);
 void           dt_bench_snapshot(dt_benchmark_t *);
 
-__inline void
+static __inline void
 __dt_bench_snapshot_time(dt_benchmark_t *__b)
 {
 #ifdef __DTRACE_SAFE_BENCH__
