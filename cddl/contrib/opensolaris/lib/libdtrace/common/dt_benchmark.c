@@ -88,7 +88,13 @@ dt_bench_stop(dt_benchmark_t *bench)
 
 	switch (bench->dtbe_kind) {
 	case DT_BENCHKIND_TIME:
-		bench->dtbe_endtime = clock();
+		__dt_bench_stop_time(bench);
+		return (0);
+
+	default:
+		fprintf(stderr, "Unknown benchmark kind: %d\n",
+		    bench->dtbe_kind);
+		return (-1);
 	}
 
 	return (0);
@@ -135,8 +141,8 @@ dt_bench_dump(dt_benchmark_t *bench, const char *fullpath)
 
 	switch (bench->dtbe_kind) {
 	case DT_BENCHKIND_TIME:
-		timespent = (double)(bench->dtbe_starttime -
-		    bench->dtbe_endtime) / CLOCKS_PER_SEC;
+		timespent = ((double)(bench->dtbe_starttime -
+		    bench->dtbe_endtime)) / CLOCKS_PER_SEC;
 		xo_emit_h(hdl, " {:name/%s} {:desc/%s} {:time/%lf}",
 		    bench->dtbe_name, bench->dtbe_desc, timespent);
 		break;

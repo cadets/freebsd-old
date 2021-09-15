@@ -1549,6 +1549,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
+		__dt_bench_snapshot_time(g_e2ebench);
+
 		if (fsync(tmpfd))
 			fatal("failed to sync file");
 
@@ -1560,6 +1562,10 @@ exec_prog(const dtrace_cmd_t *dcp)
 			fatal("failed to dtrace_send_elf()");
 
 		close(tmpfd);
+
+		__dt_bench_stop_time(g_e2ebench);
+		(void)dt_bench_dump(g_e2ebench, "/root/benchmark.json");
+		dt_bench_free(g_e2ebench);
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
 		if (dtd_arg == NULL)

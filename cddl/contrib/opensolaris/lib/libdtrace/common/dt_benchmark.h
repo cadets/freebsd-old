@@ -30,6 +30,7 @@ void           dt_bench_free(dt_benchmark_t *);
 int            dt_bench_start(dt_benchmark_t *);
 int            dt_bench_stop(dt_benchmark_t *);
 void           dt_bench_snapshot(dt_benchmark_t *);
+int            dt_bench_dump(dt_benchmark_t *, const char *);
 
 static __inline void
 __dt_bench_snapshot_time(dt_benchmark_t *__b)
@@ -43,4 +44,15 @@ __dt_bench_snapshot_time(dt_benchmark_t *__b)
 	__b->dtbe_timesnaps[__b->dtbe_cursnapshot++] = clock();
 }
 
+static __inline void
+__dt_bench_stop_time(dt_benchmark_t *__b)
+{
+#ifdef __DTRACE_SAFE_BENCH__
+	assert(__b->dtbe_kind == DT_BENCHKIND_TIME);
+	assert(__b->dtbe_running == 1);
+	assert(__b->dtbe_cursnapshot <= __b->dtbe_nsnapshots);
+#endif
+
+	__b->dtbe_endtime = clock();
+}
 #endif // __DT_BENCHMARK_H_

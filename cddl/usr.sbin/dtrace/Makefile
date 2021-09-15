@@ -33,7 +33,7 @@ LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 #CFLAGS+=	-DNEED_ERRLOC
 #YFLAGS+=	-d
 
-LIBADD=	dtrace ctf elf proc pthread spl
+LIBADD=	dtrace ctf elf proc pthread spl xo
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests
