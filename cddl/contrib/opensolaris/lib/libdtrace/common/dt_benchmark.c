@@ -10,6 +10,36 @@
 
 #include "dt_benchmark.h"
 
+#define INITIAL_NBENCH 4096
+
+typedef struct {
+	dt_benchmark_t **benchmarks;
+	size_t         size;
+	size_t         current;
+} dt_bmerge_t;
+
+void *
+dt_merge_new(void)
+{
+	dt_bmerge_t *m;
+
+	m = malloc(sizeof(dt_bmerge_t));
+	if (m == NULL)
+		return (NULL);
+
+	memset(m, 0, sizeof(dt_bmerge_t));
+	return (m);
+}
+
+void
+dt_merge_cleanup(void *_m)
+{
+	dt_bmerge_t *m = _m;
+
+	free(m->benchmarks);
+	free(m);
+}
+
 dt_benchmark_t *
 dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 {
@@ -119,6 +149,39 @@ dt_bench_snapshot(dt_benchmark_t *bench)
 	}
 }
 
+void *
+dt_bench_merge(void *_m, dt_benchmark_t *b)
+{
+	dt_bmerge_t *m = _m;
+	size_t cursize = m->size;
+	dt_benchmark_t **bs = m->benchmarks;
+
+	if (bs == NULL) {
+		bs = malloc(sizeof(dt_benchmark_t *) * INITIAL_NBENCH);
+		if (bs == NULL)
+			return (NULL);
+
+		m->size = INITIAL_NBENCH;
+	}
+
+	if (m->current >= cursize) {
+		cursize <<= 1;
+		bs = malloc(sizeof(dt_benchmark_t *) * cursize);
+		if (bs == NULL)
+			return (NULL);
+
+		memset(bs, 0, sizeof(dt_benchmark_t *) * cursize);
+		memcpy(bs, m->benchmarks, sizeof(dt_benchmark_t *) * m->size);
+
+		free(m->benchmarks);
+		m->benchmarks = bs;
+		m->size = cursize;
+	}
+
+	m->benchmarks[m->current++] = b;
+	return (m);
+}
+
 int
 dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
     const char *fullpath, char *script)
@@ -146,6 +209,8 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	xo_open_list_h(hdl, "benchmarks");
 	for (i = 0; i < n_benches; i++) {
 		bench = benchmarks[i];
+		if (bench == NULL)
+			continue;
 
 		xo_open_instance_h(hdl, "benchmarks");
 		xo_open_container_h(hdl, "benchmark");
