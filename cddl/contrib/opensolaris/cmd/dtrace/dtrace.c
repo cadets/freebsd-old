@@ -1565,7 +1565,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		close(tmpfd);
 
 		__dt_bench_stop_time(g_e2ebench);
-		(void)dt_bench_dump(g_e2ebench, "/root/benchmark.json",
+		(void)dt_bench_dump(&g_e2ebench, 1, "/root/benchmark.json",
 		    g_script);
 		dt_bench_free(g_e2ebench);
 

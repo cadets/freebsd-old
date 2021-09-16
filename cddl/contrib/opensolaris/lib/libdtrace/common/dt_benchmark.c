@@ -120,11 +120,14 @@ dt_bench_snapshot(dt_benchmark_t *bench)
 }
 
 int
-dt_bench_dump(dt_benchmark_t *bench, const char *fullpath, char *script)
+dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
+    const char *fullpath, char *script)
 {
 	double timespent;
 	FILE *fp;
 	xo_handle_t *hdl;
+	dt_benchmark_t *bench;
+	size_t i;
 
 	fp = fopen(fullpath, "wb");
 	if (fp == NULL) {
@@ -140,18 +143,30 @@ dt_bench_dump(dt_benchmark_t *bench, const char *fullpath, char *script)
 	}
 
 	xo_open_container_h(hdl, "dtrace");
-	xo_open_container_h(hdl, "benchmark");
-	switch (bench->dtbe_kind) {
-	case DT_BENCHKIND_TIME:
-		timespent = ((double)(bench->dtbe_endtime -
-		    bench->dtbe_starttime)) / CLOCKS_PER_SEC;
-		xo_emit_h(hdl, " {:name/%s} {:desc/%s} {:time/%lf} ",
-		    bench->dtbe_name, bench->dtbe_desc, timespent);
-		break;
-	default:
-		break;
+	xo_open_list_h(hdl, "benchmarks");
+	for (i = 0; i < n_benches; i++) {
+		bench = benchmarks[i];
+
+		xo_open_instance_h(hdl, "benchmarks");
+		xo_open_container_h(hdl, "benchmark");
+
+		switch (bench->dtbe_kind) {
+		case DT_BENCHKIND_TIME:
+			timespent = ((double)(bench->dtbe_endtime -
+			    bench->dtbe_starttime)) / CLOCKS_PER_SEC;
+			xo_emit_h(hdl,
+			    " {:kind/time} {:name/%s} {:desc/%s} {:time/%lf} ",
+			    bench->dtbe_name, bench->dtbe_desc,
+			    timespent);
+			break;
+
+		default:
+			break;
+		}
+		xo_close_container_h(hdl, "benchmark");
+		xo_close_instance_h(hdl, "benchmarks");
 	}
-	xo_close_container_h(hdl, "benchmark");
+	xo_close_list_h(hdl, "benchmarks");
 	/*
 	 * TODO: Put options into the file.
 	 */

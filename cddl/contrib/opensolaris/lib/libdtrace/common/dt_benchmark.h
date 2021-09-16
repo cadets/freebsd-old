@@ -30,7 +30,7 @@ void           dt_bench_free(dt_benchmark_t *);
 int            dt_bench_start(dt_benchmark_t *);
 int            dt_bench_stop(dt_benchmark_t *);
 void           dt_bench_snapshot(dt_benchmark_t *);
-int            dt_bench_dump(dt_benchmark_t *, const char *, char *);
+int            dt_bench_dump(dt_benchmark_t **, size_t, const char *, char *);
 
 static __inline void
 __dt_bench_snapshot_time(dt_benchmark_t *__b)
