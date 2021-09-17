@@ -43,7 +43,7 @@ __dt_bench_snapshot_time(dt_benchmark_t *__b)
 	assert(__b->dtbe_kind == DT_BENCHKIND_TIME);
 	assert(__b->dtbe_running == 1);
 	assert(__b->dtbe_cursnapshot < __b->dtbe_nsnapshots);
-#endif
+#endif // __DTRACE_SAFE_BENCH__
 
 	__b->dtbe_timesnaps[__b->dtbe_cursnapshot++] = clock();
 }
@@ -55,7 +55,7 @@ __dt_bench_stop_time(dt_benchmark_t *__b)
 	assert(__b->dtbe_kind == DT_BENCHKIND_TIME);
 	assert(__b->dtbe_running == 1);
 	assert(__b->dtbe_cursnapshot <= __b->dtbe_nsnapshots);
-#endif
+#endif // __DTRACE_SAFE_BENCH__
 
 	__b->dtbe_endtime = clock();
 }

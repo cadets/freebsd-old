@@ -250,4 +250,4 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	return (0);
 }
 
-#endif
+#endif // __DTRACE_RUN_BENCHMARKS__
