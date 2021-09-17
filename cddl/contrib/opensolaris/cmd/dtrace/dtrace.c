@@ -1539,8 +1539,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 			fatal("failed to open wx_sock");
 
 		g_e2ebench = dt_bench_new("hypertrace_end2end",
-		    "HyperTrace end to end benchmark (timing)",
-		    DT_BENCHKIND_TIME, 2);
+		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 2);
+
 		if (g_e2ebench == NULL)
 			fatal("failed to create new benchmark");
 

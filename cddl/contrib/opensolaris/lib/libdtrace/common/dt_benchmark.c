@@ -50,7 +50,7 @@ dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 	switch (kind) {
 	case DT_BENCHKIND_TIME:
 		new = malloc(sizeof(dt_benchmark_t) +
-		    sizeof(clock_t) * n_snapshots);
+		    sizeof(struct timespec) * n_snapshots);
 		if (new == NULL)
 			return (NULL);
 		break;
@@ -77,6 +77,13 @@ dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 
 	new->dtbe_kind = kind;
 	new->dtbe_nsnapshots = n_snapshots;
+	new->dtbe_snapnames = malloc(n_snapshots * sizeof(dt_snapshot_name_t));
+	if (new->dtbe_snapnames == NULL) {
+		free(new->dtbe_name);
+		free(new);
+		return (NULL);
+	}
+	memset(new->dtbe_snapnames, 0, sizeof(dt_snapshot_name_t) * n_snapshots);
 
 	return (new);
 }
@@ -100,8 +107,7 @@ dt_bench_start(dt_benchmark_t *bench)
 
 	switch (bench->dtbe_kind) {
 	case DT_BENCHKIND_TIME:
-		bench->dtbe_starttime = clock();
-		return (0);
+		return (clock_gettime(CLOCK_MONOTONIC, &bench->dtbe_starttime));
 
 	default:
 		fprintf(stderr, "Unknown benchmark kind: %d\n",
@@ -192,7 +198,7 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	FILE *fp;
 	xo_handle_t *hdl;
 	dt_benchmark_t *bench;
-	size_t i;
+	size_t i, j;
 
 	fp = fopen(fullpath, "wb");
 	if (fp == NULL) {
@@ -208,6 +214,7 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	}
 
 	xo_open_container_h(hdl, "dtrace");
+	xo_emit_h(hdl, " {:clocks-per-sec/%u} ", CLOCKS_PER_SEC);
 	xo_open_list_h(hdl, "benchmarks");
 	for (i = 0; i < n_benches; i++) {
 		bench = benchmarks[i];
@@ -215,22 +222,35 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 			continue;
 
 		xo_open_instance_h(hdl, "benchmarks");
-		xo_open_container_h(hdl, "benchmark");
 
 		switch (bench->dtbe_kind) {
 		case DT_BENCHKIND_TIME:
-			timespent = ((double)(bench->dtbe_endtime -
-			    bench->dtbe_starttime)) / CLOCKS_PER_SEC;
 			xo_emit_h(hdl,
-			    " {:kind/time} {:name/%s} {:desc/%s} {:time/%lf} ",
+			    " {:kind/time} {:name/%s} {:desc/%s} "
+			    "{:start time/%jd} {:end time/%jd} ",
 			    bench->dtbe_name, bench->dtbe_desc,
-			    timespent);
+			    bench->dtbe_starttime.tv_nsec,
+			    bench->dtbe_endtime.tv_nsec);
+
+			xo_open_list_h(hdl, "snapshots");
+			for (j = 0; j < bench->dtbe_nsnapshots; j++) {
+				struct timespec *snap;
+				snap = &bench->dtbe_timesnaps[j];
+
+				xo_open_instance_h(hdl, "snapshots");
+				xo_emit_h(hdl, " {:name/%s} {:time/%jd}",
+				    bench->dtbe_snapnames[j] ?: "(null)",
+				    snap->tv_nsec);
+				xo_close_instance_h(hdl, "snapshots");
+			}
+			xo_close_list_h(hdl, "snapshots");
+
 			break;
 
 		default:
 			break;
 		}
-		xo_close_container_h(hdl, "benchmark");
+
 		xo_close_instance_h(hdl, "benchmarks");
 	}
 	xo_close_list_h(hdl, "benchmarks");

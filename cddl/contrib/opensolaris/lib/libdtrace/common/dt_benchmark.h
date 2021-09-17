@@ -5,21 +5,27 @@
 
 #define DT_BENCHKIND_TIME 0x1
 
+#define DTB_SNAPNAMELEN   128
+
 #ifdef __DTRACE_RUN_BENCHMARKS__
 
+
+typedef char dt_snapshot_name_t[DTB_SNAPNAMELEN];
+
 typedef struct dt_benchmark {
-	char   *dtbe_name;
-	char   *dtbe_desc;
-	int    dtbe_kind;
-	int    dtbe_running;
-	size_t dtbe_nsnapshots;
-	size_t dtbe_cursnapshot;
+	char               *dtbe_name;
+	char               *dtbe_desc;
+	int                dtbe_kind;
+	int                dtbe_running;
+	size_t             dtbe_nsnapshots;
+	size_t             dtbe_cursnapshot;
+	dt_snapshot_name_t *dtbe_snapnames;
 
 	union {
 		struct {
-			clock_t __start;
-			clock_t __end;
-			clock_t __snapshots[];
+			struct timespec __start;
+			struct timespec __end;
+			struct timespec __snapshots[];
 		} time;
 	} u;
 #define dtbe_starttime	u.time.__start
@@ -43,9 +49,12 @@ __dt_bench_snapshot_time(dt_benchmark_t *__b)
 	assert(__b->dtbe_kind == DT_BENCHKIND_TIME);
 	assert(__b->dtbe_running == 1);
 	assert(__b->dtbe_cursnapshot < __b->dtbe_nsnapshots);
+	assert(clock_gettime(CLOCK_MONOTONIC,
+	    &__b->dtbe_timesnaps[__b->dtbe_cursnapshot++]) == 0);
+#else
+	clock_gettime(CLOCK_MONOTONIC,
+	    &__b->dtbe_timesnaps[__b->dtbe_cursnapshot++]);
 #endif // __DTRACE_SAFE_BENCH__
-
-	__b->dtbe_timesnaps[__b->dtbe_cursnapshot++] = clock();
 }
 
 static __inline void
@@ -55,9 +64,10 @@ __dt_bench_stop_time(dt_benchmark_t *__b)
 	assert(__b->dtbe_kind == DT_BENCHKIND_TIME);
 	assert(__b->dtbe_running == 1);
 	assert(__b->dtbe_cursnapshot <= __b->dtbe_nsnapshots);
+	assert(clock_gettime(CLOCK_MONOTONIC, &__b->dtbe_endtime) == 0);
+#else
+	clock_gettime(CLOCK_MONOTONIC, &__b->dtbe_endtime);
 #endif // __DTRACE_SAFE_BENCH__
-
-	__b->dtbe_endtime = clock();
 }
 
 #else
