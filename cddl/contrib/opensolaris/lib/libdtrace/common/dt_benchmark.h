@@ -65,7 +65,7 @@ __dt_bench_stop_time(dt_benchmark_t *__b)
 /*
  * Ugly, but ensures that nobody accesses random things.
  */
-typedef void *dt_benchmark_t;
+typedef void dt_benchmark_t;
 
 #define  dt_merge_new(...) (1) /* XXX: Oof. */
 #define  dt_merge_cleanup(...)

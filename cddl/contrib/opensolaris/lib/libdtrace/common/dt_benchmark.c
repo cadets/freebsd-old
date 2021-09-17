@@ -69,7 +69,7 @@ dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 	}
 	
 	new->dtbe_desc = strdup(desc);
-	if (new->dtbe_desc = NULL) {
+	if (new->dtbe_desc == NULL) {
 		free(new->dtbe_name);
 		free(new);
 		return (NULL);
