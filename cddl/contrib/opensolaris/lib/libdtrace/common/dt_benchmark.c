@@ -214,7 +214,6 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	}
 
 	xo_open_container_h(hdl, "dtrace");
-	xo_emit_h(hdl, " {:clocks-per-sec/%u} ", CLOCKS_PER_SEC);
 	xo_open_list_h(hdl, "benchmarks");
 	for (i = 0; i < n_benches; i++) {
 		bench = benchmarks[i];
