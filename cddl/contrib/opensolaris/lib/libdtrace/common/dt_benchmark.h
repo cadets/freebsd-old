@@ -5,6 +5,8 @@
 
 #define DT_BENCHKIND_TIME 0x1
 
+#ifdef __DTRACE_RUN_BENCHMARKS__
+
 typedef struct dt_benchmark {
 	char   *dtbe_name;
 	char   *dtbe_desc;
@@ -57,4 +59,25 @@ __dt_bench_stop_time(dt_benchmark_t *__b)
 
 	__b->dtbe_endtime = clock();
 }
+
+#else
+
+/*
+ * Ugly, but ensures that nobody accesses random things.
+ */
+typedef void *dt_benchmark_t;
+
+#define  dt_merge_new(...) (1) /* XXX: Oof. */
+#define  dt_merge_cleanup(...)
+#define  dt_bench_new(...) (1) /* XXX: Oof. */
+#define  dt_bench_free(...)
+#define  dt_bench_start(...)
+#define  dt_bench_stop(...)
+#define  dt_bench_snapshot(...)
+#define  dt_bench_dump(...)
+#define  __dt_bench_snapshot_time(...)
+#define  __dt_bench_stop_time(...)
+
+#endif // __DTRACE_RUN_BENCHMARKS__
+
 #endif // __DT_BENCHMARK_H_

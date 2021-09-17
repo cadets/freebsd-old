@@ -10,6 +10,8 @@
 
 #include "dt_benchmark.h"
 
+#ifdef __DTRACE_RUN_BENCHMARKS__
+
 #define INITIAL_NBENCH 4096
 
 typedef struct {
@@ -247,3 +249,5 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 
 	return (0);
 }
+
+#endif
