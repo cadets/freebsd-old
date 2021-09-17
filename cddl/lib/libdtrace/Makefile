@@ -158,7 +158,7 @@ LDFLAGS+=	-fsanitize=address -fsanitize=undefined
 
 YFLAGS+=-d
 
-LIBADD=	ctf elf proc pthread rtld_db crypto xo
+LIBADD=	ctf elf proc pthread rtld_db crypto
 
 CLEANFILES=	dt_errtags.c dt_names.c
 
