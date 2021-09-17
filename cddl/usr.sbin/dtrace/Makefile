@@ -25,6 +25,9 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 		-I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
+.if ${MK_DTRACE_BENCHMARKS} != "no"
+CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
+.endif
 
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
@@ -37,10 +40,6 @@ LIBADD=	dtrace ctf elf proc pthread spl xo
 
 .if ${MK_DTRACE_TESTS} != "no"
 SUBDIR+=	tests
-.endif
-
-.if ${MK_DTRACE_BENCHMARKS} != "no"
-CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
 
 .include <bsd.prog.mk>
