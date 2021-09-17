@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libdtrace/common
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/lib/libgen/common
 
@@ -145,6 +147,10 @@ CFLAGS+=	-I${OPENSOLARIS_SYS_DISTDIR}/uts/intel
 .if ${MACHINE_ARCH} == "i386" || ${MACHINE_ARCH} == "amd64"
 SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
+.endif
+
+.if ${MK_DTRACE_BENCHMARKS} != "no"
+CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
 
 CFLAGS+=	-fsanitize=address -fsanitize=undefined

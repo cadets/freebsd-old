@@ -39,4 +39,8 @@ LIBADD=	dtrace ctf elf proc pthread spl xo
 SUBDIR+=	tests
 .endif
 
+.if ${MK_DTRACE_BENCHMARKS} != "no"
+CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
+.endif
+
 .include <bsd.prog.mk>
