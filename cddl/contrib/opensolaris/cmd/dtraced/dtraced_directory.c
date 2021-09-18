@@ -13,6 +13,7 @@
 
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
 
