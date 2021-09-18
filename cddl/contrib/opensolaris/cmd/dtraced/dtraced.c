@@ -61,10 +61,9 @@
 #include <string.h>
 #include <strings.h>
 #include <sysexits.h>
-#include <syslog.h>
-#include <time.h>
 #include <unistd.h>
 
+#include "dtraced_errmsg.h"
 #include "dtraced.h"
 
 char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
@@ -81,88 +80,6 @@ char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1
 #define EXISTS_EQUAL             2
-
-static int quiet = 0;
-
-
-
-static void
-dump_errmsg(const char *msg, ...)
-{
-	va_list ap;
-	time_t __time;
-	char *__time_s;
-
-	if (quiet)
-		return;
-
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
-	va_start(ap, msg);
-	if (msg) {
-		fprintf(stderr, "ERROR(%s):    ", __time_s);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		va_start(ap, msg);
-		vsyslog(LOG_ERR, msg, ap);
-	}
-	va_end(ap);
-}
-
-static void
-dump_warnmsg(const char *msg, ...)
-{
-	va_list ap;
-	time_t __time;
-	char *__time_s;
-
-	if (quiet)
-		return;
-
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
-	va_start(ap, msg);
-	if (msg) {
-		fprintf(stderr, "WARNING(%s):  ", __time_s);
-		vfprintf(stderr, msg, ap);
-		va_end(ap);
-		fprintf(stderr, "\n");
-		va_start(ap, msg);
-		vsyslog(LOG_WARNING, msg, ap);
-	}
-	va_end(ap);
-}
-
-static void
-dump_debugmsg(const char *msg, ...)
-{
-	va_list ap;
-	time_t __time;
-	char *__time_s;
-
-	if (quiet)
-		return;
-
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
-	va_start(ap, msg);
-	if (msg) {
-		fprintf(stdout, "DEBUG(%s):    ", __time_s);
-		vfprintf(stdout, msg, ap);
-		va_end(ap);
-		fprintf(stdout, "\n");
-		va_start(ap, msg);
-		vsyslog(LOG_DEBUG, msg, ap);
-	}
-	va_end(ap);
-}
 
 #define OWNED(m)    (atomic_load(&(m)->_owner) == pthread_self())
 
@@ -598,6 +515,7 @@ manage_children(void *_s)
 static void *
 reap_children(void *_s)
 {
+	struct dtd_state *s = _s;
 	int status, rv;
 
 	for (;;) {
@@ -605,6 +523,9 @@ reap_children(void *_s)
 		do {
 			rv = waitpid(-1, &status, WNOHANG);
 		} while (rv != -1 && rv != 0);
+
+		if (atomic_load(&s->shutdown) != 0)
+			pthread_exit(_s);
 	}
 }
 
@@ -3022,7 +2943,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'q':
-			quiet = 1;
+			be_quiet();
 			break;
 
 		default:

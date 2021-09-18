@@ -5,7 +5,9 @@
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
 PROG=		dtraced
-SRCS=		dtraced.c
+SRCS=		dtraced.c \
+		dtraced_errmsg.c
+
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
