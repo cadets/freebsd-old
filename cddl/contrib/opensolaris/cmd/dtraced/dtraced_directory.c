@@ -10,6 +10,7 @@
 
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_misc.h"
 
 int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
