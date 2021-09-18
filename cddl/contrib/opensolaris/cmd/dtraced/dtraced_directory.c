@@ -4,12 +4,16 @@
 #include <sys/stat.h>
 
 #include <errno.h>
+#include <fcntl.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_lock.h"
 #include "dtraced_misc.h"
 
 int
