@@ -3,6 +3,8 @@
 
 #include <dt_list.h>
 
+struct dtd_state;
+
 struct dtd_fdlist {
 	dt_list_t list; /* next element */
 	int fd;         /* the actual filedesc */

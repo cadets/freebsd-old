@@ -4,14 +4,18 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced.h"
 #include "dtraced_connection.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_job.h"
 #include "dtraced_lock.h"
+#include "dtraced_state.h"
 
 static int
 accept_new_connection(struct dtd_state *s)
