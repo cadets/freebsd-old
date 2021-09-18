@@ -1,10 +1,15 @@
+#include <err.h>
+#include <execinfo.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
 #include <time.h>
 
 #include "dtraced_errmsg.h"
+
+#define DTRACED_BACKTRACELEN    128
 
 static int quiet;
 
@@ -91,5 +96,26 @@ dump_debugmsg(const char *msg, ...)
 		vsyslog(LOG_DEBUG, msg, ap);
 	}
 	va_end(ap);
+}
+
+void
+dump_backtrace(void)
+{
+	int nptrs;
+	void *buffer[DTRACED_BACKTRACELEN];
+	char **strings;
+
+	nptrs = backtrace(buffer, DTRACED_BACKTRACELEN);
+	strings = backtrace_symbols(buffer, nptrs);
+
+	if (strings == NULL) {
+		dump_errmsg("Failed to get backtrace symbols: %m");
+		exit(EXIT_FAILURE);
+	}
+
+	for (int j = 0; j < nptrs; j++)
+		dump_errmsg("%s", strings[j]);
+
+	free(strings);
 }
 

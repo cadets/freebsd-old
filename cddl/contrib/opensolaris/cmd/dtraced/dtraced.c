@@ -42,7 +42,6 @@
 #include <dttransport.h>
 #include <err.h>
 #include <errno.h>
-#include <execinfo.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -69,7 +68,6 @@ char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
 char DTRACED_OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
 char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
-#define DTRACED_BACKTRACELEN    128
 #define DTRACED_BACKLOG_SIZE    4
 
 #define LOCK_FILE                "/var/run/dtraced.pid"
@@ -282,27 +280,6 @@ pmutex_of(mutex_t *m)
 {
 
 	return (&m->_m);
-}
-
-static void
-dump_backtrace(void)
-{
-	int nptrs;
-	void *buffer[DTRACED_BACKTRACELEN];
-	char **strings;
-
-	nptrs = backtrace(buffer, DTRACED_BACKTRACELEN);
-	strings = backtrace_symbols(buffer, nptrs);
-
-	if (strings == NULL) {
-		dump_errmsg("Failed to get backtrace symbols: %m");
-		exit(EXIT_FAILURE);
-	}
-
-	for (int j = 0; j < nptrs; j++)
-		dump_errmsg("%s", strings[j]);
-
-	free(strings);
 }
 
 /*
