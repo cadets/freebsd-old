@@ -350,10 +350,7 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-	state.ctrlmachine = ctrlmachine;
-	state.pid_fileh = pfh;
-
-	if (state.ctrlmachine != 0 && state.ctrlmachine != 1) {
+	if (ctrlmachine != 0 && ctrlmachine != 1) {
 		dump_errmsg(
 		    "You must either specify whether to run the daemon in "
 		    "minion ('-m') or overlord ('-O') mode");
@@ -398,7 +395,7 @@ againefd:
 	state.dirfd = efd;
 	elfdir = fdopendir(efd);
 
-	errval = init_state(&state);
+	errval = init_state(&state, ctrlmachine);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
 		if (pidfile_remove(pfh))

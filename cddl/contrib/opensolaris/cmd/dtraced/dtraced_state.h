@@ -79,7 +79,7 @@ struct dtd_state {
 	mutex_t identlistmtx;        /* mutex protecting the ident list */
 };
 
-int init_state(struct dtd_state *);
+int init_state(struct dtd_state *, int);
 int destroy_state(struct dtd_state *);
 
 #endif // _DTRACED_STATE_H_

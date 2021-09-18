@@ -11,12 +11,13 @@
 #include "dtraced_state.h"
 
 int
-init_state(struct dtd_state *s)
+init_state(struct dtd_state *s, int ctrlmachine)
 {
 	int err;
 
 	memset(s, 0, sizeof(struct dtd_state));
 	s->sockfd = -1;
+	s->ctrlmachine = ctrlmachine;
 
 	if ((err = mutex_init(
 	    &s->socklistmtx, NULL, "socklist", CHECKOWNER_YES)) != 0) {
