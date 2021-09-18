@@ -11,7 +11,8 @@ SRCS=		dtraced.c \
 		dtraced_errmsg.c \
 		dtraced_job.c \
 		dtraced_lock.c \
-		dtraced_misc.c
+		dtraced_misc.c \
+		dtraced_state.c
 
 BINDIR?=	/usr/sbin
 
