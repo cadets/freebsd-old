@@ -16,6 +16,7 @@
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
+#include "dtraced_state.h"
 
 int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)

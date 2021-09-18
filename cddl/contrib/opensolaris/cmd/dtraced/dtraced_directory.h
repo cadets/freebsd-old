@@ -6,6 +6,8 @@
 #include "dtraced_lock.h"
 
 struct dtd_dir;
+struct dtd_state;
+
 typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
 
 typedef struct dtd_dir {
