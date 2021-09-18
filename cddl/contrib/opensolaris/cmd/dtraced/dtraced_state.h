@@ -13,6 +13,8 @@
  * state management, such as files that exist, connected sockets, etc.
  */
 struct dtd_state {
+	int ctrlmachine;        /* is this a control machine? */
+
 	dtd_dir_t *inbounddir;  /* /var/ddtrace/inbound */
 	dtd_dir_t *outbounddir; /* /var/ddtrace/outbound */
 	dtd_dir_t *basedir;     /* /var/ddtrace/base */

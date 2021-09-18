@@ -1,6 +1,9 @@
 #ifndef _DTRACED_LOCK_H_
 #define _DTRACED_LOCK_H_
 
+#include <sys/types.h>
+#include <sys/param.h>
+
 #include <assert.h>
 #include <pthread.h>
 #include <semaphore.h>

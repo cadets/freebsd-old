@@ -5,7 +5,14 @@
 
 #include <dt_list.h>
 
+#include "dtraced.h"
 #include "dtraced_directory.h"
+
+typedef struct identlist {
+	dt_list_t list;
+	unsigned char ident[DTRACED_PROGIDENTLEN];
+} identlist_t;
+
 
 typedef struct dtd_joblist {
 	dt_list_t list;       /* next element */

@@ -47,7 +47,6 @@
 #include <libgen.h>
 #include <libutil.h>
 #include <limits.h>
-#include <openssl/sha.h>
 #include <signal.h>
 #include <spawn.h>
 #include <stdarg.h>
@@ -68,14 +67,7 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
-char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
-char DTRACED_OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
-char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
-
-#define DTRACED_BACKLOG_SIZE    4
-
 #define LOCK_FILE                "/var/run/dtraced.pid"
-#define SOCKFD_NAME              "sub.sock"
 #define THREADPOOL_SIZE          4
 
 #define NEXISTS                  0
@@ -90,17 +82,11 @@ typedef struct pidlist {
 	pid_t pid;
 } pidlist_t;
 
-typedef struct identlist {
-	dt_list_t list;
-	unsigned char ident[DTRACED_PROGIDENTLEN];
-} identlist_t;
-
 /*
  * Awful global variable, but is here because of the signal handler.
  */
 static struct dtd_state state;
 static int nosha = 0;
-static int g_ctrlmachine = -1;
 
 static void
 sig_term(int __unused signo)
@@ -508,7 +494,7 @@ setup_threads(struct dtd_state *s)
 
 	sem_init(&s->socksema, 0, 0);
 
-	if (g_ctrlmachine == 0) {
+	if (s->ctrlmachine == 0) {
 		err = pthread_create(
 		    &s->dtt_listentd, NULL, listen_dttransport, s);
 		if (err != 0) {
@@ -602,6 +588,7 @@ main(int argc, char **argv)
 	size_t optlen;
 	struct pidfh *pfh;
 	pid_t otherpid;
+	int ctrlmachine = -1;
 
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
@@ -665,7 +652,7 @@ main(int argc, char **argv)
 				exit(EXIT_FAILURE);
 			}
 
-			g_ctrlmachine = 1;
+			ctrlmachine = 1;
 			break;
 
 		/*
@@ -692,7 +679,7 @@ main(int argc, char **argv)
 				    "(bare metal) machine. Did you mean to make"
 				    " this machine an overlord ('-O')?");
 			}
-			g_ctrlmachine = 0;
+			ctrlmachine = 0;
 			break;
 
 		case 'd':
@@ -725,9 +712,10 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
+	state.ctrlmachine = ctrlmachine;
 	state.pid_fileh = pfh;
 
-	if (g_ctrlmachine != 0 && g_ctrlmachine != 1) {
+	if (state.ctrlmachine != 0 && state.ctrlmachine != 1) {
 		dump_errmsg(
 		    "You must either specify whether to run the daemon in "
 		    "minion ('-m') or overlord ('-O') mode");

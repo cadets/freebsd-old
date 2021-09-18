@@ -1,13 +1,22 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/event.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 
+#include <errno.h>
+#include <fcntl.h>
+#include <openssl/sha.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-#include "dtraced_errmsg.h"
+#include "dtraced_connection.h"
 #include "dtraced_directory.h"
+#include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
+#include "dtraced_state.h"
 
 /*
  * NOTE: dispatch_event assumes that event has already been handled correctly in
@@ -244,7 +253,7 @@ process_joblist(void *_s)
 					pthread_exit(NULL);
 				}
 
-				if (g_ctrlmachine == 0) {
+				if (s->ctrlmachine == 0) {
 					newident = malloc(sizeof(identlist_t));
 					if (newident == NULL) {
 						dump_errmsg(

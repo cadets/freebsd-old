@@ -2,6 +2,7 @@
 #include <sys/param.h>
 #include <sys/event.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -11,12 +12,19 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
+
+#define SOCKFD_NAME "sub.sock"
+
+char DTRACED_INBOUNDDIR[MAXPATHLEN]  = "/var/ddtrace/inbound/";
+char DTRACED_OUTBOUNDDIR[MAXPATHLEN] = "/var/ddtrace/outbound/";
+char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 
 int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
@@ -394,8 +402,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	}
 	filepathlen = strlen(fullpath);
 
-	assert(g_ctrlmachine == 1 || g_ctrlmachine == 0);
-	if (g_ctrlmachine == 1) {
+	assert(s->ctrlmachine == 1 || s->ctrlmachine == 0);
+	if (s->ctrlmachine == 1) {
 		/*
 		 * If we have a host configuration of dtraced
 		 * we simply send off the ELF file to dtrace(1).

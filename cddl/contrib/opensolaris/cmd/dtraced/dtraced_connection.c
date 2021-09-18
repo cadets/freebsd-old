@@ -12,10 +12,14 @@
 
 #include "dtraced.h"
 #include "dtraced_connection.h"
+#include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_state.h"
+
+
+#define DTRACED_BACKLOG_SIZE    4
 
 static int
 accept_new_connection(struct dtd_state *s)

@@ -1,7 +1,11 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include "dtraced_connection.h"
+#include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_lock.h"
 #include "dtraced_state.h"
@@ -66,7 +70,7 @@ init_state(struct dtd_state *s)
 		return (-1);
 	}
 
-	if (g_ctrlmachine == 0) {
+	if (s->ctrlmachine == 0) {
 		s->dtt_fd = open("/dev/dttransport", O_RDWR);
 		if (s->dtt_fd == -1) {
 			dump_errmsg("Failed to open /dev/dttransport: %m");
@@ -151,7 +155,7 @@ destroy_state(struct dtd_state *s)
 
 	free(s->workers);
 
-	if (g_ctrlmachine == 0) {
+	if (s->ctrlmachine == 0) {
 		close(s->dtt_fd);
 		s->dtt_fd = -1;
 	}

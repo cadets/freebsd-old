@@ -5,6 +5,11 @@
 
 #include "dtraced_lock.h"
 
+extern char DTRACED_INBOUNDDIR[MAXPATHLEN];
+extern char DTRACED_OUTBOUNDDIR[MAXPATHLEN];
+extern char DTRACED_BASEDIR[MAXPATHLEN];
+
+
 struct dtd_dir;
 struct dtd_state;
 
