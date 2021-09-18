@@ -72,7 +72,6 @@ struct dtd_state {
 	_Atomic int shutdown;        /* shutdown flag */
 	int dirfd;                   /* /var/ddtrace */
 	int nosha;                   /* do we want to checksum? */
-	struct pidfh *pid_fileh;     /* lockfile */
 	int kq_hdl;                  /* event loop kqueue */
 
 	dt_list_t identlist;         /* list of identifiers */
