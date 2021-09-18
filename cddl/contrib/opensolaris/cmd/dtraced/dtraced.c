@@ -246,42 +246,6 @@ sig_pipe(int __unused signo)
 {
 }
 
-static int
-mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
-    const char *name, int checkowner)
-{
-	size_t l;
-
-	assert(m != NULL);
-
-	if (name == NULL)
-		return (-1);
-
-	l = strlcpy(m->_name, name, MAXPATHLEN);
-	if (l >= MAXPATHLEN)
-		return (-1);
-
-	m->_checkowner = checkowner;
-
-	atomic_store(&m->_owner, NULL);
-	return (pthread_mutex_init(&m->_m, attr));
-}
-
-static int
-mutex_destroy(mutex_t *m)
-{
-
-	assert(atomic_load(&m->_owner) == NULL);
-	return (pthread_mutex_destroy(&m->_m));
-}
-
-static pthread_mutex_t *
-pmutex_of(mutex_t *m)
-{
-
-	return (&m->_m);
-}
-
 /*
  * Used for generating a random name of the outbound ELF file.
  */

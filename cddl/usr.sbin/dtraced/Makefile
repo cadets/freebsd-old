@@ -6,7 +6,8 @@
 
 PROG=		dtraced
 SRCS=		dtraced.c \
-		dtraced_errmsg.c
+		dtraced_errmsg.c \
+		dtraced_lock.c
 
 BINDIR?=	/usr/sbin
 
