@@ -49,18 +49,13 @@ dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 
 	switch (kind) {
 	case DT_BENCHKIND_TIME:
-		new = malloc(sizeof(dt_benchmark_t) +
-		    sizeof(struct timespec) * n_snapshots);
-		if (new == NULL)
-			return (NULL);
+		new = __dt_bench_new_time(n_snapshots);
 		break;
 
 	default:
 		fprintf(stderr, "Unknown benchmark kind: %d\n", kind);
 		return (NULL);
 	}
-
-	memset(new, 0, sizeof(dt_benchmark_t));
 
 	new->dtbe_name = strdup(name);
 	if (new->dtbe_name == NULL) {
@@ -234,7 +229,7 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 			xo_open_list_h(hdl, "snapshots");
 			for (j = 0; j < bench->dtbe_nsnapshots; j++) {
 				struct timespec *snap;
-				snap = &bench->dtbe_timesnaps[j];
+				snap = &bench->dtbe_timesnaps[j].__time;
 
 				xo_open_instance_h(hdl, "snapshots");
 				xo_emit_h(hdl, " {:name/%s} {:time/%jd}",
@@ -267,6 +262,34 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 	fclose(fp);
 
 	return (0);
+}
+
+void
+dt_bench_hdl_attach(dt_benchmark_t *b, dt_snapshot_hdl_t hdl, uint64_t data)
+{
+
+	if (hdl == DT_BENCH_TOPLEVEL)
+		b->dtbe_data = data;
+	else
+		b->dtbe_timesnaps[hdl].__data = data;
+}
+
+void
+dt_bench_setinfo(dt_benchmark_t *b, const char *name,
+    const char *description, int kind)
+{
+	if (b == NULL)
+		return;
+	
+	b->dtbe_name = strdup(name);
+	if (b->dtbe_name == NULL)
+		abort();
+
+	b->dtbe_desc = strdup(description);
+	if (b->dtbe_desc == NULL)
+		abort();
+
+	b->dtbe_kind = kind;
 }
 
 #endif // __DTRACE_RUN_BENCHMARKS__

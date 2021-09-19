@@ -145,9 +145,11 @@ static _Atomic int g_newline;
 static dt_list_t g_probe_advlist;
 static dt_list_t g_pgplist;
 static dt_list_t g_kill_list;
+static dt_list_t g_benchlist;
 static pthread_mutex_t g_pgplistmtx;
 static pthread_cond_t g_pgpcond;
 static pthread_mutex_t g_pgpcondmtx;
+static pthread_mutex_t g_benchlistmtx;
 
 #ifdef __FreeBSD__
 static _Atomic int g_siginfo;
@@ -172,6 +174,15 @@ static FILE *g_ofp;
 
 static pthread_mutex_t g_dtpmtx;
 static dtrace_hdl_t *g_dtp;
+
+#define CALL_EAGAIN     1
+#define ABORTED         2
+#define VPROG_CREATION  3
+
+typedef struct dt_benchlist {
+	dt_list_t next;
+	dt_benchmark_t *bench;
+} dt_benchlist_t;
 
 #ifdef illumos
 static char *g_etcfile = "/etc/system";
@@ -869,6 +880,20 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	return (0);
 }
 
+static dt_benchlist_t *
+new_bench_list_entry(dt_benchmark_t *bench)
+{
+	dt_benchlist_t *new;
+
+	new = malloc(sizeof(dt_benchlist_t));
+	if (new == NULL)
+		abort();
+
+	memset(new, 0, sizeof(dt_benchlist_t));
+	new->bench = bench;
+	return (new);
+}
+
 static void *
 listen_dtraced(void *arg)
 {
@@ -897,6 +922,8 @@ listen_dtraced(void *arg)
 	size_t len_to_recv;
 	dtraced_hdr_t header;
 	void *verictx;
+	dt_snapshot_hdl_t cshdl;
+	dt_benchmark_t *bench;
 
 	rx_sockfd = 0;
 	elflen = 0;
@@ -936,6 +963,7 @@ listen_dtraced(void *arg)
 			dt_verictx_teardown(verictx);
 			pthread_exit(NULL);
 		}
+		bench = __dt_bench_new_time(5);
 
 		if (atomic_load(&g_intr)) {
 			done = 1;
@@ -1004,6 +1032,7 @@ listen_dtraced(void *arg)
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {
 			novm = 1;
+			dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, 0);
 			goto process_prog;
 		}
 
@@ -1015,6 +1044,7 @@ listen_dtraced(void *arg)
 		assert(((uintptr_t)elf & 1) == 0);
 		vmid = *((uint16_t *)elf);
 		elf += sizeof(uint16_t) + 6;
+		dt_bench_hdl_attach(bench, DT_BENCH_TOPLEVEL, vmid);
 
 		/*
 		 * 8-byte aligned
@@ -1049,8 +1079,10 @@ process_prog:
 		if (fsync(fd))
 			fatal("failed to sync file");
 
+		cshdl = __dt_bench_snapshot_time(bench);
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
 		if (newprog == NULL && err != EAGAIN) {
+			dt_bench_hdl_attach(bench, cshdl, ABORTED);
 			close(fd);
 			continue;
 		}
@@ -1058,20 +1090,27 @@ process_prog:
 		if (newprog == NULL) {
 			char buf[DT_PROG_IDENTLEN];
 
+			dt_bench_hdl_attach(bench, cshdl, CALL_EAGAIN);
+
 			(void) dt_get_srcident(buf);
 			newpgpl = get_pgplist_entry(buf, vmid, &found,
 			    PGPL_GUEST);
 
-			if (found == 0)
+			if (found == 0) {
+				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				continue;
+			}
 
 			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
 			    newpgpl->gpgp);
 			if (newprog == NULL) {
+				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				close(fd);
 				continue;
 			}
 		}
+
+		__dt_bench_snapshot_time(bench);
 
 		newprog->dp_vmid = vmid;
 
@@ -1118,6 +1157,8 @@ process_prog:
 		}
 
 		if (!found && novm == 0) {
+			cshdl = __dt_bench_snapshot_time(bench);
+			dt_bench_hdl_attach(bench, cshdl, VPROG_CREATION);
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
 			if (guestpgp == NULL)
@@ -1145,6 +1186,7 @@ process_prog:
 				dt_verictx_teardown(verictx);
 				pthread_exit(NULL);
 			}
+			__dt_bench_snapshot_time(bench);
 
 			if (dtrace_send_elf(guestpgp, tmpfd, wx_sockfd,
 			    "outbound", 0)) {
@@ -1153,9 +1195,16 @@ process_prog:
 				pthread_exit(NULL);
 			}
 
+			__dt_bench_snapshot_time(bench);
+
 			newpgpl->gpgp = guestpgp;
 			close(tmpfd);
 		}
+
+		__dt_bench_stop_time(bench);
+		dt_bench_setinfo(bench, "rcvpgp",
+		    "Received program", DT_BENCHKIND_TIME);
+		dt_list_append(&g_benchlist, new_bench_list_entry(bench));
 
 		/*
 		 * If this is a new program, we add it to the list.
@@ -1530,6 +1579,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if ((err = pthread_cond_init(&g_pgpcond, NULL)) != 0)
 			fatal("failed to init pgpcond");
 
+		if ((err = pthread_mutex_init(&g_benchlistmtx, NULL)) != 0)
+			fatal("failed to init benchlistmtx");
+
 		rx_sock = open_dtraced(DTD_SUB_ELFWRITE);
 		if (rx_sock == -1)
 			fatal("failed to open rx_sock");
@@ -1539,7 +1591,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			fatal("failed to open wx_sock");
 
 		g_e2ebench = dt_bench_new("hypertrace_end2end",
-		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 2);
+		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 4);
 
 		if (g_e2ebench == NULL)
 			fatal("failed to create new benchmark");
@@ -1561,12 +1613,10 @@ exec_prog(const dtrace_cmd_t *dcp)
 		__dt_bench_snapshot_time(g_e2ebench);
 		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base", 0))
 			fatal("failed to dtrace_send_elf()");
+		__dt_bench_snapshot_time(g_e2ebench);
 
 		close(tmpfd);
 
-		__dt_bench_stop_time(g_e2ebench);
-		dt_bench_dump(&g_e2ebench, 1, "/root/benchmark.json", g_script);
-		dt_bench_free(g_e2ebench);
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
 		if (dtd_arg == NULL)
@@ -1652,12 +1702,16 @@ again:
 			dt_list_append(&g_kill_list, pgpl->response);
 		}
 
+		__dt_bench_snapshot_time(g_e2ebench);
 		for (resp = dt_list_next(&g_kill_list); resp;
 		     resp = dt_list_next(resp)) {
 			if (send_kill(wx_sock, resp))
 				fprintf(stderr, "send_kill() failed with: %s\n",
 				    strerror(errno));
 		}
+		__dt_bench_stop_time(g_e2ebench);
+		dt_bench_dump(&g_e2ebench, 1, "/root/benchmark.json", g_script);
+		dt_bench_free(g_e2ebench);
 
 		(void)pthread_kill(g_dtracedtd, SIGTERM);
 		(void)pthread_kill(g_worktd, SIGTERM);
@@ -1672,6 +1726,7 @@ again:
 		pthread_mutex_destroy(&g_pgplistmtx);
 		pthread_mutex_destroy(&g_pgpcondmtx);
 		pthread_cond_destroy(&g_pgpcond);
+		pthread_mutex_destroy(&g_benchlistmtx);
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
