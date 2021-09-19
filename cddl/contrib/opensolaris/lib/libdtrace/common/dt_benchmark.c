@@ -33,6 +33,22 @@ dt_merge_new(void)
 	return (m);
 }
 
+dt_benchmark_t **
+dt_merge_get(void *_m)
+{
+	dt_bmerge_t *m = _m;
+
+	return (m->size);
+}
+
+size_t
+dt_merge_size(void *_m)
+{
+	dt_bmerge_t *m = _m;
+
+	return (m->current);
+}
+
 void
 dt_merge_cleanup(void *_m)
 {

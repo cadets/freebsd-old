@@ -47,6 +47,9 @@ typedef struct dt_benchmark {
 
 void           *dt_merge_new(void);
 void           dt_merge_cleanup(void *);
+void           *dt_bench_merge(void *, dt_benchmark_t *);
+dt_benchmark_t **dt_merge_get(void *);
+size_t         dt_merge_size(void *);
 dt_benchmark_t *dt_bench_new(const char *, const char *, int, size_t);
 void           dt_bench_free(dt_benchmark_t *);
 int            dt_bench_start(dt_benchmark_t *);

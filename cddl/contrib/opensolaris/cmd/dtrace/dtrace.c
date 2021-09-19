@@ -880,6 +880,28 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	return (0);
 }
 
+static void *
+merge_benchmarks(void)
+{
+	void *merge;
+	dt_benchlist_t *be;
+	dt_benchmark_t *b;
+
+	merge = dt_merge_new();
+	if (merge == NULL)
+		abort();
+
+	for (be = dt_list_next(&g_benchlist); be; be = dt_list_next(be)) {
+		b = be->bench;
+		assert(b != NULL);
+
+		if (dt_bench_merge(merge, b) == NULL)
+			abort();
+	}
+
+	return (merge);
+}
+
 static dt_benchlist_t *
 new_bench_list_entry(dt_benchmark_t *bench)
 {
