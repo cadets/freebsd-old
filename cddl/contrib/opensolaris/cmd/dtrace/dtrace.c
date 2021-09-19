@@ -1545,8 +1545,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 	int again = 0;
 	int tmpfd;
 	uint64_t subs = 0;
-	void *verictx;
+	void *verictx, *merge;
 	dtrace_prog_t *resp;
+	dt_benchlist_t *be;
 
 	dcp->dc_prog->dp_rflags = rslv;
 
@@ -1732,8 +1733,17 @@ again:
 				    strerror(errno));
 		}
 		__dt_bench_stop_time(g_e2ebench);
-		dt_bench_dump(&g_e2ebench, 1, "/root/benchmark.json", g_script);
+		merge = merge_benchmarks();
+		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
+		    "/root/benchmark.json", g_script);
 		dt_bench_free(g_e2ebench);
+		while ((be = dt_list_next(&g_benchlist)) != NULL) {
+			dt_list_delete(&g_benchlist, be);
+			free(be->bench);
+			free(be);
+		}
+
+		dt_merge_cleanup(merge);
 
 		(void)pthread_kill(g_dtracedtd, SIGTERM);
 		(void)pthread_kill(g_worktd, SIGTERM);

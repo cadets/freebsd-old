@@ -38,7 +38,7 @@ dt_merge_get(void *_m)
 {
 	dt_bmerge_t *m = _m;
 
-	return (m->size);
+	return (m->benchmarks);
 }
 
 size_t
@@ -46,7 +46,7 @@ dt_merge_size(void *_m)
 {
 	dt_bmerge_t *m = _m;
 
-	return (m->current);
+	return (m->size);
 }
 
 void
@@ -175,24 +175,24 @@ dt_bench_merge(void *_m, dt_benchmark_t *b)
 	size_t cursize = m->size;
 	dt_benchmark_t **bs = m->benchmarks;
 
-	if (bs == NULL) {
-		bs = malloc(sizeof(dt_benchmark_t *) * INITIAL_NBENCH);
-		if (bs == NULL)
-			return (NULL);
-
-		m->size = INITIAL_NBENCH;
-	}
-
 	if (m->current >= cursize) {
-		cursize <<= 1;
+		if (cursize == 0)
+			cursize = INITIAL_NBENCH;
+		else
+			cursize <<= 1;
+
 		bs = malloc(sizeof(dt_benchmark_t *) * cursize);
 		if (bs == NULL)
 			return (NULL);
 
 		memset(bs, 0, sizeof(dt_benchmark_t *) * cursize);
-		memcpy(bs, m->benchmarks, sizeof(dt_benchmark_t *) * m->size);
+		if (m->benchmarks) {
+			assert(m->size > 0);
+			memcpy(bs, m->benchmarks,
+			    sizeof(dt_benchmark_t *) * m->size);
+			free(m->benchmarks);
+		}
 
-		free(m->benchmarks);
 		m->benchmarks = bs;
 		m->size = cursize;
 	}
