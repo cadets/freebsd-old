@@ -282,12 +282,10 @@ main(int argc, char **argv)
 				 * overlord. Virtual machines don't have
 				 * minions.
 				 */
-				dump_errmsg(
+				dump_warnmsg(
 				    "Specified '-O' (overlord mode) on a "
-				    "virtual machine. This is not supported... "
-				    "exiting.");
-
-				exit(EXIT_FAILURE);
+				    "virtual machine. This is not (really)"
+				    "supported... Don't report bugs.");
 			}
 
 			ctrlmachine = 1;
