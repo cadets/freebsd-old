@@ -59,6 +59,7 @@ void           dt_bench_snapshot(dt_benchmark_t *);
 int            dt_bench_dump(dt_benchmark_t **, size_t, const char *, char *);
 void           dt_bench_hdl_attach(dt_benchmark_t *, dt_snapshot_hdl_t, uint64_t);
 void           dt_bench_setinfo(dt_benchmark_t *, const char *, const char *, int);
+void           dt_snapshot_setinfo(dt_benchmark_t *, dt_snapshot_hdl_t, const char *);
 
 static __inline dt_snapshot_hdl_t
 __dt_bench_snapshot_time(dt_benchmark_t *__b)
@@ -125,6 +126,7 @@ typedef size_t dt_snapshot_hdl_t;
 #define  dt_bench_dump(...)
 #define  dt_bench_hdl_attach(...)
 #define  dt_bench_setinfo(...)
+#define  dt_snapshot_setinfo(...)
 #define  __dt_bench_snapshot_time(...) (0)
 #define  __dt_bench_stop_time(...)
 #define  __dt_bench_new_time(...) ((void *)1) /* XXX: Oof. */

@@ -300,6 +300,15 @@ dt_bench_hdl_attach(dt_benchmark_t *b, dt_snapshot_hdl_t hdl, uint64_t data)
 }
 
 void
+dt_snapshot_setinfo(dt_benchmark_t *b, dt_snapshot_hdl_t snap, const char *name)
+{
+
+	if (strlcpy(b->dtbe_snapnames[snap],
+	    name, DTB_SNAPNAMELEN) >= DTB_SNAPNAMELEN)
+		abort();
+}
+
+void
 dt_bench_setinfo(dt_benchmark_t *b, const char *name,
     const char *description, int kind)
 {
