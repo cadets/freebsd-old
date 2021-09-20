@@ -103,8 +103,15 @@ void
 dt_bench_free(dt_benchmark_t *bench)
 {
 
-	free(bench->dtbe_name);
-	free(bench->dtbe_desc);
+	if (bench->dtbe_name)
+		free(bench->dtbe_name);
+
+	if (bench->dtbe_desc)
+		free(bench->dtbe_desc);
+
+	if (bench->dtbe_snapnames)
+		free(bench->dtbe_snapnames);
+
 	free(bench);
 }
 
@@ -243,12 +250,13 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 			    bench->dtbe_endtime.tv_nsec);
 
 			xo_open_list_h(hdl, "snapshots");
-			for (j = 0; j < bench->dtbe_nsnapshots; j++) {
+			for (j = 0; j < bench->dtbe_cursnapshot; j++) {
 				struct timespec *snap;
 				snap = &bench->dtbe_timesnaps[j].__time;
 
 				xo_open_instance_h(hdl, "snapshots");
-				xo_emit_h(hdl, " {:name/%s} {:time/%jd}",
+				xo_emit_h(hdl, " {:name/%s} {:time/%jd} ",
+				    bench->dtbe_snapnames == NULL ? "(null)" :
 				    bench->dtbe_snapnames[j] ?
 				    bench->dtbe_snapnames[j] : "(null)",
 				    snap->tv_nsec);

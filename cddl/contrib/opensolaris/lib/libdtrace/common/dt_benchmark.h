@@ -110,19 +110,24 @@ __dt_bench_new_time(size_t n_snapshots)
 /*
  * Ugly, but ensures that nobody accesses random things.
  */
-typedef void dt_benchmark_t;
+typedef void   dt_benchmark_t;
+typedef char   dt_snapshot_name_t[DTB_SNAPNAMELEN];
+typedef size_t dt_snapshot_hdl_t;
 
-#define  dt_merge_new(...) (1) /* XXX: Oof. */
+#define  dt_merge_new(...) ((void *)1) /* XXX: Oof. */
 #define  dt_merge_cleanup(...)
-#define  dt_bench_new(...) (1) /* XXX: Oof. */
+#define  dt_bench_merge(...) ((void *)1)
+#define  dt_bench_new(...) ((void *)1) /* XXX: Oof. */
 #define  dt_bench_free(...)
 #define  dt_bench_start(...)
 #define  dt_bench_stop(...)
 #define  dt_bench_snapshot(...)
 #define  dt_bench_dump(...)
-#define  __dt_bench_snapshot_time(...)
+#define  dt_bench_hdl_attach(...)
+#define  dt_bench_setinfo(...)
+#define  __dt_bench_snapshot_time(...) (0)
 #define  __dt_bench_stop_time(...)
-#define  __dt_bench_new_time(...) (1) /* XXX: Oof. */
+#define  __dt_bench_new_time(...) ((void *)1) /* XXX: Oof. */
 
 #endif // __DTRACE_RUN_BENCHMARKS__
 

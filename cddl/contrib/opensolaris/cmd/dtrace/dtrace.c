@@ -1739,7 +1739,7 @@ again:
 		dt_bench_free(g_e2ebench);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
 			dt_list_delete(&g_benchlist, be);
-			free(be->bench);
+			dt_bench_free(be->bench);
 			free(be);
 		}
 
