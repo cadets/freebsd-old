@@ -249,7 +249,8 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 
 				xo_open_instance_h(hdl, "snapshots");
 				xo_emit_h(hdl, " {:name/%s} {:time/%jd}",
-				    bench->dtbe_snapnames[j] ?: "(null)",
+				    bench->dtbe_snapnames[j] ?
+				    bench->dtbe_snapnames[j] : "(null)",
 				    snap->tv_nsec);
 				xo_close_instance_h(hdl, "snapshots");
 			}

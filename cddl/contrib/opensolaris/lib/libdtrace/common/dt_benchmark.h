@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 
+#include <assert.h>
 #include <time.h>
 #include <stdlib.h>
 
@@ -100,6 +101,7 @@ __dt_bench_new_time(size_t n_snapshots)
 
 	memset(__b, 0, sizeof(dt_benchmark_t) +
 	    sizeof(dt_bench_snapshot_t) * n_snapshots);
+	__b->dtbe_nsnapshots = n_snapshots;
 	return (__b);
 }
 
