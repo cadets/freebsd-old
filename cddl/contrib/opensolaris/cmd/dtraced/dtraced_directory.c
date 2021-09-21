@@ -53,6 +53,11 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	dirpath = strdup(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
+	if (dirpath == NULL) {
+		dump_errmsg("failed to strdup() dirpath: %m");
+		abort();
+	}
+
 	dirpathlen = strlen(dirpath);
 	newname = gen_filename(dirpath);
 	strcpy(donename, dirpath);
@@ -184,7 +189,7 @@ expand_paths(dtd_dir_t *dir)
 		newpaths = malloc(dir->efile_size * sizeof(char *));
 		if (newpaths == NULL) {
 			dump_errmsg("Failed to malloc newpaths");
-			return (-1);
+			abort();
 		}
 
 		memset(newpaths, 0, dir->efile_size * sizeof(char *));
@@ -230,8 +235,13 @@ populate_existing(struct dirent *f, dtd_dir_t *dir)
 	}
 
 	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 	UNLOCK(&dir->dirmtx);
+
+	if (dir->existing_files[dir->efile_len++] == NULL) {
+		dump_errmsg("failed to strdup f->d_name: %m");
+		abort();
+	}
 
 	return (0);
 }
@@ -263,12 +273,19 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 	err = 0;
 
 	dir = malloc(sizeof(dtd_dir_t));
-	if (dir == NULL)
-		return (NULL);
+	if (dir == NULL) {
+		dump_errmsg("failed to allocate directory: %m");
+		abort();
+	}
 
 	memset(dir, 0, sizeof(dtd_dir_t));
 
 	dir->dirpath = strdup(path);
+	if (dir->dirpath == NULL) {
+		dump_errmsg("failed to strdup() dirpath: %m");
+		abort();
+	}
+
 	if ((err = mutex_init(
 	    &dir->dirmtx, NULL, dir->dirpath, CHECKOWNER_YES)) != 0) {
 		dump_errmsg("Failed to create dir mutex: %m");
@@ -427,9 +444,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
-				dump_errmsg("Failed to malloc a new job");
-				UNLOCK(&s->socklistmtx);
-				return (-1);
+				dump_errmsg("Failed to malloc a new job: %m");
+				abort();
 			}
 
 			memset(job, 0, sizeof(struct dtd_joblist));
@@ -439,6 +455,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 			job->j.notify_elfwrite.dir = dir;
 			job->j.notify_elfwrite.nosha = 1;
+
+			if (job->j.notify_elfwrite.path == NULL) {
+				dump_errmsg("failed to strdup() f->d_name: %m");
+				abort();
+			}
 
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
@@ -574,13 +595,27 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * the '-q' flag.
 			 */
 			argv[0] = strdup("/usr/sbin/dtrace");
+			if (argv[0] == NULL)
+				abort();
+
 			argv[1] = strdup("-Y");
+			if (argv[1] == NULL)
+				abort();
+
 			argv[2] = strdup(fullpath);
+			if (argv[2] == NULL)
+				abort();
+
 			argv[3] = strdup("-q");
-			
-			if (num_idents > 0)
+			if (argv[3] == NULL)
+				abort();
+
+			if (num_idents > 0) {
 				argv[4] = strdup("-N");
-			else
+				if (argv[4] == NULL)
+					abort();
+
+			} else
 				argv[4] = NULL;
 
 			argv[5] = NULL;
@@ -601,8 +636,13 @@ cleanup:
 	}
 
 	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 	UNLOCK(&dir->dirmtx);
+
+	if (dir->existing_files[dir->efile_len++] == NULL) {
+		dump_errmsg("failed to strdup f->d_name: %m");
+		abort();
+	}
 
 	return (0);
 }
@@ -629,6 +669,10 @@ dtraced_copyfile(const char *src, const char *dst)
 
 	len = sb.st_size;
 	buf = malloc(len);
+	if (buf == NULL) {
+		dump_errmsg("failed to allocate buf: %m");
+		abort();
+	}
 
 	if (read(fd, buf, len) < 0) {
 		dump_errmsg("Failed to read %zu bytes from %s (%d): %m",
@@ -713,9 +757,19 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	dirpath = strdup(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
+	if (dirpath == NULL) {
+		dump_errmsg("failed to strdup() dirpath: %m");
+		abort();
+	}
+
 	LOCK(&s->outbounddir->dirmtx);
 	outbounddirpath = strdup(s->outbounddir->dirpath);
 	UNLOCK(&s->outbounddir->dirmtx);
+
+	if (outbounddirpath == NULL) {
+		dump_errmsg("failed to strdup() outbounddirpath: %m");
+		abort();
+	}
 
 	newname = gen_filename(outbounddirpath);
 	dirpathlen = strlen(outbounddirpath);
@@ -740,11 +794,20 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		waitpid(pid, &status, 0);
 	else {
 		argv[0] = strdup("/usr/sbin/dtrace");
+		if (argv[0] == NULL)
+			abort();
+
 		argv[1] = strdup("-Y");
+		if (argv[1] == NULL)
+			abort();
+
 		strcpy(fullarg, fullpath);
 		offset = strlen(fullarg);
 		strcpy(fullarg + offset, ",host");
 		argv[2] = strdup(fullarg);
+		if (argv[2] == NULL)
+			abort();
+
 		argv[3] = NULL;
 		execve("/usr/sbin/dtrace", argv, NULL);
 		exit(EXIT_FAILURE);
@@ -760,8 +823,13 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	}
 
 	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 	UNLOCK(&dir->dirmtx);
+
+	if (dir->existing_files[dir->efile_len++] == NULL) {
+		dump_errmsg("failed to strdup f->d_name: %m");
+		abort();
+	}
 
 	return (0);
 }
@@ -819,10 +887,10 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
-			dump_errmsg("Failed to malloc a new job");
-			UNLOCK(&s->socklistmtx);
-			return (-1);
+			dump_errmsg("Failed to malloc a new job: %m");
+			abort();
 		}
+
 		memset(job, 0, sizeof(struct dtd_joblist));
 
 		job->job = NOTIFY_ELFWRITE;
@@ -831,6 +899,11 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;
 		job->j.notify_elfwrite.nosha = s->nosha;
+
+		if (job->j.notify_elfwrite.path == NULL) {
+			dump_errmsg("failed to strdup() f->d_name: %m");
+			abort();
+		}
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -854,8 +927,13 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	}
 
 	assert(dir->efile_size > dir->efile_len);
-	dir->existing_files[dir->efile_len++] = strdup(f->d_name);
+	dir->existing_files[dir->efile_len] = strdup(f->d_name);
 	UNLOCK(&dir->dirmtx);
+
+	if (dir->existing_files[dir->efile_len++] == NULL) {
+		dump_errmsg("failed to strdup f->d_name: %m");
+		abort();
+	}
 
 	return (0);
 }
