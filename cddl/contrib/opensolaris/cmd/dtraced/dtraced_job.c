@@ -37,7 +37,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			dump_errmsg("malloc() failed with: %m");
-			return (-1);
+			abort();
 		}
 
 		job->job = READ_DATA;
@@ -170,7 +170,7 @@ process_joblist(void *_s)
 			buf = malloc(nbytes);
 			if (buf == NULL) {
 				dump_errmsg("malloc() failed with: %m");
-				break;
+				abort();
 			}
 
 			_buf = buf;
@@ -259,8 +259,7 @@ process_joblist(void *_s)
 						dump_errmsg(
 						    "Failed to allocate new"
 						    " identifier: %m");
-						free(buf);
-						pthread_exit(NULL);
+						abort();
 					}
 
 					if (DTRACED_MSG_IDENT_PRESENT(header)) {
@@ -303,8 +302,7 @@ process_joblist(void *_s)
 					if (job == NULL) {
 						dump_errmsg(
 						    "malloc() failed with: %m");
-						UNLOCK(&s->socklistmtx);
-						break;
+						abort();
 					}
 
 					memset(
@@ -350,7 +348,7 @@ process_joblist(void *_s)
 			if (msg == NULL) {
 				dump_errmsg(
 				    "Failed to allocate a kill message: %m");
-				break;
+				abort();
 			}
 
 			/*
@@ -473,6 +471,10 @@ killcleanup:
 			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 			msglen += DTRACED_MSGHDRSIZE;
 			msg = malloc(msglen);
+			if (msg == NULL) {
+				dump_errmsg("failed to malloc msg: %m");
+				abort();
+			}
 
 			dump_debugmsg("    Length of ELF file: %zu",
 			    elflen);

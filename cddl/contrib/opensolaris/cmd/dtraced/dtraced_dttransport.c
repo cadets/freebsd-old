@@ -93,6 +93,11 @@ retry:
 				}
 
 				elf = malloc(e.u.elf.totallen);
+				if (elf == NULL) {
+					dump_errmsg("failed to malloc elf: %m");
+					abort();
+				}
+
 				memset(elf, 0, e.u.elf.totallen);
 				len = e.u.elf.totallen;
 			}
@@ -136,8 +141,10 @@ retry:
 			break;
 		case DTT_KILL:
 			kill_entry = malloc(sizeof(pidlist_t));
-			if (kill_entry == NULL)
-				break;
+			if (kill_entry == NULL) {
+				dump_errmsg("failed to malloc kill_entry: %m");
+				abort();
+			}
 
 			kill_entry->pid = e.u.kill.pid;
 			LOCK(&s->kill_listmtx);
@@ -239,8 +246,7 @@ write_dttransport(void *_s)
 		msg = malloc(len);
 		if (msg == NULL) {
 			dump_errmsg("Failed to allocate a new message: %m");
-			atomic_store(&s->shutdown, 1);
-			pthread_exit(NULL);
+			abort();
 		}
 
 		totallen = len;

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
 
 /*
@@ -34,14 +35,21 @@ gen_filename(const char *dir)
 	assert(len > 10);
 
 	filename = malloc(len);
-	if (filename == NULL)
-		return (NULL);
+	if (filename == NULL) {
+		dump_errmsg("failed to malloc filename: %m");
+		abort();
+	}
 
 	filename[0] = '.';
 	get_randname(filename + 1, len - 2);
 	filename[len - 1] = '\0';
 
 	elfpath = malloc(MAXPATHLEN);
+	if (elfpath == NULL) {
+		dump_errmsg("failed to malloc elfpath: %m");
+		abort();
+	}
+
 	strcpy(elfpath, dir);
 	strcpy(elfpath + strlen(dir), filename);
 

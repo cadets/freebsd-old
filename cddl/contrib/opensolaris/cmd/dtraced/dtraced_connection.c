@@ -61,9 +61,8 @@ accept_new_connection(struct dtd_state *s)
 
 	fde = malloc(sizeof(struct dtd_fdlist));
 	if (fde == NULL) {
-		close(connsockfd);
 		dump_errmsg("malloc() failed with: %m");
-		return (-1);
+		abort();
 	}
 
 	memset(fde, 0, sizeof(struct dtd_fdlist));
