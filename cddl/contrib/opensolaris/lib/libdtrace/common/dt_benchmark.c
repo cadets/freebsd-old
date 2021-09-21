@@ -102,6 +102,7 @@ dt_bench_new(const char *name, const char *desc, int kind, size_t n_snapshots)
 void
 dt_bench_free(dt_benchmark_t *bench)
 {
+	size_t i;
 
 	if (bench->dtbe_name)
 		free(bench->dtbe_name);
@@ -109,8 +110,13 @@ dt_bench_free(dt_benchmark_t *bench)
 	if (bench->dtbe_desc)
 		free(bench->dtbe_desc);
 
-	if (bench->dtbe_snapnames)
+	if (bench->dtbe_snapnames) {
+		for (i = 0; i < bench->dtbe_nsnapshots; i++)
+			if (bench->dtbe_snapnames[i])
+				free(bench->dtbe_snapnames[i]);
+
 		free(bench->dtbe_snapnames);
+	}
 
 	free(bench);
 }
@@ -303,8 +309,8 @@ void
 dt_snapshot_setinfo(dt_benchmark_t *b, dt_snapshot_hdl_t snap, const char *name)
 {
 
-	if (strlcpy(b->dtbe_snapnames[snap],
-	    name, DTB_SNAPNAMELEN) >= DTB_SNAPNAMELEN)
+	b->dtbe_snapnames[snap] = strdup(name);
+	if (b->dtbe_snapnames[snap] == NULL)
 		abort();
 }
 
@@ -323,7 +329,32 @@ dt_bench_setinfo(dt_benchmark_t *b, const char *name,
 	if (b->dtbe_desc == NULL)
 		abort();
 
+	b->dtbe_snapnames = malloc(sizeof(dt_snapshot_name_t) *
+	    b->dtbe_nsnapshots);
+	if (b->dtbe_snapnames == NULL)
+		abort();
+
 	b->dtbe_kind = kind;
+}
+
+char *
+dt_bench_file(const char *initial)
+{
+	char *full;
+	char *_p;
+	time_t t = time(NULL);
+	struct tm tm = *localtime(&t);
+
+	full = malloc(MAXPATHLEN);
+	if (full == NULL)
+		abort();
+
+	strcpy(full, initial);
+	_p = full + strlen(initial);
+	sprintf(_p, "-%d_%02d_%02d-%02d:%02d:%02d.json", tm.tm_year + 1900,
+	    tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+	return (full);
 }
 
 #endif // __DTRACE_RUN_BENCHMARKS__

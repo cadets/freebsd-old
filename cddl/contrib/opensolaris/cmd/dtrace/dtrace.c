@@ -880,6 +880,37 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 	return (0);
 }
 
+static void
+set_snapshot_names(void)
+{
+	dt_benchlist_t *be;
+	dt_benchmark_t *b;
+	size_t i;
+	const char *names[] = {
+		"ELF parsing - start",
+		"ELF parsing - end",
+		"Virtual program creation - start",
+		"Virtual program creation - persisted",
+		"Virtual program creation - sent to dtraced"
+	};
+
+	for (be = dt_list_next(&g_benchlist); be; be = dt_list_next(be)) {
+		b = be->bench;
+
+		assert(b != NULL);
+		assert(b->dtbe_nsnapshots == 5);
+
+		for (i = 0; i < b->dtbe_nsnapshots; i++) {
+			if (b->dtbe_timesnaps[i].__data == ABORTED) {
+				dt_snapshot_setinfo(b, i, "aborted call");
+				break;
+			}
+
+			dt_snapshot_setinfo(b, i, names[i]);
+		}
+	}
+}
+
 static void *
 merge_benchmarks(void)
 {
@@ -1119,6 +1150,7 @@ process_prog:
 			    PGPL_GUEST);
 
 			if (found == 0) {
+				__dt_bench_stop_time(bench);
 				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				continue;
 			}
@@ -1126,6 +1158,7 @@ process_prog:
 			newprog = dt_elf_to_prog(g_dtp, fd, 0, &err,
 			    newpgpl->gpgp);
 			if (newprog == NULL) {
+				__dt_bench_stop_time(bench);
 				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				close(fd);
 				continue;
@@ -1733,9 +1766,12 @@ again:
 				    strerror(errno));
 		}
 		__dt_bench_stop_time(g_e2ebench);
+
+		set_snapshot_names();
 		merge = merge_benchmarks();
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
-		    "/root/benchmark.json", g_script);
+		    dt_bench_file("/root/userspace_e2e"), g_script);
+
 		dt_bench_free(g_e2ebench);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
 			dt_list_delete(&g_benchlist, be);
