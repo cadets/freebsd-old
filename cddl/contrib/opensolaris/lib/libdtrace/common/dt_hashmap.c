@@ -28,16 +28,16 @@
  * $FreeBSD$
  */
 
-
-#include <sys/hash.h>
-#include <sys/endian.h>
-#include <sys/stdint.h>
 #include <sys/types.h>
+#include <sys/endian.h>
+#include <sys/hash.h>
+#include <sys/stdint.h>
 
+#include <assert.h>
+#include <dt_hashmap.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <dt_hashmap.h>
 
 #define rol32(i32, n) ((i32) << (n) | (i32) >> (32 - (n)))
 
@@ -160,17 +160,15 @@ dt_hashmap_create(size_t size)
 
 	hm = malloc(sizeof(dt_hashmap_t));
 	if (hm == NULL)
-		return (NULL);
+		abort();
 
 	hm->dthm_size = size;
 	hm->dthm_nitems = 0;
 	hm->dthm_table = malloc(sizeof(dt_hashbucket_t) * hm->dthm_size);
-	if (hm->dthm_table == NULL) {
-		free(hm);
-		return (NULL);
-	}
+	if (hm->dthm_table == NULL)
+		abort();
 
-	memset(hm->dthm_table, 0, sizeof(void *) * hm->dthm_size);
+	memset(hm->dthm_table, 0, sizeof(dt_hashbucket_t) * hm->dthm_size);
 	return (hm);
 }
 
@@ -181,8 +179,11 @@ dt_hashmap_lookup(dt_hashmap_t *hm, void *e, size_t es)
 
 	idx = _hash(e, es) % hm->dthm_size;
 
-	while (hm->dthm_table[idx].key != NULL &&
-	    memcmp(hm->dthm_table[idx].key, e, es) != 0) {
+	while (hm->dthm_table[idx].key != NULL) {
+		assert(hm->dthm_table[idx].keysize == es);
+		if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
+			break;
+
 		idx++;
 		idx %= hm->dthm_size;
 	}
@@ -197,8 +198,11 @@ dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data)
 
 	idx = _hash(e, es) % hm->dthm_size;
 
-	while (hm->dthm_table[idx].key != NULL &&
-	    memcmp(hm->dthm_table[idx].key, e, es) != 0) {
+	while (hm->dthm_table[idx].key != NULL) {
+		assert(hm->dthm_table[idx].keysize == es);
+		if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
+			break;
+
 		idx++;
 		idx %= hm->dthm_size;
 	}
@@ -221,8 +225,11 @@ dt_hashmap_delete(dt_hashmap_t *hm, void *e, size_t es)
 
 	idx = _hash(e, es) % hm->dthm_size;
 
-	while (hm->dthm_table[idx].key != NULL &&
-	    memcmp(hm->dthm_table[idx].key, e, es) != 0) {
+	while (hm->dthm_table[idx].key != NULL) {
+		assert(hm->dthm_table[idx].keysize == es);
+		if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
+			break;
+
 		idx++;
 		idx %= hm->dthm_size;
 	}

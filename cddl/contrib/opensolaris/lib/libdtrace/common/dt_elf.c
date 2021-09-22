@@ -652,8 +652,8 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	el->eact = eact;
 
 	dt_list_append(&dtelf_state->s_actions, el);
-	dt_hashmap_insert(dtelf_state->s_acthash, ad, sizeof(dtrace_actdesc_t),
-	    scn);
+	dt_hashmap_insert(dtelf_state->s_acthash,
+	    ad, sizeof(dtrace_actdesc_t), scn);
 	return (scn);
 }
 
@@ -1352,12 +1352,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
-	if (dtelf_state->s_ecbhash == NULL)
-		errx(EXIT_FAILURE, "failed to create ecb hashmap");
-
 	dtelf_state->s_acthash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
-	if (dtelf_state->s_acthash == NULL)
-		errx(EXIT_FAILURE, "failed to create ecb hashmap");
+
 	/*
 	 * Initialise the identifier name string table.
 	 */
@@ -2355,9 +2351,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
-	if (dtelf_state->s_ecbhash == NULL)
-		errx(EXIT_FAILURE, "failed to create ecb hashmap");
-
 	dtelf_state->s_rslv = rslv;
 
 	off = lseek(fd, 0, SEEK_SET);
