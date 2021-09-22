@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/plockstat
 
 PROG=		plockstat
@@ -25,8 +27,10 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${SRCTOP}/sys
 CFLAGS+= -DHAVE_ISSETUGID
 
+.if ${MK_DTRACE_DEBUG} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 LIBADD=	dtrace proc
 

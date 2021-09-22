@@ -29,13 +29,11 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 		-I${OPENSOLARIS_SYS_DISTDIR}/compat \
 		-I${SRCTOP}/sys/dev/dttransport
 
-# Optional debugging stuff...
-#CFLAGS+=	-DNEED_ERRLOC
-#YFLAGS+=	-d
-
 LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 
+.if ${MK_DTRACE_DEBUG} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 .include <bsd.prog.mk>

@@ -1,5 +1,7 @@
 # $FreeBSD$
 
+.include <src.opts.mk>
+
 .PATH: ${SRCTOP}/cddl/contrib/opensolaris/cmd/lockstat
 
 PROG=		lockstat
@@ -27,8 +29,10 @@ CFLAGS+= -DHAVE_ISSETUGID
 
 CFLAGS+=	-DNEED_ERRLOC -g
 
+.if ${MK_DTRACE_DEBUG} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 #YFLAGS+=	-d
 

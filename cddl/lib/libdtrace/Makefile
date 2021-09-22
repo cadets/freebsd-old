@@ -153,8 +153,10 @@ DSRCS+=		regs_x86.d
 CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
 
+.if ${MK_DTRACE_DEBUG} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 YFLAGS+=-d
 

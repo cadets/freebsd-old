@@ -29,8 +29,10 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
 
+.if ${MK_DTRACE_DEBUG} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.endif
 
 # Optional debugging stuff...
 #CFLAGS+=	-DNEED_ERRLOC
