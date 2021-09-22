@@ -25,12 +25,25 @@
  * Copyright (c) 2003, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2016, Joyent, Inc. All rights reserved.
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
- * Copyright (c) 2020, 2021, Domagoj Stolfa. All rights reserved.
+ * Copyright (c) 2018, 2020, 2021, Domagoj Stolfa. All rights reserved.
  *
- * Parts of this software were developed by BAE Systems, the University of Cambridge
+ * This software were developed by BAE Systems, the University of Cambridge
  * Computer Laboratory, and Memorial University under DARPA/AFRL contract
  * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
  * (TC) research program.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
  */
 
 /*
