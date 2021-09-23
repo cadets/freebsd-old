@@ -41,6 +41,16 @@
 #ifndef _DTRACED_MISC_H_
 #define _DTRACED_MISC_H_
 
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define __NOSANITIZE_THREAD (__attribute__((no_sanitize("thread"))))
+#else
+#define __NOSANITIZE_THREAD
+#endif /* __has_feature(thread_sanitizer) */
+#else
+#define __NOSANITIZE_THREAD
+#endif /* defined(__has_feature) */
+
 void get_randname(char *, size_t);
 char *gen_filename(const char *);
 

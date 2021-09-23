@@ -29,9 +29,12 @@ CFLAGS+= -DHAVE_ISSETUGID
 
 CFLAGS+=	-DNEED_ERRLOC -g
 
-.if ${MK_DTRACE_DEBUG} != "no"
+.if ${MK_DTRACE_DEBUG_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
+.elif ${MK_DTRACE_DEBUG_TSAN} != "no"
+CFLAGS+=	-fsanitize=thread
+LDFLAGS+=	-fsanitize=thread
 .endif
 
 #YFLAGS+=	-d

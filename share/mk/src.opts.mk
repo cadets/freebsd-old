@@ -199,7 +199,8 @@ __DEFAULT_NO_OPTIONS = \
     CLANG_EXTRAS \
     CLANG_FORMAT \
     DTRACE_BENCHMARKS \
-    DTRACE_DEBUG \
+    DTRACE_DEBUG_ASAN \
+    DTRACE_DEBUG_TSAN \
     DTRACE_TESTS \
     EXPERIMENTAL \
     HESIOD \
@@ -407,6 +408,12 @@ MK_TESTS:=	no
 
 .if ${MK_DIALOG} == "no"
 MK_BSDINSTALL:=	no
+.endif
+
+# TODO: Something to make this work with `make makeman` and perhaps cleaner?
+.if !make(showconfig) && ${MK_DTRACE_DEBUG_ASAN} != "no" && ${MK_DTRACE_DEBUG_TSAN} != "no"
+.error ${.newline}ERROR: WITH_DTRACE_DEBUG_ASAN and WITH_DTRACE_DEBUG_TSAN\
+can not be set together.
 .endif
 
 .if ${MK_MAIL} == "no"

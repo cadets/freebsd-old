@@ -48,6 +48,7 @@
 #include <time.h>
 
 #include "dtraced_errmsg.h"
+#include "dtraced_misc.h"
 
 #define DTRACED_BACKTRACELEN    128
 
@@ -60,7 +61,7 @@ be_quiet(void)
 	quiet = 1;
 }
 
-void
+__NOSANITIZE_THREAD void
 dump_errmsg(const char *msg, ...)
 {
 	va_list ap;
@@ -86,7 +87,7 @@ dump_errmsg(const char *msg, ...)
 	va_end(ap);
 }
 
-void
+__NOSANITIZE_THREAD void
 dump_warnmsg(const char *msg, ...)
 {
 	va_list ap;
@@ -112,7 +113,7 @@ dump_warnmsg(const char *msg, ...)
 	va_end(ap);
 }
 
-void
+__NOSANITIZE_THREAD void
 dump_debugmsg(const char *msg, ...)
 {
 	va_list ap;
@@ -138,7 +139,7 @@ dump_debugmsg(const char *msg, ...)
 	va_end(ap);
 }
 
-void
+__NOSANITIZE_THREAD void
 dump_backtrace(void)
 {
 	int nptrs;
