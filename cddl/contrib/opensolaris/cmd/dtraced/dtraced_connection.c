@@ -348,6 +348,7 @@ setup_sockfd(struct dtd_state *s)
 	if (l >= sizeof(addr.sun_path)) {
 		dump_errmsg("Failed to copy %s into sockaddr (%zu)",
 		    DTRACED_SOCKPATH, l);
+		close(s->sockfd);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
@@ -367,11 +368,7 @@ setup_sockfd(struct dtd_state *s)
 	err = bind(s->sockfd, (struct sockaddr *)&addr, sizeof(addr));
 	if (err != 0) {
 		dump_errmsg("Failed to bind to %d: %m", s->sockfd);
-		if (close(s->sockfd) != 0) {
-			dump_errmsg("Failed to close %d: %m", s->sockfd);
-			return (-1);
-		}
-
+		close(s->sockfd);
 		s->sockfd = -1;
 		err = mutex_destroy(&s->sockmtx);
 		if (err != 0)
