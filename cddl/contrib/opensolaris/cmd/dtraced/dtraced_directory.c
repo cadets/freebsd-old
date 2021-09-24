@@ -694,9 +694,10 @@ cleanup:
 static void
 dtraced_copyfile(const char *src, const char *dst)
 {
-	int fd, newfd;
+	__cleanup(closefd_generic) int fd = -1;
+	__cleanup(closefd_generic) int newfd = -1;
 	struct stat sb;
-	void *buf;
+	__cleanup(freep) void *buf = NULL;
 	size_t len;
 
 	memset(&sb, 0, sizeof(struct stat));
@@ -707,7 +708,6 @@ dtraced_copyfile(const char *src, const char *dst)
 
 	if (fstat(fd, &sb)) {
 		dump_errmsg("Failed to fstat %s (%d): %m", src, fd);
-		close(fd);
 		return;
 	}
 
@@ -721,30 +721,20 @@ dtraced_copyfile(const char *src, const char *dst)
 	if (read(fd, buf, len) < 0) {
 		dump_errmsg("Failed to read %zu bytes from %s (%d): %m",
 		    len, src, fd);
-		close(fd);
-		free(buf);
 		return;
 	}
-
-	close(fd);
 
 	newfd = open(dst, O_WRONLY | O_CREAT);
 	if (newfd == -1) {
 		dump_errmsg("Failed to open and create %s: %m", dst);
-		free(buf);
 		return;
 	}
 
 	if (write(newfd, buf, len) < 0) {
 		dump_errmsg("Failed to write %zu bytes to %s (%d): %m",
 		    len, dst, newfd);
-		close(newfd);
-		free(buf);
 		return;
 	}
-
-	close(newfd);
-	free(buf);
 }
 
 int
@@ -752,14 +742,15 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 {
 	struct dtd_state *s;
 	int idx, err;
-	char *newname;
+	__cleanup(freep) char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status = 0;
 	pid_t pid;
 	char *argv[4];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
-	char *dirpath, *outbounddirpath;
+	__cleanup(freep) char *dirpath = NULL;
+	__cleanup(freep) char *outbounddirpath = NULL;
 	char donename[MAXPATHLEN] = { 0 };
 	size_t dirpathlen = 0;
 
@@ -825,9 +816,6 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	if (rename(newname, donename))
 		dump_errmsg("Failed to rename %s to %s: %m", newname,
 		    donename);
-	free(newname);
-	free(dirpath);
-	free(outbounddirpath);
 
 	pid = fork();
 
