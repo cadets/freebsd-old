@@ -67,7 +67,7 @@ get_randname(char *b, size_t len)
 char *
 gen_filename(const char *dir)
 {
-	char *filename;
+	__cleanup(freep) char *filename = NULL;
 	char *elfpath;
 	size_t len;
 
