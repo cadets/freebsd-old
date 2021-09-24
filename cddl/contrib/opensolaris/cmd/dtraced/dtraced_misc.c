@@ -127,3 +127,12 @@ closedir_generic(DIR **dir)
 	if (*dir)
 		closedir(*dir);
 }
+
+void
+cleanup_pidfile(struct pidfh **pfh)
+{
+
+	if (*pfh)
+		if (pidfile_remove(*pfh))
+			dump_errmsg("Could not remove pidfile: %m");
+}

@@ -42,6 +42,7 @@
 #define _DTRACED_MISC_H_
 
 #include <dirent.h>
+#include <libutil.h>
 
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
@@ -60,5 +61,6 @@ char *gen_filename(const char *);
 void freep(void *);
 void closefd_generic(int *);
 void closedir_generic(DIR **);
+void cleanup_pidfile(struct pidfh **);
 
 #endif // _DTRACED_MISC_H_
