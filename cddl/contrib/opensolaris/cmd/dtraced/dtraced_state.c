@@ -254,7 +254,6 @@ destroy_state(struct dtd_state *s)
 {
 	int err;
 	size_t i;
-	char *path;
 	struct dtd_joblist *j, *next;
 	struct dtd_state *retval;
 
