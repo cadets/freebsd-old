@@ -47,6 +47,7 @@
 #include <sys/wait.h>
 
 #include <assert.h>
+#include <dirent.h>
 #include <dt_elf.h>
 #include <dt_prog_link.h>
 #include <dt_resolver.h>
@@ -225,8 +226,9 @@ int
 main(int argc, char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
-	int efd, errval, rval, kq, retry;
-	DIR *elfdir;
+	__cleanup(closefd_generic) int efd = -1;
+	int errval, retry;
+	__cleanup(closedir_generic) DIR *elfdir = NULL;
 	size_t i;
 	char ch;
 	char pidstr[256];
@@ -615,12 +617,6 @@ againefd:
 
 		return (EXIT_FAILURE);
 	}
-
-	if (closedir(elfdir))
-		dump_errmsg("Could not close directory %s: %m", elfpath);
-
-	if (close(efd))
-		dump_errmsg("Could not close %s: %m", elfpath);
 
 	if (pidfile_remove(pfh))
 		dump_errmsg("Could not remove %s: %m", LOCK_FILE);
