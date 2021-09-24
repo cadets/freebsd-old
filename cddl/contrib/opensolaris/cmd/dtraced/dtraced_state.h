@@ -54,6 +54,7 @@
  */
 struct dtd_state {
 	int ctrlmachine;        /* is this a control machine? */
+	int threadpool_size;    /* size of the thread pool (workers) */
 
 	dtd_dir_t *inbounddir;  /* /var/ddtrace/inbound */
 	dtd_dir_t *outbounddir; /* /var/ddtrace/outbound */
@@ -110,7 +111,6 @@ struct dtd_state {
 	pthread_t consumer_writetd;  /* send messages to consumers */
 
 	_Atomic int shutdown;        /* shutdown flag */
-	int dirfd;                   /* /var/ddtrace */
 	int nosha;                   /* do we want to checksum? */
 	int kq_hdl;                  /* event loop kqueue */
 
@@ -118,7 +118,7 @@ struct dtd_state {
 	mutex_t identlistmtx;        /* mutex protecting the ident list */
 };
 
-int init_state(struct dtd_state *, int);
+int init_state(struct dtd_state *, int, int, int);
 int destroy_state(struct dtd_state *);
 
 #endif // _DTRACED_STATE_H_

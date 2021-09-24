@@ -39,25 +39,113 @@
  */
 
 #include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_chld.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
+#include "dtraced_dttransport.h"
 #include "dtraced_errmsg.h"
+#include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_state.h"
 
+static int
+setup_threads(struct dtd_state *s)
+{
+	int err;
+	pthread_t *threads;
+	size_t i;
+
+	threads = malloc(sizeof(pthread_t) * s->threadpool_size);
+	if (threads == NULL) {
+		dump_errmsg("Failed to allocate thread array");
+		return (-1);
+	}
+	memset(threads, 0, sizeof(pthread_t) * s->threadpool_size);
+
+	for (i = 0; i < s->threadpool_size; i++) {
+		err = pthread_create(&threads[i], NULL, process_joblist, s);
+		if (err != 0) {
+			dump_errmsg("Failed to create a new thread: %m");
+			return (-1);
+		}
+	}
+
+	s->workers = threads;
+
+	sem_init(&s->socksema, 0, 0);
+
+	if (s->ctrlmachine == 0) {
+		err = pthread_create(
+		    &s->dtt_listentd, NULL, listen_dttransport, s);
+		if (err != 0) {
+			dump_errmsg(
+			    "Failed to create the dttransport thread: %m");
+			return (-1);
+		}
+
+		/*
+		 * The socket can't be connected at this point because
+		 * accept_subs is not running. Need a semaphore.
+		 */
+		err = pthread_create(
+		    &s->dtt_writetd, NULL, write_dttransport, s);
+		if (err != 0) {
+			dump_errmsg(
+			    "Failed to create the dttransport thread: %m");
+			return (-1);
+		}
+	}
+
+	err = pthread_create(&s->socktd, NULL, process_consumers, s);
+	if (err != 0) {
+		dump_errmsg("Failed to create the socket thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
+	if (err != 0) {
+		dump_errmsg("Failed to create inbound listening thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
+	if (err != 0) {
+		dump_errmsg("Failed to create base listening thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->killtd, NULL, manage_children, s);
+	if (err != 0) {
+		dump_errmsg("Failed to create a child management thread: %m");
+		return (-1);
+	}
+
+	err = pthread_create(&s->reaptd, NULL, reap_children, s);
+	if (err != 0) {
+		dump_errmsg("Failed to create reaper thread: %m");
+		return (-1);
+	}
+
+	return (0);
+}
+
 int
-init_state(struct dtd_state *s, int ctrlmachine)
+init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads)
 {
 	int err;
 
 	memset(s, 0, sizeof(struct dtd_state));
 	s->sockfd = -1;
 	s->ctrlmachine = ctrlmachine;
+	s->nosha = nosha;
+	s->threadpool_size = n_threads;
 
 	if ((err = mutex_init(
 	    &s->socklistmtx, NULL, "socklist", CHECKOWNER_YES)) != 0) {
@@ -127,6 +215,37 @@ init_state(struct dtd_state *s, int ctrlmachine)
 	s->inbounddir->state = s;
 	s->basedir->state = s;
 
+	if ((err = setup_sockfd(s)) != 0) {
+		dump_errmsg("Failed to set up the socket");
+		return (-1);
+	}
+
+	err = file_foreach(s->outbounddir->dir,
+	    populate_existing, s->outbounddir);
+	if (err != 0) {
+		dump_errmsg("Failed to populate outbound existing files");
+		return (-1);
+	}
+
+	err = file_foreach(s->inbounddir->dir,
+	    populate_existing, s->inbounddir);
+	if (err != 0) {
+		dump_errmsg("Failed to populate inbound existing files");
+		return (-1);
+	}
+
+	err = file_foreach(s->basedir->dir, populate_existing, s->basedir);
+	if (err != 0) {
+		dump_errmsg("Failed to populate base existing files");
+		return (-1);
+	}
+
+	err = setup_threads(s);
+	if (err != 0) {
+		dump_errmsg("Failed to set up threads");
+		return (-1);
+	}
+
 	return (0);
 }
 
@@ -137,6 +256,39 @@ destroy_state(struct dtd_state *s)
 	size_t i;
 	char *path;
 	struct dtd_joblist *j, *next;
+	struct dtd_state *retval;
+
+	/*
+	 * Give all the threads a chance to stop, but we don't really care if
+	 * the call fails. We're simply going to exit anyway. pthread_kill() can
+	 * only give us an ESRCH (which means the thread's already gone and we
+	 * don't care), or EINVAL for an invalid signal, which we never send.
+	 * Therefore, we can safely just ignore all of the return codes and
+	 * expect the pthread_join() to behave sanely.
+	 */
+	(void) pthread_kill(s->socktd, SIGTERM);
+	(void) pthread_join(s->socktd, (void **)&retval);
+	(void) pthread_kill(s->dtt_listentd, SIGTERM);
+	(void) pthread_join(s->dtt_listentd, (void **)&retval);
+	(void) pthread_kill(s->dtt_writetd, SIGTERM);
+	(void) pthread_join(s->dtt_writetd, (void **)&retval);
+	(void) pthread_kill(s->inboundtd, SIGTERM);
+	(void) pthread_join(s->inboundtd, (void **)&retval);
+	(void) pthread_kill(s->basetd, SIGTERM);
+	(void) pthread_join(s->basetd, (void **)&retval);
+
+	LOCK(&s->joblistcvmtx);
+	BROADCAST(&s->joblistcv);
+	UNLOCK(&s->joblistcvmtx);
+
+	for (i = 0; i < s->threadpool_size; i++)
+		(void) pthread_join(s->workers[i], (void **)&retval);
+
+	(void) pthread_kill(s->killtd, SIGTERM);
+
+	(void )pthread_join(s->killtd, (void **)&retval);
+	(void) pthread_kill(s->reaptd, SIGTERM);
+	(void) pthread_join(s->reaptd, (void **)&retval);
 
 	LOCK(&s->joblistmtx);
 	for (j = dt_list_next(&s->joblist); j; j = next) {
@@ -145,45 +297,14 @@ destroy_state(struct dtd_state *s)
 	}
 	UNLOCK(&s->joblistmtx);
 
-	if ((err = mutex_destroy(&s->socklistmtx)) != 0) {
-		dump_errmsg("Failed to destroy sock list mutex: %m");
-		return (-1);
-	}
-
-	if ((err = mutex_destroy(&s->sockmtx)) != 0) {
-		dump_errmsg("Failed to destroy socket mutex: %m");
-		return (-1);
-	}
-
-	if ((err = mutex_destroy(&s->joblistcvmtx)) != 0) {
-		dump_errmsg("Failed to destroy joblist condvar mutex: %m");
-		return (-1);
-	}
-
-	if ((err = mutex_destroy(&s->joblistmtx)) != 0) {
-		dump_errmsg("Failed to destroy joblist mutex: %m");
-		return (-1);
-	}
-
-	if ((err = mutex_destroy(&s->kill_listmtx)) != 0) {
-		dump_errmsg("Failed to destroy kill list mutex: %m");
-		return (-1);
-	}
-
-	if ((err = mutex_destroy(&s->killcvmtx)) != 0) {
-		dump_errmsg("Failed to destroy kill list cv mutex: %m");
-		return (-1);
-	}
-
-	if ((err = pthread_cond_destroy(&s->killcv)) != 0) {
-		dump_errmsg("Failed to destroy kill condvar: %m");
-		return (-1);
-	}
-
-	if ((err = pthread_cond_destroy(&s->joblistcv)) != 0) {
-		dump_errmsg("Failed to destroy joblist condvar: %m");
-		return (-1);
-	}
+	(void) mutex_destroy(&s->socklistmtx);
+	(void) mutex_destroy(&s->sockmtx);
+	(void) mutex_destroy(&s->joblistcvmtx);
+	(void) mutex_destroy(&s->joblistmtx);
+	(void) mutex_destroy(&s->kill_listmtx);
+	(void) mutex_destroy(&s->killcvmtx);
+	(void) pthread_cond_destroy(&s->killcv);
+	(void) pthread_cond_destroy(&s->joblistcv);
 
 	dtd_closedir(s->outbounddir);
 	dtd_closedir(s->inbounddir);

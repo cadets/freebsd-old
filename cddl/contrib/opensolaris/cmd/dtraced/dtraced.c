@@ -120,87 +120,6 @@ sig_pipe(int __unused signo)
 {
 }
 
-static int
-setup_threads(struct dtd_state *s)
-{
-	int err;
-	pthread_t *threads, *sockthread;
-	size_t i;
-
-	threads = malloc(sizeof(pthread_t) * THREADPOOL_SIZE);
-	if (threads == NULL) {
-		dump_errmsg("Failed to allocate thread array");
-		return (-1);
-	}
-	memset(threads, 0, sizeof(pthread_t) * THREADPOOL_SIZE);
-
-	for (i = 0; i < THREADPOOL_SIZE; i++) {
-		err = pthread_create(&threads[i], NULL, process_joblist, s);
-		if (err != 0) {
-			dump_errmsg("Failed to create a new thread: %m");
-			return (-1);
-		}
-	}
-
-	s->workers = threads;
-
-	sem_init(&s->socksema, 0, 0);
-
-	if (s->ctrlmachine == 0) {
-		err = pthread_create(
-		    &s->dtt_listentd, NULL, listen_dttransport, s);
-		if (err != 0) {
-			dump_errmsg(
-			    "Failed to create the dttransport thread: %m");
-			return (-1);
-		}
-
-		/*
-		 * The socket can't be connected at this point because
-		 * accept_subs is not running. Need a semaphore.
-		 */
-		err = pthread_create(
-		    &s->dtt_writetd, NULL, write_dttransport, s);
-		if (err != 0) {
-			dump_errmsg(
-			    "Failed to create the dttransport thread: %m");
-			return (-1);
-		}
-	}
-
-	err = pthread_create(&s->socktd, NULL, process_consumers, s);
-	if (err != 0) {
-		dump_errmsg("Failed to create the socket thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->inboundtd, NULL, listen_dir, s->inbounddir);
-	if (err != 0) {
-		dump_errmsg("Failed to create inbound listening thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->basetd, NULL, listen_dir, s->basedir);
-	if (err != 0) {
-		dump_errmsg("Failed to create base listening thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->killtd, NULL, manage_children, s);
-	if (err != 0) {
-		dump_errmsg("Failed to create a child management thread: %m");
-		return (-1);
-	}
-
-	err = pthread_create(&s->reaptd, NULL, reap_children, s);
-	if (err != 0) {
-		dump_errmsg("Failed to create reaper thread: %m");
-		return (-1);
-	}
-
-	return (0);
-}
-
 static void
 print_help(void)
 {
@@ -232,9 +151,6 @@ main(int argc, char **argv)
 	size_t i;
 	char ch;
 	char pidstr[256];
-	struct kevent ev, ev_data;
-	struct dtd_state *retval;
-	int optidx = 0;
 	char hypervisor[128];
 	int daemonize = 0;
 	size_t len = sizeof(hypervisor);
@@ -396,16 +312,7 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	state.dirfd = efd;
 	elfdir = fdopendir(efd);
-
-	errval = init_state(&state, ctrlmachine);
-	if (errval != 0) {
-		dump_errmsg("Failed to initialize the state");
-		return (EXIT_FAILURE);
-	}
-
-	state.nosha = nosha;
 
 	if (signal(SIGTERM, sig_term) == SIG_ERR) {
 		dump_errmsg("Failed to install SIGTERM handler");
@@ -423,37 +330,10 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	errval = setup_sockfd(&state);
+	errval = init_state(&state, ctrlmachine, nosha, THREADPOOL_SIZE);
 	if (errval != 0) {
-		dump_errmsg("Failed to set up the socket");
-		return (EX_OSERR);
-	}
-
-	errval = file_foreach(
-	    state.outbounddir->dir, populate_existing, state.outbounddir);
-	if (errval != 0) {
-		dump_errmsg("Failed to populate outbound existing files");
+		dump_errmsg("Failed to initialize the state");
 		return (EXIT_FAILURE);
-	}
-
-	errval = file_foreach(
-	    state.inbounddir->dir, populate_existing, state.inbounddir);
-	if (errval != 0) {
-		dump_errmsg("Failed to populate inbound existing files");
-		return (EXIT_FAILURE);
-	}
-
-	errval = file_foreach(
-	    state.basedir->dir, populate_existing, state.basedir);
-	if (errval != 0) {
-		dump_errmsg("Failed to populate base existing files");
-		return (EXIT_FAILURE);
-	}
-
-	errval = setup_threads(&state);
-	if (errval != 0) {
-		dump_errmsg("Failed to set up threads");
-		return (EX_OSERR);
 	}
 
 	if (listen_dir(state.outbounddir) == NULL) {
@@ -461,89 +341,6 @@ againefd:
 		    state.outbounddir->dirpath);
 		return (EXIT_FAILURE);
 	}
-
-	errval = pthread_kill(state.socktd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt socktd: %m");
-
-	errval = pthread_join(state.socktd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join socktd: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.dtt_listentd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt dtt_listentd: %m");
-
-	errval = pthread_join(state.dtt_listentd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join dtt_listentd: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.dtt_writetd, SIGTERM);
-	if (errval != 0 && errval != ESRCH)
-		dump_errmsg("Failed to interrupt dtt_writetd: %m");
-
-	errval = pthread_join(state.dtt_writetd, (void **)&retval);
-	if (errval != 0 && errval != ESRCH) {
-		dump_errmsg("Failed to join dtt_writetd: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.inboundtd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt inboundtd: %m");
-
-	errval = pthread_join(state.inboundtd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join inboundtd: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.basetd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt basetd: %m");
-
-	errval = pthread_join(state.basetd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join basetd: %m");
-		return (EX_OSERR);
-	}
-
-	LOCK(&state.joblistcvmtx);
-	BROADCAST(&state.joblistcv);
-	UNLOCK(&state.joblistcvmtx);
-
-	for (i = 0; i < THREADPOOL_SIZE; i++) {
-		errval = pthread_join(state.workers[i], (void **)&retval);
-		if (errval != 0) {
-			dump_errmsg("Failed to join threads: %m");
-			return (EX_OSERR);
-		}
-	}
-
-	errval = pthread_kill(state.killtd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt killtd: %m");
-
-	errval = pthread_join(state.killtd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join child management thread: %m");
-		return (EX_OSERR);
-	}
-
-	errval = pthread_kill(state.reaptd, SIGTERM);
-	if (errval != 0)
-		dump_errmsg("Failed to interrupt reaptd: %m");
-
-	errval = pthread_join(state.reaptd, (void **)&retval);
-	if (errval != 0) {
-		dump_errmsg("Failed to join reaper thread: %m");
-		return (EX_OSERR);
-	}
-
 
 	errval = destroy_state(&state);
 	if (errval != 0) {
