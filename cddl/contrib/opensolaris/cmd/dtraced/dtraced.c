@@ -39,45 +39,24 @@
  */
 
 #include <sys/types.h>
-#include <sys/event.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
-#include <sys/un.h>
-#include <sys/wait.h>
 
-#include <assert.h>
 #include <dirent.h>
-#include <dt_elf.h>
-#include <dt_prog_link.h>
-#include <dt_resolver.h>
-#include <dtrace.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <inttypes.h>
-#include <libgen.h>
 #include <libutil.h>
-#include <limits.h>
 #include <signal.h>
-#include <spawn.h>
-#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sysexits.h>
-#include <unistd.h>
 
 #include "dtraced.h"
-#include "dtraced_chld.h"
-#include "dtraced_connection.h"
-#include "dtraced_directory.h"
-#include "dtraced_dttransport.h"
 #include "dtraced_errmsg.h"
-#include "dtraced_job.h"
 #include "dtraced_lock.h"
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
