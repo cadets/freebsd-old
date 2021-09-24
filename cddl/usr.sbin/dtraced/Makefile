@@ -34,8 +34,8 @@ LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 .if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
     ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \
     ${MACHINE_ARCH} != riscv64
-CFLAGS+=	-flto=thin
-LDFLAGS+=	-flto=thin
+CFLAGS+=	-flto
+LDFLAGS+=	-flto
 .endif
 
 # TODO: LLVM changes this to ignorelist. Needs to be fixed in the future.
