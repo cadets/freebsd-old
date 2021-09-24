@@ -70,10 +70,11 @@ int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 {
 	struct dtd_state *s;
-	char *dirpath, *newname;
+	__cleanup(freep) char *dirpath = NULL;
+	__cleanup(freep) char *newname = NULL;
 	char donename[MAXPATHLEN];
 	size_t dirpathlen;
-	int fd;
+	__cleanup(closefd_generic) int fd = -1;
 
 	if (dir == NULL) {
 		dump_errmsg("dir is NULL in write_data()");
@@ -102,7 +103,6 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 	newname = gen_filename(dirpath);
 	strcpy(donename, dirpath);
 	strcpy(donename + dirpathlen, newname + dirpathlen + 1);
-	free(dirpath);
 
 	fd = open(newname, O_WRONLY | O_CREAT);
 	if (fd == -1) {
