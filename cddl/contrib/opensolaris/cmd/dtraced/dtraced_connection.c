@@ -56,8 +56,8 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
+#include "dtraced_misc.h"
 #include "dtraced_state.h"
-
 
 #define DTRACED_BACKLOG_SIZE    4
 
@@ -141,14 +141,13 @@ void *
 process_consumers(void *_s)
 {
 	int err;
-	int connsockfd;
 	int on = 1;
 	int new_events;
-	int kq;
+	__cleanup(closefd_generic) int kq = -1;
 	int efd;
 	int dispatch;
 	size_t i;
-	struct dtd_fdlist *fde, *udata_fde;
+	struct dtd_fdlist *udata_fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	struct dtd_joblist *jle;
 
