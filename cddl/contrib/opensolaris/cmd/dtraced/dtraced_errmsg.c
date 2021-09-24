@@ -144,7 +144,7 @@ dump_backtrace(void)
 {
 	int nptrs;
 	void *buffer[DTRACED_BACKTRACELEN];
-	char **strings;
+	__cleanup(freep) char **strings = NULL;
 
 	nptrs = backtrace(buffer, DTRACED_BACKTRACELEN);
 	strings = backtrace_symbols(buffer, nptrs);
