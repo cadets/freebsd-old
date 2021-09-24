@@ -211,7 +211,7 @@ void *
 write_dttransport(void *_s)
 {
 	ssize_t rval;
-	int sockfd;
+	__cleanup(closefd_generic) int sockfd = -1;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
 	size_t l, lentoread, len, totallen;
@@ -224,7 +224,6 @@ write_dttransport(void *_s)
 	unsigned char *msg;
 
 	rval = 0;
-	sockfd = 0;
 	l = lentoread = len = totallen = 0;
 	memset(&initmsg, 0, sizeof(initmsg));
 
@@ -241,7 +240,6 @@ write_dttransport(void *_s)
 	if (l >= sizeof(addr.sun_path)) {
 		dump_errmsg("Failed setting addr.sun_path"
 		    " to /var/ddtrace/sub.sock");
-		sockfd = -1;
 		pthread_exit(NULL);
 	}
 
@@ -249,7 +247,6 @@ write_dttransport(void *_s)
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
-		sockfd = -1;
 		pthread_exit(NULL);
 	}
 
@@ -261,7 +258,6 @@ write_dttransport(void *_s)
 	if (initmsg.kind != DTRACED_KIND_DTRACED) {
 		dump_errmsg("Expected dtraced kind, got %d",
 		    initmsg.kind);
-		close(sockfd);
 		pthread_exit(NULL);
 	}
 
