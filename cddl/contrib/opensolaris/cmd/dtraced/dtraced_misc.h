@@ -41,6 +41,8 @@
 #ifndef _DTRACED_MISC_H_
 #define _DTRACED_MISC_H_
 
+#include <dirent.h>
+
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define __NOSANITIZE_THREAD __attribute__((no_sanitize("thread")))
@@ -57,5 +59,6 @@ void get_randname(char *, size_t);
 char *gen_filename(const char *);
 void freep(void *);
 void closefd_generic(int *);
+void closedir_generic(DIR **);
 
 #endif // _DTRACED_MISC_H_

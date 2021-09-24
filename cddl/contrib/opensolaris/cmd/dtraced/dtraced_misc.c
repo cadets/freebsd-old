@@ -119,3 +119,11 @@ closefd_generic(int *fd)
 	if (*fd != -1)
 		close(*fd);
 }
+
+void
+closedir_generic(DIR **dir)
+{
+
+	if (*dir)
+		closedir(*dir);
+}
