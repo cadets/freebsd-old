@@ -105,3 +105,17 @@ gen_filename(const char *dir)
 	return (elfpath);
 }
 
+void
+freep(void *mem)
+{
+
+	free(*(void **) mem);
+}
+
+void
+closefd_generic(int *fd)
+{
+
+	if (*fd != -1)
+		close(*fd);
+}

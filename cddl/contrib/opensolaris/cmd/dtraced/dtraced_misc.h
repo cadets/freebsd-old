@@ -51,7 +51,11 @@
 #define __NOSANITIZE_THREAD
 #endif /* defined(__has_feature) */
 
+#define __cleanup(fn) __attribute__((__cleanup__(fn)))
+
 void get_randname(char *, size_t);
 char *gen_filename(const char *);
+void freep(void *);
+void closefd_generic(int *);
 
 #endif // _DTRACED_MISC_H_
