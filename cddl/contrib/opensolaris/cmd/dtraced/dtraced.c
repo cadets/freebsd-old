@@ -239,7 +239,7 @@ main(int argc, char **argv)
 	int daemonize = 0;
 	size_t len = sizeof(hypervisor);
 	size_t optlen;
-	struct pidfh *pfh;
+	__cleanup(cleanup_pidfile) struct pidfh *pfh = NULL;
 	pid_t otherpid;
 	int ctrlmachine = -1;
 
@@ -372,17 +372,11 @@ main(int argc, char **argv)
 
 	if (daemonize && daemon(0, 0) != 0) {
 		dump_errmsg("Failed to daemonize %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
 	if (pidfile_write(pfh)) {
 		dump_errmsg("Failed to write PID to %s: %m", LOCK_FILE);
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -399,9 +393,6 @@ againefd:
 		}
 
 		dump_errmsg("Failed to open %s: %m", elfpath);
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -411,9 +402,6 @@ againefd:
 	errval = init_state(&state, ctrlmachine);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
 
@@ -421,35 +409,23 @@ againefd:
 
 	if (signal(SIGTERM, sig_term) == SIG_ERR) {
 		dump_errmsg("Failed to install SIGTERM handler");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
 	if (signal(SIGINT, sig_int) == SIG_ERR) {
 		dump_errmsg("Failed to install SIGINT handler");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
 	if (siginterrupt(SIGTERM, 1) != 0) {
 		dump_errmsg(
 		    "Failed to enable system call interrupts for SIGTERM");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
 	errval = setup_sockfd(&state);
 	if (errval != 0) {
 		dump_errmsg("Failed to set up the socket");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -457,9 +433,6 @@ againefd:
 	    state.outbounddir->dir, populate_existing, state.outbounddir);
 	if (errval != 0) {
 		dump_errmsg("Failed to populate outbound existing files");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
 
@@ -467,9 +440,6 @@ againefd:
 	    state.inbounddir->dir, populate_existing, state.inbounddir);
 	if (errval != 0) {
 		dump_errmsg("Failed to populate inbound existing files");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
 
@@ -477,27 +447,18 @@ againefd:
 	    state.basedir->dir, populate_existing, state.basedir);
 	if (errval != 0) {
 		dump_errmsg("Failed to populate base existing files");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
 
 	errval = setup_threads(&state);
 	if (errval != 0) {
 		dump_errmsg("Failed to set up threads");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
 	if (listen_dir(state.outbounddir) == NULL) {
 		dump_errmsg("listen_dir() on %s failed",
 		    state.outbounddir->dirpath);
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
 
@@ -508,9 +469,6 @@ againefd:
 	errval = pthread_join(state.socktd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join socktd: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -521,9 +479,6 @@ againefd:
 	errval = pthread_join(state.dtt_listentd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join dtt_listentd: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -534,9 +489,6 @@ againefd:
 	errval = pthread_join(state.dtt_writetd, (void **)&retval);
 	if (errval != 0 && errval != ESRCH) {
 		dump_errmsg("Failed to join dtt_writetd: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -547,9 +499,6 @@ againefd:
 	errval = pthread_join(state.inboundtd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join inboundtd: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -560,9 +509,6 @@ againefd:
 	errval = pthread_join(state.basetd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join basetd: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -574,10 +520,6 @@ againefd:
 		errval = pthread_join(state.workers[i], (void **)&retval);
 		if (errval != 0) {
 			dump_errmsg("Failed to join threads: %m");
-			if (pidfile_remove(pfh))
-				dump_errmsg("Could not remove %s: %m",
-				    LOCK_FILE);
-
 			return (EX_OSERR);
 		}
 	}
@@ -589,9 +531,6 @@ againefd:
 	errval = pthread_join(state.killtd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join child management thread: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -602,9 +541,6 @@ againefd:
 	errval = pthread_join(state.reaptd, (void **)&retval);
 	if (errval != 0) {
 		dump_errmsg("Failed to join reaper thread: %m");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EX_OSERR);
 	}
 
@@ -612,14 +548,8 @@ againefd:
 	errval = destroy_state(&state);
 	if (errval != 0) {
 		dump_errmsg("Failed to clean up state");
-		if (pidfile_remove(pfh))
-			dump_errmsg("Could not remove %s: %m", LOCK_FILE);
-
 		return (EXIT_FAILURE);
 	}
-
-	if (pidfile_remove(pfh))
-		dump_errmsg("Could not remove %s: %m", LOCK_FILE);
 
 	return (0);
 }
