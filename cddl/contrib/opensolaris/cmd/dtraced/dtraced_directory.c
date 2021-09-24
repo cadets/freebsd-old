@@ -126,7 +126,8 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 void *
 listen_dir(void *_dir)
 {
-	int err, kq, rval;
+	int err, rval;
+	__cleanup(closefd_generic) int kq = -1;
 	struct kevent ev, ev_data;
 	struct dtd_state *s;
 	dtd_dir_t *dir;
