@@ -100,8 +100,6 @@ gen_filename(const char *dir)
 		strcpy(elfpath + strlen(dir), filename);
 	}
 
-	free(filename);
-
 	return (elfpath);
 }
 
