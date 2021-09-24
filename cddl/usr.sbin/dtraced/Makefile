@@ -31,7 +31,9 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 
 LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 
-.if ${MK_DTRACE_OPTIMIZED} != "no"
+.if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
+    ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \
+    ${MACHINE_ARCH} != riscv64
 CFLAGS+=	-flto=thin
 LDFLAGS+=	-flto=thin
 .endif

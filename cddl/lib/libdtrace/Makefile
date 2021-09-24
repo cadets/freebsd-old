@@ -149,7 +149,9 @@ SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
 .endif
 
-.if ${MK_DTRACE_OPTIMIZED} != "no"
+.if ${MK_DTRACE_OPTIMIZED} != "no" && ${MACHINE_ARCH} != mips && \
+    ${MACHINE_ARCH} != mips64 && ${MACHINE_ARCH} != powerpc64 && \
+    ${MACHINE_ARCH} != riscv64
 CFLAGS+=	-flto=thin
 LDFLAGS+=	-flto=thin
 .endif
