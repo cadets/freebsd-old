@@ -74,7 +74,7 @@ char version_str[128];
  * Awful global variable, but is here because of the signal handler.
  */
 static struct dtd_state state;
-static int nosha = 0;
+static char *program_name;
 
 static void
 sig_term(int __unused signo)
@@ -102,6 +102,17 @@ sig_pipe(int __unused signo)
 static void
 print_help(void)
 {
+	printf("Usage: %s [-dhmOqvZ] [-D directory]\n", program_name);
+
+	printf("\n"
+	    "\t-d  run dtraced in daemon mode.\n"
+	    "\t-D  specify the directory to use for dtraced state.\n"
+	    "\t-h  display this help page.\n"
+	    "\t-m  run dtraced in 'minion' mode.\n"
+	    "\t-O  run dtraced in 'overlord' mode.\n"
+	    "\t-q  quiet mode.\n"
+	    "\t-v  print dtraced version.\n"
+	    "\t-Z  do not checksum DTrace programs when transmitting them.\n");
 }
 
 static char *
@@ -125,7 +136,7 @@ main(int argc, char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	__cleanup(closefd_generic) int efd = -1;
-	int errval, retry;
+	int errval, retry, nosha;
 	__cleanup(closedir_generic) DIR *elfdir = NULL;
 	size_t i;
 	char ch;
@@ -138,11 +149,13 @@ main(int argc, char **argv)
 	pid_t otherpid;
 	int ctrlmachine = -1;
 
+	program_name = argv[0];
+
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
 
-	while ((ch = getopt(argc, argv, "D:Oa:de:hmvqZ")) != -1) {
+	while ((ch = getopt(argc, argv, "D:OdhmvqZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -161,15 +174,6 @@ main(int argc, char **argv)
 			strcpy(DTRACED_OUTBOUNDDIR + optlen, "/outbound/");
 			strcpy(DTRACED_BASEDIR, optarg);
 			strcpy(DTRACED_BASEDIR + optlen, "/base/");
-			break;
-
-		case 'e':
-			/*
-			 * Option specifies that we want to ignore certain file
-			 * names. We simply add them to the list of ignored
-			 * names and later on when we notify our consumers check
-			 * if it should be ignored.
-			 */
 			break;
 
 		/*
