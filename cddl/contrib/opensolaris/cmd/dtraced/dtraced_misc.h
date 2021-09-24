@@ -43,7 +43,7 @@
 
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
-#define __NOSANITIZE_THREAD (__attribute__((no_sanitize("thread"))))
+#define __NOSANITIZE_THREAD __attribute__((no_sanitize("thread")))
 #else
 #define __NOSANITIZE_THREAD
 #endif /* __has_feature(thread_sanitizer) */
