@@ -31,6 +31,11 @@ CFLAGS+=	-I${SRCTOP}/sys/cddl/compat/opensolaris \
 
 LIBADD=	dtrace ctf elf proc pthread crypto execinfo util
 
+.if ${MK_DTRACE_OPTIMIZED} != "no"
+CFLAGS+=	-flto=thin
+LDFLAGS+=	-flto=thin
+.endif
+
 # TODO: LLVM changes this to ignorelist. Needs to be fixed in the future.
 .if ${MK_DTRACE_DEBUG_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined

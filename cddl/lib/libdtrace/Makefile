@@ -149,6 +149,11 @@ SRCS+=		dis_tables.c
 DSRCS+=		regs_x86.d
 .endif
 
+.if ${MK_DTRACE_OPTIMIZED} != "no"
+CFLAGS+=	-flto=thin
+LDFLAGS+=	-flto=thin
+.endif
+
 .if ${MK_DTRACE_BENCHMARKS} != "no"
 CFLAGS+=	-D__DTRACE_RUN_BENCHMARKS__
 .endif
