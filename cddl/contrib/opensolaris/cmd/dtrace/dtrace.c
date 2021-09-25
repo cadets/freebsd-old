@@ -90,7 +90,7 @@ typedef struct dt_pgplist {
 	dt_list_t list;
 	dtrace_prog_t *pgp;
 	dtrace_prog_t *gpgp;
-	dtrace_prog_t *response;
+	_Atomic(dtrace_prog_t *) response;
 	uint16_t vmid;
 } dt_pgplist_t;
 
@@ -831,7 +831,7 @@ pgpl_valid(dt_pgplist_t *pgpl)
 		return (0);
 
 	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp &&
-	    pgpl->response) || (pgpl->vmid == 0 && pgpl->pgp));
+	    atomic_load(&pgpl->response)) || (pgpl->vmid == 0 && pgpl->pgp));
 }
 
 static int
@@ -1199,7 +1199,7 @@ process_prog:
 		}
 
 		if (found) {
-			newpgpl->response = newprog;
+			atomic_store(&newpgpl->response, newprog);
 		} else {
 			if (dt_prog_verify(verictx, hostpgp, newprog)) {
 				fprintf(stderr,
@@ -1749,7 +1749,8 @@ again:
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
 
-			process_new_pgp(pgpl->pgp, pgpl->response);
+			resp = atomic_load(&pgpl->response);
+			process_new_pgp(pgpl->pgp, resp);
 
 			/*
 			 * FIXME: This is no longer the case.
@@ -1759,7 +1760,7 @@ again:
 			/*
 			 * FIXME: We need to make a new entry here... I think.
 			 */
-			dt_list_append(&g_kill_list, pgpl->response);
+			dt_list_append(&g_kill_list, resp);
 		}
 
 		__dt_bench_snapshot_time(g_e2ebench);
