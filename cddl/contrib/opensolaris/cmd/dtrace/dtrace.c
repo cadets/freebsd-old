@@ -1719,10 +1719,12 @@ again:
 			 * specification that we need to create on the host and
 			 * the program that we need to run.
 			 */
+			pthread_mutex_lock(&g_pgplistmtx);
 			for (; pgpl; pgpl = dt_list_next(pgpl)) {
 				if (pgpl_valid(pgpl))
 					break;
 			}
+			pthread_mutex_unlock(&g_pgplistmtx);
 
 			if (pgpl == NULL) {
 				again = 1;
