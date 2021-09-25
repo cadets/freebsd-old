@@ -64,21 +64,14 @@ void
 UNLOCK(mutex_t *m)
 {
 	int err;
+	pthread_t self;
 
 	if (m->_checkowner != CHECKOWNER_NO) {
-		if (OWNED(m) == 0) {
-			dump_errmsg(
-			    "attempted unlock of %s which is not owned",
-			    m->_name);
-			dump_backtrace();
-			exit(EXIT_FAILURE);
-		}
-
-		assert(OWNED(m));
-		if (atomic_load(&m->_owner) != pthread_self()) {
+		self = pthread_self();
+		if (pthread_equal(atomic_load(&m->_owner), self) == 0) {
 			dump_errmsg(
 			    "attempted unlock of %s by thread %p (!= %p)",
-			    m->_name, pthread_self(), atomic_load(&m->_owner));
+			    m->_name, self, atomic_load(&m->_owner));
 			dump_backtrace();
 			exit(EXIT_FAILURE);
 		}

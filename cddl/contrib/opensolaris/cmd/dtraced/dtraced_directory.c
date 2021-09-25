@@ -196,8 +196,6 @@ expand_paths(dtd_dir_t *dir)
 	char **newpaths;
 	struct dtd_state *s;
 
-	assert(OWNED(&dir->dirmtx));
-
 	if (dir == NULL) {
 		dump_errmsg("Expand paths called with dir == NULL");
 		return (-1);
