@@ -150,7 +150,7 @@ __dt_bench_new_time(size_t n_snapshots)
  * Ugly, but ensures that nobody accesses random things.
  */
 typedef void   dt_benchmark_t;
-typedef char   dt_snapshot_name_t[DTB_SNAPNAMELEN];
+typedef char   *dt_snapshot_name_t;
 typedef size_t dt_snapshot_hdl_t;
 
 #define  dt_merge_new(...) ((void *)1) /* XXX: Oof. */

@@ -883,6 +883,7 @@ send_kill(int tofd, dtrace_prog_t *pgp)
 static void
 set_snapshot_names(void)
 {
+#ifdef __DTRACE_RUN_BENCHMARKS__
 	dt_benchlist_t *be;
 	dt_benchmark_t *b;
 	size_t i;
@@ -909,6 +910,7 @@ set_snapshot_names(void)
 			dt_snapshot_setinfo(b, i, names[i]);
 		}
 	}
+#endif
 }
 
 static void *
