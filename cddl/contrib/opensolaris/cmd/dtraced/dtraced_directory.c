@@ -504,10 +504,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
-			UNLOCK(&s->joblistmtx);
 
 			EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
 			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			UNLOCK(&s->joblistmtx);
+
 			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
 				dump_errmsg("process_inbound: kevent() "
 					    "failed with: %m");
