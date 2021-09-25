@@ -77,14 +77,15 @@ UNLOCK(mutex_t *m)
 		}
 	}
 
+	if (m->_checkowner != CHECKOWNER_NO)
+		atomic_store(&m->_owner, NULL);
+
 	err = pthread_mutex_unlock(&(m)->_m);
 	if (err != 0) {
 		dump_errmsg("Failed to unlock mutex: %m");
 		return;
 	}
 
-	if (m->_checkowner != CHECKOWNER_NO)
-		atomic_store(&m->_owner, NULL);
 }
 
 
