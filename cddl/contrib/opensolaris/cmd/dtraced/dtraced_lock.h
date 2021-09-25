@@ -60,8 +60,7 @@ typedef struct mutex {
 #define CHECKOWNER_YES    1
 } mutex_t;
 
-
-#define OWNED(m)    (atomic_load(&(m)->_owner) == pthread_self())
+#define OWNED(m)     (atomic_load(&(m)->_owner) != NULL)
 
 #define SIGNAL(c)                                               \
 	{                                                       \
