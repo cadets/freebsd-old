@@ -433,6 +433,7 @@ lwpid_t    (*hypertrace_gettid)(void *);
 uint16_t   (*hypertrace_getns)(void *);
 const char *(*hypertrace_getname)(void *);
 int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_is_enabled)(uint16_t, hypertrace_id_t);
 int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
 void       (*hypertrace_enable)(uint16_t, hypertrace_id_t);
 void       (*hypertrace_disable)(uint16_t, hypertrace_id_t);
@@ -10518,7 +10519,7 @@ dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 void
 dtrace_vprobespace_destroy(uint16_t vmid)
 {
-	int i, should_free = dtrace_nvprobes[vmid] > 0 ? 1 : 0;
+	int i, should_free = dtrace_nvprobes[vmid] > 0 ? 1 : 0, err;
 	dtrace_probe_t *probe;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -10547,6 +10548,11 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 		ASSERT(probe->dtpr_vmid == vmid);
 
+		if (hypertrace_is_enabled(probe->dtpr_vmid, probe->dtpr_id)) {
+			should_free = 0;
+			continue;
+		}
+
 		dtrace_vprobes[vmid][i] = NULL;
 		dtrace_hash_remove(dtrace_bymod[vmid], probe);
 		dtrace_hash_remove(dtrace_byfunc[vmid], probe);
@@ -10554,11 +10560,13 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 		dtrace_sync();
 
-		if (hypertrace_rmprobe(probe->dtpr_vmid, probe->dtpr_id) != 0)
-			panic("Failed to remove %u:%s:%s:%s:%s\n",
+		err = hypertrace_rmprobe(probe->dtpr_vmid, probe->dtpr_id);
+		if (err != 0)
+			panic(
+			    "Failed to remove %u:%s:%s:%s:%s (%d) (error %d)\n",
 			    probe->dtpr_vmid, (char *)probe->dtpr_vprovider,
-			    probe->dtpr_mod, probe->dtpr_func,
-			    probe->dtpr_name);
+			    probe->dtpr_mod, probe->dtpr_func, probe->dtpr_name,
+			    probe->dtpr_id, err);
 
 		kmem_free((char *)probe->dtpr_vprovider,
 		    strlen((char *)probe->dtpr_vprovider) + 1);
@@ -13238,7 +13246,7 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 		ASSERT(ecb->dte_next == NULL);
 		ASSERT(probe->dtpr_ecb_last == NULL);
 		probe->dtpr_predcache = DTRACE_CACHEIDNONE;
-		
+
 		if (prov)
 			prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);

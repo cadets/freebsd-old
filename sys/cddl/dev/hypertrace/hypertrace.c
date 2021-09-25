@@ -65,6 +65,7 @@ static lwpid_t    hypertrace_priv_gettid(void *);
 static uint16_t   hypertrace_priv_getns(void *);
 static const char *hypertrace_priv_getname(void *);
 static int        hypertrace_priv_rmprobe(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_is_enabled(uint16_t, hypertrace_id_t);
 static int        hypertrace_priv_create_probes(uint16_t, void *, size_t);
 static void       hypertrace_priv_enable(uint16_t, hypertrace_id_t);
 static void       hypertrace_priv_disable(uint16_t, hypertrace_id_t);
@@ -146,6 +147,7 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 		hypertrace_getns         = hypertrace_priv_getns;
 		hypertrace_getname       = hypertrace_priv_getname;
 		hypertrace_rmprobe       = hypertrace_priv_rmprobe;
+		hypertrace_is_enabled    = hypertrace_priv_is_enabled;
 		hypertrace_create_probes = hypertrace_priv_create_probes;
 		hypertrace_enable        = hypertrace_priv_enable;
 		hypertrace_disable       = hypertrace_priv_disable;
@@ -161,6 +163,7 @@ hypertrace_modevent(module_t mod __unused, int type, void *data __unused)
 		hypertrace_getns         = NULL;
 		hypertrace_getname       = NULL;
 		hypertrace_rmprobe       = NULL;
+		hypertrace_is_enabled    = NULL;
 		hypertrace_create_probes = NULL;
 		hypertrace_enable        = NULL;
 		hypertrace_disable       = NULL;
@@ -196,6 +199,15 @@ hypertrace_open(struct cdev *dev __unused, int oflags __unused,
 {
 	
 	return (0);
+}
+
+static int
+hypertrace_priv_is_enabled(uint16_t vmid, hypertrace_id_t id)
+{
+	hypertrace_probe_t *ht_probe;
+
+	ht_probe = map_get(hypertrace_map, vmid, id);
+	return (ht_probe->htpb_enabled);
 }
 
 static void
