@@ -228,7 +228,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 					 * Fall through to the default case.
 					 */
 				default:
-					if (rtype->dtdt_kind == DIF_TYPE_CTF) {
+					if (node->din_mip == NULL &&
+					    rtype->dtdt_kind == DIF_TYPE_CTF) {
 						ctf_kind = dt_typefile_typekind(
 						    node->din_tf,
 						    node->din_ctfid);
@@ -275,8 +276,8 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 				if (node->din_type == DIF_TYPE_STRING) {
 					rtype->dtdt_flags |= DIF_TF_BYREF;
 					rtype->dtdt_ckind = CTF_ERR;
+					break;
 				}
-				break;
 			}
 
 			/*
