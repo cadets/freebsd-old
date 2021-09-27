@@ -102,9 +102,9 @@ sig_pipe(int __unused signo)
 static void
 print_help(void)
 {
-	printf("Usage: %s [-dhmOqvZ] [-D directory]\n", program_name);
+	fprintf(stderr, "Usage: %s [-dhmOqvZ] [-D directory]\n", program_name);
 
-	printf("\n"
+	fprintf(stderr, "\n"
 	    "\t-d  run dtraced in daemon mode.\n"
 	    "\t-D  specify the directory to use for dtraced state.\n"
 	    "\t-h  display this help page.\n"
