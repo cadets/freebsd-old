@@ -74,7 +74,7 @@ char version_str[128];
  * Awful global variable, but is here because of the signal handler.
  */
 static struct dtd_state state;
-static char *program_name;
+static const char *program_name;
 
 static void
 sig_term(int __unused signo)

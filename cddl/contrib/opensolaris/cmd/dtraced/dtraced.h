@@ -28,6 +28,10 @@
 #ifndef __DTRACED_H_
 #define __DTRACED_H_
 
+#include <sys/types.h>
+
+#include <stdint.h>
+
 #define DTRACED_MAJOR                  0
 #define DTRACED_MINOR                  2
 #define DTRACED_PATCH                  0
