@@ -46,37 +46,54 @@ static struct option longopts[] = {
 	{ "cleanup-state",     optional_argument,    NULL,   	CLEANUP_STATE },
 	{ "help"         ,     no_argument      ,    NULL,      HELP_PAGE     },
 	{ "show-stats"   ,     optional_argument,    NULL,      SHOW_STATS    },
+	{ NULL           ,     0                ,    NULL,      0             }
 };
 
 static void
 print_help(void)
 {
 	fprintf(stderr, "Usage: %s\n"
-	    "\t-c, --cleanup-state  clean state in VM (all if not specified).\n"
-	    "\t-h, --help           display this help page.\n"
-	    "\t-s, --show-stats     show statistics for a VM.\n",
+	    "\t--cleanup-state  clean state in VM (all if not set).\n"
+	    "\t--help           display this help page.\n"
+	    "\t--show-stats     show statistics for a VM (all if not set).\n",
 	    program_name);
 }
 
 int
 main(int argc, const char **argv)
 {
-	int ch;
+	int ch, show_all = 0, cleanup_all = 0;
 
 	program_name = argv[0];
 
 	while ((ch = getopt_long(argc, argv, "", longopts, NULL)) != -1) {
 		switch (ch) {
+		case 0:
+			break;
+
 		case HELP_PAGE:
 			print_help();
 			break;
 
 		case CLEANUP_STATE:
+			if (optarg == NULL) {
+				cleanup_all = 1;
+				break;
+			}
 			break;
 
 		case SHOW_STATS:
+			if (optarg == NULL) {
+				show_all = 1;
+				break;
+			}
+			break;
+
+		default:
+			print_help();
 			break;
 		}
 	}
+
 	return (0);
 }
