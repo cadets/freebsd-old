@@ -33,6 +33,9 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define __cleanup(fn) __attribute__((__cleanup__(fn)))
 
 static const char *program_name;
 
@@ -49,6 +52,73 @@ static struct option longopts[] = {
 	{ NULL           ,     0                ,    NULL,      0             }
 };
 
+typedef struct name {
+	char   **str;
+	size_t n_strs;
+} names_t;
+
+static void
+freenames(names_t *name)
+{
+	size_t i;
+
+	for (i = 0; i < name->n_strs; i++)
+		free(name->str[i]);
+
+	free(name->str);
+}
+
+static names_t
+parse_names(char *str)
+{
+	size_t num_commas = 0;
+	char *c, **strings;
+	size_t i = 0;
+
+	/*
+	 * We expect comma-separated names here. First, we will simply count
+	 * them up.
+	 */
+	for (c = str; *c != '\0'; c++)
+		if (*c == ',')
+			num_commas++;
+
+	strings = malloc((num_commas + 1) * sizeof(char *));
+	if (strings == NULL)
+		abort();
+
+	c = str;
+	/*
+	 * For every comma (+ 1 for the last string or if no commas), terminate
+	 * it with a NULL character and strdup it into our array.
+	 */
+	for (i = 0; i < num_commas + 1; i++) {
+		c = strsep(&str, ",");
+
+		strings[i] = strdup(c);
+		if (strings[i] == NULL)
+			abort();
+	}
+
+	return ((names_t) { .str = strings, .n_strs = num_commas + 1 });
+}
+
+/*
+ * Debug printing function for names.
+ */
+static void
+dprint_names(names_t *n)
+{
+	size_t i;
+
+	if (n == NULL)
+		return;
+
+	fprintf(stderr, "names:\n");
+	for (i = 0; i < n->n_strs; i++)
+		fprintf(stderr, "\t- %s\n", n->str[i]);
+}
+
 static void
 print_help(void)
 {
@@ -63,6 +133,8 @@ int
 main(int argc, const char **argv)
 {
 	int ch, show_all = 0, cleanup_all = 0;
+	__cleanup(freenames) names_t names_to_stat  = { 0, 0 };
+	__cleanup(freenames) names_t names_to_clean = { 0, 0 };
 
 	program_name = argv[0];
 
@@ -80,6 +152,8 @@ main(int argc, const char **argv)
 				cleanup_all = 1;
 				break;
 			}
+
+			names_to_clean = parse_names(optarg);
 			break;
 
 		case SHOW_STATS:
@@ -87,6 +161,8 @@ main(int argc, const char **argv)
 				show_all = 1;
 				break;
 			}
+
+			names_to_stat = parse_names(optarg);
 			break;
 
 		default:
@@ -94,6 +170,9 @@ main(int argc, const char **argv)
 			break;
 		}
 	}
+
+	dprint_names(&names_to_clean);
+	dprint_names(&names_to_stat);
 
 	return (0);
 }
