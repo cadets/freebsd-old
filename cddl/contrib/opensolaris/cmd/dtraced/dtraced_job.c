@@ -116,6 +116,24 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 	return (0);
 }
 
+static int
+send_ack(int fd)
+{
+
+	unsigned char ack = 1;
+	return (send(fd, &ack, 1, 0) < 0);
+}
+
+static int
+reenable_fd(struct dtd_state *s, int fd)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, EVFILT_READ,
+	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
+}
+
 void *
 process_joblist(void *_s)
 {
@@ -140,7 +158,6 @@ process_joblist(void *_s)
 	size_t nbytes, totalbytes, n_entries;
 	dtraced_hdr_t header;
 	struct kevent change_event[1];
-	unsigned char ack = 1;
 	struct dtd_joblist *job;
 	struct dtd_fdlist *fd_list;
 	identlist_t *newident;
@@ -232,9 +249,8 @@ process_joblist(void *_s)
 				if (buf)
 					free(buf);
 
-				ack = 1;
-				if (send(fd, &ack, 1, 0) < 0) {
-					dump_errmsg("send() failed with: %m");
+				if (send_ack(fd) < 0) {
+					dump_errmsg("send_ack() failed with: %m");
 					if (buf)
 						free(buf);
 					break;
@@ -413,9 +429,8 @@ process_joblist(void *_s)
 				assert(0);
 			}
 
-			ack = 1;
-			if (send(fd, &ack, 1, 0) < 0) {
-				dump_errmsg("send() failed with: %m");
+			if (send_ack(fd) < 0) {
+				dump_errmsg("send_ack() failed with: %m");
 				if (buf)
 					free(buf);
 				break;
