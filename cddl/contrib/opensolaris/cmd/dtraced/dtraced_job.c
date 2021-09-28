@@ -228,30 +228,30 @@ process_joblist(void *_s)
 				nbytes -= r;
 			}
 
-			ack = 1;
-			if (send(fd, &ack, 1, 0) < 0) {
-				dump_errmsg("send() failed with: %m");
-				if (buf)
-					free(buf);
-				break;
-			}
-
-			/*
-			 * We are done receiving the data and nothing failed,
-			 * re-enable the event and keep going.
-			 */
-			EV_SET(change_event, fd, EVFILT_READ,
-			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
-				dump_errmsg("kevent() failed with: %m");
-				free(buf);
-				break;
-			}
-
 			if (r < 0) {
 				if (buf)
 					free(buf);
-				break;
+
+				ack = 1;
+				if (send(fd, &ack, 1, 0) < 0) {
+					dump_errmsg("send() failed with: %m");
+					if (buf)
+						free(buf);
+					break;
+				}
+
+				/*
+				 * We are done receiving the data and nothing
+				 * failed, re-enable the event and keep going.
+				 */
+				EV_SET(change_event, fd, EVFILT_READ,
+				    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
+					NULL)) {
+					dump_errmsg("kevent() failed with: %m");
+					free(buf);
+					break;
+				}
 			}
 
 			nbytes = totalbytes;
@@ -372,14 +372,69 @@ process_joblist(void *_s)
 					break;
 				}
 
+				for (i = 0; i < n_entries; i++) {
+					size_t len;
+					char *buf;
+
+					if (recv(fd, &len, sizeof(len), 0) < 0) {
+						dump_errmsg(
+						    "recv() failed with: %m");
+						break;
+					}
+
+					buf = malloc(len);
+					if (buf == NULL) {
+						dump_errmsg(
+"DTRACED_MSG_CLEANUP: failed to malloc");
+						abort();
+					}
+
+					_buf = buf;
+					nbytes = len;
+					while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
+						if (r < 0) {
+							dump_errmsg("recv() failed with: %m");
+							free(buf);
+							break;
+						}
+
+						assert(r != 0);
+
+						_buf += r;
+						nbytes -= r;
+					}
+
+					printf("buf = %s\n", buf);
+				}
+
 				break;
 
 			default:
 				assert(0);
 			}
 
+			ack = 1;
+			if (send(fd, &ack, 1, 0) < 0) {
+				dump_errmsg("send() failed with: %m");
+				if (buf)
+					free(buf);
+				break;
+			}
+
+			/*
+			 * We are done receiving the data and nothing
+			 * failed, re-enable the event and keep going.
+			 */
+			EV_SET(change_event, fd, EVFILT_READ,
+			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
+				dump_errmsg("kevent() failed with: %m");
+				free(buf);
+				break;
+			}
 			free(buf);
 			break;
+
 		case KILL:
 			fd = curjob->connsockfd;
 			pid = curjob->j.kill.pid;
