@@ -125,11 +125,11 @@ send_ack(int fd)
 }
 
 static int
-reenable_fd(struct dtd_state *s, int fd)
+reenable_fd(struct dtd_state *s, int fd, int filt)
 {
 	struct kevent change_event[1];
 
-	EV_SET(change_event, fd, EVFILT_READ,
+	EV_SET(change_event, fd, filt,
 	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
 }
@@ -260,11 +260,8 @@ process_joblist(void *_s)
 				 * We are done receiving the data and nothing
 				 * failed, re-enable the event and keep going.
 				 */
-				EV_SET(change_event, fd, EVFILT_READ,
-				    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
-					NULL)) {
-					dump_errmsg("kevent() failed with: %m");
+				if (reenable_fd(s, fd, EVFILT_READ)) {
+					dump_errmsg("reenable_fd() failed with: %m");
 					free(buf);
 					break;
 				}
@@ -440,10 +437,8 @@ process_joblist(void *_s)
 			 * We are done receiving the data and nothing
 			 * failed, re-enable the event and keep going.
 			 */
-			EV_SET(change_event, fd, EVFILT_READ,
-			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
-				dump_errmsg("kevent() failed with: %m");
+			if (reenable_fd(s, fd, EVFILT_READ)) {
+				dump_errmsg("reenable_fd() failed with: %m");
 				free(buf);
 				break;
 			}
@@ -540,10 +535,8 @@ process_joblist(void *_s)
 				goto killcleanup;
 			}
 
-			EV_SET(change_event, fd, EVFILT_WRITE,
-			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL)) {
-				dump_errmsg("process_joblist: kevent() "
+			if (reenable_fd(s, fd, EVFILT_WRITE)) {
+				dump_errmsg("process_joblist: reenable_fd() "
 					    "failed with: %m");
 				free(msg);
 				break;
@@ -692,10 +685,8 @@ killcleanup:
 				goto elfcleanup;
 			}
 
-			EV_SET(change_event, fd, EVFILT_WRITE,
-			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
-				dump_errmsg("process_joblist: kevent() "
+			if (reenable_fd(s, fd, EVFILT_WRITE))
+				dump_errmsg("process_joblist: reenable_fd() "
 					    "failed with: %m");
 
 elfcleanup:
