@@ -228,8 +228,6 @@ process_joblist(void *_s)
 				nbytes -= r;
 			}
 
-			assert(nbytes == r);
-
 			ack = 1;
 			if (send(fd, &ack, 1, 0) < 0) {
 				dump_errmsg("send() failed with: %m");
