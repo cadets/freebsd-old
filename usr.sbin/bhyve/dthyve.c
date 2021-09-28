@@ -104,7 +104,7 @@ dtraced_sockinit(uint64_t subs)
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = subs;
 	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
-		fprintf(stderr, "write() initmsg failed with: %s",
+		fprintf(stderr, "send() initmsg failed with: %s",
 		    strerror(errno));
 		close(sock);
 		return (-1);
