@@ -65,6 +65,10 @@ typedef struct dtraced_hdr {
 		pid_t pid;     /* process id to kill */
 		uint16_t vmid; /* vmid to kill the pid on */
 	} kill;
+
+	struct {
+		size_t num_entries; /* number of entries to clean up */
+	} cleanup;
 } dtraced_hdr_t;
 
 typedef struct dtd_initmsg {
@@ -77,9 +81,10 @@ typedef struct dtd_initmsg {
 /*
  * Public message API
  */
-#define	DTRACED_MSG_ELF                1
-#define	DTRACED_MSG_KILL               2
-#define	DTRACED_MSG_LAST               2
+#define DTRACED_MSG_ELF                1
+#define DTRACED_MSG_KILL               2
+#define DTRACED_MSG_CLEANUP            3
+#define DTRACED_MSG_LAST               3
 
 #define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
 #define	DTRACED_MSG_LOC(m)             ((m).elf.location)
@@ -87,5 +92,6 @@ typedef struct dtd_initmsg {
 #define	DTRACED_MSG_IDENT_PRESENT(m)   ((m).elf.ident_present)
 #define DTRACED_MSG_KILLPID(m)         ((m).kill.pid)
 #define DTRACED_MSG_KILLVMID(m)        ((m).kill.vmid)
+#define DTRACED_MSG_NUMENTRIES(m)      ((m).cleanup.num_entries)
 
 #endif // __DTRACED_H_

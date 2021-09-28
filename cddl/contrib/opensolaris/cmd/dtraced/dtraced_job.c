@@ -137,7 +137,7 @@ process_joblist(void *_s)
 	pid_t pid;
 	struct stat stat;
 	unsigned char *buf, *_buf;
-	size_t nbytes, totalbytes;
+	size_t nbytes, totalbytes, n_entries;
 	dtraced_hdr_t header;
 	struct kevent change_event[1];
 	unsigned char ack = 1;
@@ -345,8 +345,8 @@ process_joblist(void *_s)
 						abort();
 					}
 
-					memset(
-					    job, 0, sizeof(struct dtd_joblist));
+					memset(job, 0,
+					    sizeof(struct dtd_joblist));
 
 					job->job = KILL;
 					job->connsockfd = fd_list->fd;
@@ -365,6 +365,17 @@ process_joblist(void *_s)
 				}
 				UNLOCK(&s->socklistmtx);
 				break;
+
+			case DTRACED_MSG_CLEANUP:
+				n_entries = DTRACED_MSG_NUMENTRIES(header);
+				printf("n_entries = %zu\n", n_entries);
+				if (n_entries == 0) {
+					// cleanup_all();
+					break;
+				}
+
+				break;
+
 			default:
 				assert(0);
 			}
