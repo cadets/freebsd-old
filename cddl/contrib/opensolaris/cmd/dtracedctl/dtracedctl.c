@@ -82,6 +82,13 @@ freenames(names_t *name)
 	free(name->str);
 }
 
+static void
+freehdl(handle_t *hdl)
+{
+
+	close(hdl->sockfd);
+}
+
 static names_t
 parse_names(char *str)
 {
@@ -187,6 +194,12 @@ open_dtraced(const char *sockpath)
 }
 
 static void
+send_clean(handle_t *hdl, names_t *n)
+{
+
+}
+
+static void
 print_help(void)
 {
 	fprintf(stderr, "Usage: %s\n"
@@ -203,7 +216,7 @@ main(int argc, const char **argv)
 	__cleanup(freenames) names_t names_to_stat  = { 0, 0 };
 	__cleanup(freenames) names_t names_to_clean = { 0, 0 };
 	int action = -1;
-	handle_t hdl;
+	__cleanup(freehdl) handle_t hdl;
 
 	program_name = argv[0];
 
@@ -256,6 +269,7 @@ main(int argc, const char **argv)
 
 	switch (action) {
 	case CLEAN:
+		send_clean(&hdl, &names_to_stat);
 		break;
 
 	case STAT:
