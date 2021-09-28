@@ -224,19 +224,6 @@ send_clean(handle_t *hdl, names_t *n)
 		exit(EXIT_FAILURE);
 	}
 
-	if (recv(hdl->sockfd, &data, 1, 0) < 0) {
-		close(hdl->sockfd);
-		fprintf(stderr, "recv() failed: %s\n", strerror(errno));
-		fprintf(stderr, "Consider restarting dtraced.\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (data != 1) {
-		close(hdl->sockfd);
-		fprintf(stderr, "Header was NAK'd by dtraced... exiting.\n");
-		exit(EXIT_FAILURE);
-	}
-
 	for (i = 0; i < n->n_strs; i++) {
 		buflen = strlen(n->str[i]);
 
