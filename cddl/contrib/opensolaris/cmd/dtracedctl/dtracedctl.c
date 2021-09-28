@@ -29,13 +29,23 @@
  * SUCH DAMAGE.
  */
 
+#include <sys/socket.h>
+#include <sys/un.h>
+
+#include <errno.h>
 #include <dtraced.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
+
+enum {
+	CLEAN = 1,
+	STAT
+};
 
 static const char *program_name;
 
@@ -51,6 +61,10 @@ static struct option longopts[] = {
 	{ "show-stats"   ,     optional_argument,    NULL,      SHOW_STATS    },
 	{ NULL           ,     0                ,    NULL,      0             }
 };
+
+typedef struct handle {
+	int sockfd;
+} handle_t;
 
 typedef struct name {
 	char   **str;
@@ -119,6 +133,59 @@ dprint_names(names_t *n)
 		fprintf(stderr, "\t- %s\n", n->str[i]);
 }
 
+static handle_t
+open_dtraced(const char *sockpath)
+{
+	struct sockaddr_un addr;
+	size_t l;
+	dtd_initmsg_t initmsg;
+	int sock;
+
+	sock = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (sock == -1) {
+		fprintf(stderr, "Could not create a socket\n");
+		abort();
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		fprintf(stderr, "strlcpy() failed: %zu >= %zu\n", l,
+		    sizeof(addr.sun_path));
+		abort();
+	}
+
+	if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		if (errno == ENOENT)
+			fprintf(stderr,
+			    "connect() failed: is dtraced running?\n");
+		else
+			fprintf(stderr,
+			    "connect() failed: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (recv(sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "recv() failed: %s\n", strerror(errno));
+		abort();
+	}
+
+	if (initmsg.kind != DTRACED_KIND_DTRACED) {
+		fprintf(stderr, "received unknown kind: %x\n", initmsg.kind);
+		abort();
+	}
+
+	initmsg.kind = DTRACED_KIND_FORWARDER;
+	initmsg.subs = DTD_SUB_READDATA;
+	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "send() failed: %s", strerror(errno));
+		abort();
+	}
+
+	return ((handle_t) { .sockfd = sock });
+}
+
 static void
 print_help(void)
 {
@@ -135,6 +202,8 @@ main(int argc, const char **argv)
 	int ch, show_all = 0, cleanup_all = 0;
 	__cleanup(freenames) names_t names_to_stat  = { 0, 0 };
 	__cleanup(freenames) names_t names_to_clean = { 0, 0 };
+	int action = -1;
+	handle_t hdl;
 
 	program_name = argv[0];
 
@@ -148,20 +217,32 @@ main(int argc, const char **argv)
 			break;
 
 		case CLEANUP_STATE:
+			if (action != -1) {
+				print_help();
+				return (-1);
+			}
+
 			if (optarg == NULL) {
 				cleanup_all = 1;
 				break;
 			}
 
+			action = CLEAN;
 			names_to_clean = parse_names(optarg);
 			break;
 
 		case SHOW_STATS:
+			if (action != -1) {
+				print_help();
+				return (-1);
+			}
+
 			if (optarg == NULL) {
 				show_all = 1;
 				break;
 			}
 
+			action = STAT;
 			names_to_stat = parse_names(optarg);
 			break;
 
@@ -171,8 +252,19 @@ main(int argc, const char **argv)
 		}
 	}
 
-	dprint_names(&names_to_clean);
-	dprint_names(&names_to_stat);
+	hdl = open_dtraced(DTRACED_SOCKPATH);
+
+	switch (action) {
+	case CLEAN:
+		break;
+
+	case STAT:
+		break;
+
+	default:
+		print_help();
+		break;
+	}
 
 	return (0);
 }
