@@ -326,7 +326,7 @@ main(int argc, const char **argv)
 
 	switch (action) {
 	case CLEAN:
-		send_clean(&hdl, &names_to_stat);
+		send_clean(&hdl, &names_to_clean);
 		break;
 
 	case STAT:
