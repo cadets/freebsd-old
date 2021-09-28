@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sysexits.h>
+#include <unistd.h>
 
 #define __cleanup(fn) __attribute__((__cleanup__(fn)))
 
@@ -196,7 +197,63 @@ open_dtraced(const char *sockpath)
 static void
 send_clean(handle_t *hdl, names_t *n)
 {
+	dtraced_hdr_t header;
+	unsigned char data;
+	size_t buflen, i, hdrlen;
 
+	memset(&header, 0, sizeof(header));
+	/*
+	 * Prepare the header. If 'n_strs' is 0, it simply means "clean
+	 * everything".
+	 */
+	DTRACED_MSG_TYPE(header)       = DTRACED_MSG_CLEANUP;
+	DTRACED_MSG_NUMENTRIES(header) = n->n_strs;
+
+	hdrlen = sizeof(header);
+	if (send(hdl->sockfd, &hdrlen, sizeof(hdrlen), 0) < 0) {
+		close(hdl->sockfd);
+		fprintf(stderr, "send() failed: %s\n", strerror(errno));
+		fprintf(stderr, "Consider restarting dtraced.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (send(hdl->sockfd, &header, hdrlen, 0) < 0) {
+		close(hdl->sockfd);
+		fprintf(stderr, "send() failed: %s\n", strerror(errno));
+		fprintf(stderr, "Consider restarting dtraced.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	for (i = 0; i < n->n_strs; i++) {
+		buflen = strlen(n->str[i]);
+
+		if (send(hdl->sockfd, &buflen, sizeof(buflen), 0) < 0) {
+			close(hdl->sockfd);
+			fprintf(stderr, "send() failed: %s\n", strerror(errno));
+			fprintf(stderr, "Consider restarting dtraced.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		if (send(hdl->sockfd, n->str[i], buflen, 0) < 0) {
+			close(hdl->sockfd);
+			fprintf(stderr, "send() failed: %s\n", strerror(errno));
+			fprintf(stderr, "Consider restarting dtraced.\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (recv(hdl->sockfd, &data, 1, 0) < 0) {
+		close(hdl->sockfd);
+		fprintf(stderr, "recv() failed: %s\n", strerror(errno));
+		fprintf(stderr, "Consider restarting dtraced.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (data != 1) {
+		close(hdl->sockfd);
+		fprintf(stderr, "Data was NAK'd by dtraced... exiting.\n");
+		exit(EXIT_FAILURE);
+	}
 }
 
 static void
