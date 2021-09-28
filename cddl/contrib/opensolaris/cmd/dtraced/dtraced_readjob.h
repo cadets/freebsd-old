@@ -45,5 +45,6 @@
 struct dtd_state;
 
 int handle_elfmsg(struct dtd_state *, dtraced_hdr_t *, unsigned char *, size_t);
+void handle_killmsg(struct dtd_state *, dtraced_hdr_t *);
 
 #endif // __DTRACED_READJOB_H_

@@ -159,7 +159,6 @@ process_joblist(void *_s)
 	dtraced_hdr_t header;
 	struct kevent change_event[1];
 	struct dtd_joblist *job;
-	struct dtd_fdlist *fd_list;
 	uint16_t vmid;
 	const char *jobname[] = {
 		[0]               = "NONE",
@@ -287,51 +286,7 @@ process_joblist(void *_s)
 				break;
 
 			case DTRACED_MSG_KILL:
-				dump_debugmsg("        KILL (%d)",
-				    DTRACED_MSG_KILLPID(header));
-				/*
-				 * We enqueue a KILL message in the joblist
-				 * (another thread will simply pick this up). We
-				 * need to only do it for FORWARDERs.
-				 */
-
-				LOCK(&s->socklistmtx);
-				for (fd_list = dt_list_next(&s->sockfds);
-				     fd_list; fd_list = dt_list_next(fd_list)) {
-					if (fd_list->kind !=
-					    DTRACED_KIND_FORWARDER)
-						continue;
-
-					if ((fd_list->subs & DTD_SUB_KILL) == 0)
-						continue;
-
-					job =
-					    malloc(sizeof(struct dtd_joblist));
-					if (job == NULL) {
-						dump_errmsg(
-						    "malloc() failed with: %m");
-						abort();
-					}
-
-					memset(job, 0,
-					    sizeof(struct dtd_joblist));
-
-					job->job = KILL;
-					job->connsockfd = fd_list->fd;
-					job->j.kill.pid =
-					    DTRACED_MSG_KILLPID(header);
-					job->j.kill.vmid =
-					    DTRACED_MSG_KILLVMID(header);
-
-					dump_debugmsg("        kill %d to %d",
-					    DTRACED_MSG_KILLPID(header),
-					    fd_list->fd);
-
-					LOCK(&s->joblistmtx);
-					dt_list_append(&s->joblist, job);
-					UNLOCK(&s->joblistmtx);
-				}
-				UNLOCK(&s->socklistmtx);
+				handle_killmsg(s, &header);
 				break;
 
 			case DTRACED_MSG_CLEANUP:

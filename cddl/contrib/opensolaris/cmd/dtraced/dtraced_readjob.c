@@ -43,6 +43,7 @@
 #include <string.h>
 
 #include "dtraced.h"
+#include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
@@ -96,4 +97,49 @@ handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
 		dump_errmsg("write_data() failed");
 
 	return (0);
+}
+
+void
+handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
+{
+	struct dtd_fdlist *fd_list;
+	struct dtd_joblist *job;
+
+	dump_debugmsg("        KILL (%d)", DTRACED_MSG_KILLPID(*h));
+	/*
+	 * We enqueue a KILL message in the joblist
+	 * (another thread will simply pick this up). We
+	 * need to only do it for FORWARDERs.
+	 */
+
+	LOCK(&s->socklistmtx);
+	for (fd_list = dt_list_next(&s->sockfds); fd_list;
+	     fd_list = dt_list_next(fd_list)) {
+		if (fd_list->kind != DTRACED_KIND_FORWARDER)
+			continue;
+
+		if ((fd_list->subs & DTD_SUB_KILL) == 0)
+			continue;
+
+		job = malloc(sizeof(struct dtd_joblist));
+		if (job == NULL) {
+			dump_errmsg("malloc() failed with: %m");
+			abort();
+		}
+
+		memset(job, 0, sizeof(struct dtd_joblist));
+
+		job->job = KILL;
+		job->connsockfd = fd_list->fd;
+		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
+		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
+
+		dump_debugmsg("        kill %d to %d",
+		    DTRACED_MSG_KILLPID(*h), fd_list->fd);
+
+		LOCK(&s->joblistmtx);
+		dt_list_append(&s->joblist, job);
+		UNLOCK(&s->joblistmtx);
+	}
+	UNLOCK(&s->socklistmtx);
 }
