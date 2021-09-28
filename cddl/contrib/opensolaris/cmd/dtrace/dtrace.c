@@ -1753,11 +1753,6 @@ again:
 			process_new_pgp(pgpl->pgp, resp);
 
 			/*
-			 * FIXME: This is no longer the case.
-			 */
-
-
-			/*
 			 * FIXME: We need to make a new entry here... I think.
 			 */
 			dt_list_append(&g_kill_list, resp);

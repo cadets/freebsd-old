@@ -160,7 +160,6 @@ process_joblist(void *_s)
 	struct kevent change_event[1];
 	struct dtd_joblist *job;
 	struct dtd_fdlist *fd_list;
-	identlist_t *newident;
 	uint16_t vmid;
 	const char *jobname[] = {
 		[0]               = "NONE",
@@ -281,52 +280,10 @@ process_joblist(void *_s)
 			case DTRACED_MSG_ELF:
 				_buf += DTRACED_MSGHDRSIZE;
 				nbytes -= DTRACED_MSGHDRSIZE;
-				dump_debugmsg("        ELF file");
-
-				if (strcmp(
-				    DTRACED_MSG_LOC(header), "base") == 0)
-					dir = s->basedir;
-				else if (strcmp(
-				    DTRACED_MSG_LOC(header), "outbound") == 0)
-					dir = s->outbounddir;
-				else if (strcmp(
-				    DTRACED_MSG_LOC(header), "inbound") == 0)
-					dir = s->inbounddir;
-				else
-					dir = NULL;
-
-				if (dir == NULL) {
-					dump_errmsg(
-					    "unrecognized location: %s",
-					    DTRACED_MSG_LOC(header));
-
+				if (handle_elfmsg(s, &header, _buf, nbytes)) {
 					free(buf);
-					pthread_exit(NULL);
+					goto done;
 				}
-
-				if (s->ctrlmachine == 0) {
-					newident = malloc(sizeof(identlist_t));
-					if (newident == NULL) {
-						dump_errmsg(
-						    "Failed to allocate new"
-						    " identifier: %m");
-						abort();
-					}
-
-					if (DTRACED_MSG_IDENT_PRESENT(header)) {
-						memcpy(newident->ident,
-						    DTRACED_MSG_IDENT(header),
-						    DTRACED_PROGIDENTLEN);
-
-						LOCK(&s->identlistmtx);
-						dt_list_append(&s->identlist,
-						    newident);
-						UNLOCK(&s->identlistmtx);
-					}
-				}
-
-				if (write_data(dir, _buf, nbytes))
-					dump_errmsg("write_data() failed");
 				break;
 
 			case DTRACED_MSG_KILL:
@@ -700,6 +657,7 @@ elfcleanup:
 			pthread_exit(NULL);
 		}
 
+done:
 		free(curjob);
 	}
 
