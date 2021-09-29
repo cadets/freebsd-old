@@ -42,17 +42,12 @@
 #include <sys/param.h>
 #include <sys/event.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 
-#include <errno.h>
-#include <fcntl.h>
-#include <openssl/sha.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "dtraced_connection.h"
-#include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_killjob.h"
@@ -121,38 +116,16 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 void *
 process_joblist(void *_s)
 {
-	int err;
-	int _nosha;
-	int fd;
-	int elffd;
 	int i;
-	char *path;
-	char *contents, *msg, *_msg;
-	size_t msglen;
-	size_t pathlen;
-	size_t elflen;
 	struct dtd_joblist *curjob;
-	struct dtd_fdlist *fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
-	dtd_dir_t *dir;
-	ssize_t r;
-	pid_t pid;
-	struct stat stat;
-	unsigned char *buf, *_buf;
-	size_t nbytes, totalbytes;
-	dtraced_hdr_t header;
 	struct dtd_joblist *job;
-	uint16_t vmid;
 	const char *jobname[] = {
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
 		[KILL]            = "KILL",
 		[READ_DATA]       = "READ_DATA"
 	};
-
-	_nosha = s->nosha;
-	dir = NULL;
-	memset(&stat, 0, sizeof(stat));
 
 	while (atomic_load(&s->shutdown) == 0) {
 		LOCK(&s->joblistcvmtx);
@@ -198,160 +171,14 @@ process_joblist(void *_s)
 			break;
 
 		case NOTIFY_ELFWRITE:
-			fd = curjob->connsockfd;
-			path = curjob->j.notify_elfwrite.path;
-			pathlen = curjob->j.notify_elfwrite.pathlen;
-			dir = curjob->j.notify_elfwrite.dir;
-			_nosha = curjob->j.notify_elfwrite.nosha;
-
-			dump_debugmsg("    %s%s to %d", dir->dirpath, path,
-			    fd);
-			/*
-			 * Sanity assertions.
-			 */
-			assert(fd != -1);
-			assert(path != NULL);
-			assert(pathlen <= MAXPATHLEN);
-
-			assert(dir->dirfd != -1);
-
-			elffd = openat(dir->dirfd, path, O_RDONLY);
-			if (elffd == -1) {
-				dump_errmsg("Failed to open %s: %m", path);
-				free(path);
-				break;
-			}
-
-			if (fstat(elffd, &stat) != 0) {
-				dump_errmsg("Failed to fstat %s: %m", path);
-				free(path);
-				close(elffd);
-				break;
-			}
-
-			elflen = stat.st_size;
-			msglen =
-			    _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
-			msglen += DTRACED_MSGHDRSIZE;
-			msg = malloc(msglen);
-			if (msg == NULL) {
-				dump_errmsg("failed to malloc msg: %m");
-				abort();
-			}
-
-			dump_debugmsg("    Length of ELF file: %zu",
-			    elflen);
-			dump_debugmsg("    Message length: %zu", msglen);
-
-			if (msg == NULL) {
-				dump_errmsg(
-				    "Failed to allocate ELF contents: %m");
-				free(path);
-				close(elffd);
-				break;
-			}
-
-			DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
-			memset(msg, 0, msglen);
-			memcpy(msg, &header, DTRACED_MSGHDRSIZE);
-
-			_msg = msg + DTRACED_MSGHDRSIZE;
-			contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
-
-			if ((r = read(elffd, contents, elflen)) < 0) {
-				dump_errmsg("Failed to read ELF contents: %m");
-				free(path);
-				free(msg);
-				close(elffd);
-				break;
-			}
-
-			if (_nosha == 0 &&
-			    SHA256(contents, elflen, _msg) == NULL) {
-				dump_errmsg(
-				    "Failed to create a SHA256 of the file");
-				free(path);
-				free(msg);
-				close(elffd);
-				break;
-			}
-
-			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-				if (errno == EPIPE) {
-					/*
-					 * Get the entry from a socket list to
-					 * delete it. This is a bit "slow", but
-					 * should be happening rarely enough
-					 * that we don't really care. A small
-					 * delay here is acceptable, as most
-					 * consumers of this event will open the
-					 * path sent to them and process the ELF
-					 * file.
-					 */
-					LOCK(&s->socklistmtx);
-					fde = dt_in_list(
-					    &s->sockfds, &fd, sizeof(int));
-					if (fde == NULL) {
-						UNLOCK(&s->socklistmtx);
-						goto elfcleanup;
-					}
-
-					dt_list_delete(&s->sockfds, fde);
-					UNLOCK(&s->socklistmtx);
-				} else
-					dump_errmsg(
-					    "Failed to write to %d (%zu): %m",
-					    fd, msglen);
-
-				goto elfcleanup;
-			}
-
-			if ((r = send(fd, msg, msglen, 0)) < 0) {
-				if (errno == EPIPE) {
-					/*
-					 * Get the entry from a socket list to
-					 * delete it. This is a bit "slow", but
-					 * should be happening rarely enough
-					 * that we don't really care. A small
-					 * delay here is acceptable, as most
-					 * consumers of this event will open the
-					 * path sent to them and process the ELF
-					 * file.
-					 */
-					LOCK(&s->socklistmtx);
-					fde = dt_in_list(
-					    &s->sockfds, &fd, sizeof(int));
-					if (fde == NULL) {
-						UNLOCK(&s->socklistmtx);
-						goto elfcleanup;
-					}
-
-					dt_list_delete(&s->sockfds, fde);
-					UNLOCK(&s->socklistmtx);
-				} else
-					dump_errmsg("Failed to write to %d "
-						    "(%s, %zu): %m",
-					    fd, path, pathlen);
-
-				goto elfcleanup;
-			}
-
-			if (reenable_fd(s, fd, EVFILT_WRITE))
-				dump_errmsg("process_joblist: reenable_fd() "
-					    "failed with: %m");
-
-elfcleanup:
-			free(path);
-			free(msg);
-			close(elffd);
+			handle_elfwrite(s, curjob);
 			break;
 
 		default:
 			dump_errmsg("Unknown job: %d", curjob->job);
-			pthread_exit(NULL);
+			abort();
 		}
 
-done:
 		free(curjob);
 	}
 
