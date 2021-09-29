@@ -41,6 +41,8 @@
 #ifndef _DTRACED_CONNECTION_H_
 #define _DTRACED_CONNECTION_H_
 
+#include <sys/types.h>
+
 #include <dt_list.h>
 
 struct dtd_state;
