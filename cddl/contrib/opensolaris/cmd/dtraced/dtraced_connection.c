@@ -78,12 +78,20 @@ send_nak(int fd)
 }
 
 int
+enable_fd(struct dtd_state *s, int fd, int filt, void *data)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, filt, EV_ADD | EV_ENABLE, 0, 0, data);
+	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL) < 0);
+}
+
+int
 reenable_fd(struct dtd_state *s, int fd, int filt)
 {
 	struct kevent change_event[1];
 
-	EV_SET(change_event, fd, filt,
-	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+	EV_SET(change_event, fd, filt, EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
 	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
 }
 
@@ -136,18 +144,14 @@ accept_new_connection(struct dtd_state *s)
 	fde->kind = initmsg.kind;
 	fde->subs = initmsg.subs;
 
-	EV_SET(change_event, connsockfd, EVFILT_READ,
-	    EV_ADD | EV_ENABLE, 0, 0, fde);
-	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
+	if (enable_fd(s, connsockfd, EVFILT_READ, fde) < 0) {
 		close(connsockfd);
 		free(fde);
 		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	EV_SET(change_event, connsockfd, EVFILT_WRITE,
-	    EV_ADD | EV_ENABLE, 0, 0, fde);
-	if (kevent(kq, change_event, 1, NULL, 0, NULL) < 0) {
+	if (enable_fd(s, connsockfd, EVFILT_WRITE, fde) < 0) {
 		close(connsockfd);
 		free(fde);
 		dump_errmsg("kevent() adding new connection failed: %m");
