@@ -96,11 +96,11 @@ reenable_fd(int kq, int fd, int filt)
 }
 
 int
-disable_fd(int kq, int fd, int filt, void *udata)
+disable_fd(int kq, int fd, int filt)
 {
 	struct kevent change_event[1];
 
-	EV_SET(change_event, fd, filt, EV_DISABLE, 0, 0, udata);
+	EV_SET(change_event, fd, filt, EV_DISABLE | EV_KEEPUDATA, 0, 0, 0);
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
@@ -288,8 +288,7 @@ process_consumers(void *_s)
 				 * Disable the EVFILT_READ event so we don't get
 				 * spammed by it.
 				 */
-				if (disable_fd(s->kq_hdl, event[i].ident,
-				    EVFILT_READ, event[i].udata)) {
+				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
@@ -316,8 +315,7 @@ process_consumers(void *_s)
 			}
 
 			if (event[i].filter == EVFILT_WRITE) {
-				if (disable_fd(kq, efd, EVFILT_WRITE,
-				    event[i].udata)) {
+				if (disable_fd(kq, efd, EVFILT_WRITE)) {
 					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}

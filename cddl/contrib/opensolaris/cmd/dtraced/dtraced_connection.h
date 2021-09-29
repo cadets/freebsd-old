@@ -62,6 +62,6 @@ int  send_ack(int);
 int  send_nak(int);
 int  enable_fd(int, int, int, void *);
 int  reenable_fd(int, int, int);
-int  disable_fd(int, int, int, void *);
+int  disable_fd(int, int, int);
 
 #endif // _DTRACED_CONNECTION_H_
