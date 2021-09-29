@@ -208,3 +208,106 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 		free(entries[i]);
 	}
 }
+
+void
+handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
+{
+	int fd;
+	size_t nbytes, totalbytes;
+	ssize_t r;
+	char *_buf;
+	dtraced_hdr_t header;
+	__cleanup(freep) char *buf = NULL;
+
+	fd = curjob->connsockfd;
+	nbytes = 0;
+	totalbytes = 0;
+
+	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {
+		dump_errmsg("recv() failed with: %m");
+		return;
+	}
+
+	assert(r == sizeof(totalbytes));
+	dump_debugmsg("    %zu bytes from %d", totalbytes, fd);
+
+	nbytes = totalbytes;
+
+	buf = malloc(nbytes);
+	if (buf == NULL) {
+		dump_errmsg("malloc() failed with: %m");
+		abort();
+	}
+
+	_buf = buf;
+	while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
+		if (r < 0) {
+			dump_errmsg("recv() failed with: %m");
+			buf = NULL;
+			return;
+		}
+
+		assert(r != 0);
+
+		_buf += r;
+		nbytes -= r;
+	}
+
+	if (r < 0) {
+		if (send_ack(fd) < 0) {
+			dump_errmsg("send_ack() failed with: %m");
+			return;
+		}
+
+		/*
+		 * We are done receiving the data and nothing
+		 * failed, re-enable the event and keep going.
+		 */
+		if (reenable_fd(s, fd, EVFILT_READ)) {
+			dump_errmsg("reenable_fd() failed with: %m");
+			return;
+		}
+	}
+
+	nbytes = totalbytes;
+	_buf = buf;
+
+	/*
+	 * We now have our data (ELF file) in buf. Create an ELF
+	 * file in /var/ddtrace/base. This will kick off the
+	 * listen_dir thread for process_base.
+	 */
+
+	memcpy(&header, buf, DTRACED_MSGHDRSIZE);
+	switch (DTRACED_MSG_TYPE(header)) {
+	case DTRACED_MSG_ELF:
+		_buf += DTRACED_MSGHDRSIZE;
+		nbytes -= DTRACED_MSGHDRSIZE;
+		if (handle_elfmsg(s, &header, _buf, nbytes))
+			return;
+		break;
+
+	case DTRACED_MSG_KILL:
+		handle_killmsg(s, &header);
+		break;
+
+	case DTRACED_MSG_CLEANUP:
+		handle_cleanup(s, &header, fd);
+		break;
+
+	default:
+		assert(0);
+	}
+
+	if (send_ack(fd) < 0) {
+		dump_errmsg("send_ack() failed with: %m");
+		return;
+	}
+
+	/*
+	 * We are done receiving the data and nothing
+	 * failed, re-enable the event and keep going.
+	 */
+	if (reenable_fd(s, fd, EVFILT_READ))
+		dump_errmsg("reenable_fd() failed with: %m");
+}
