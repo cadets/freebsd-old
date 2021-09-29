@@ -95,6 +95,15 @@ reenable_fd(int kq, int fd, int filt)
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
+int
+disable_fd(int kq, int fd, int filt, void *udata)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, filt, EV_DISABLE, 0, 0, udata);
+	return (kevent(kq, change_event, 1, NULL, 0, NULL));
+}
+
 static int
 accept_new_connection(struct dtd_state *s)
 {
@@ -279,10 +288,8 @@ process_consumers(void *_s)
 				 * Disable the EVFILT_READ event so we don't get
 				 * spammed by it.
 				 */
-				EV_SET(change_event, event[i].ident, EVFILT_READ,
-				    EV_DISABLE, 0, 0, event[i].udata);
-				if (kevent(s->kq_hdl, change_event, 1, NULL, 0,
-					NULL)) {
+				if (disable_fd(s->kq_hdl, event[i].ident,
+				    EVFILT_READ, event[i].udata)) {
 					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
@@ -309,10 +316,8 @@ process_consumers(void *_s)
 			}
 
 			if (event[i].filter == EVFILT_WRITE) {
-				EV_SET(change_event, efd, EVFILT_WRITE,
-				    EV_DISABLE, 0, 0, event[i].udata);
-				if (kevent(
-				    kq, change_event, 1, NULL, 0, NULL)) {
+				if (disable_fd(kq, efd, EVFILT_WRITE,
+				    event[i].udata)) {
 					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
