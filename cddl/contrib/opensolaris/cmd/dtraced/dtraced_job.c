@@ -55,6 +55,7 @@
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
+#include "dtraced_killjob.h"
 #include "dtraced_lock.h"
 #include "dtraced_readjob.h"
 #include "dtraced_state.h"
@@ -193,104 +194,7 @@ process_joblist(void *_s)
 			break;
 
 		case KILL:
-			fd = curjob->connsockfd;
-			pid = curjob->j.kill.pid;
-			vmid = curjob->j.kill.vmid;
-
-			dump_debugmsg("    kill pid %d to %d", pid, fd);
-
-			assert(fd != -1);
-			/*
-			 * If we end up with pid <= 1, something went wrong.
-			 */
-			assert(pid > 1);
-			msglen = DTRACED_MSGHDRSIZE;
-			msg = malloc(msglen);
-			if (msg == NULL) {
-				dump_errmsg(
-				    "Failed to allocate a kill message: %m");
-				abort();
-			}
-
-			/*
-			 * For now the header only includes the message kind, so
-			 * we don't really make it a structure. In the future,
-			 * this might change.
-			 */
-			DTRACED_MSG_TYPE(header) = DTRACED_MSG_KILL;
-			DTRACED_MSG_KILLPID(header) = pid;
-			DTRACED_MSG_KILLVMID(header) = vmid;
-			
-			memcpy(msg, &header, DTRACED_MSGHDRSIZE);
-
-			if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-				if (errno == EPIPE) {
-					/*
-					 * Get the entry from a socket list to
-					 * delete it. This is a bit "slow", but
-					 * should be happening rarely enough
-					 * that we don't really care. A small
-					 * delay here is acceptable, as most
-					 * consumers of this event will open the
-					 * path sent to them and process the ELF
-					 * file.
-					 */
-					LOCK(&s->socklistmtx);
-					fde = dt_in_list(
-					    &s->sockfds, &fd, sizeof(int));
-					if (fde == NULL) {
-						UNLOCK(&s->socklistmtx);
-						goto killcleanup;
-					}
-
-					dt_list_delete(&s->sockfds, fde);
-					UNLOCK(&s->socklistmtx);
-				} else
-					dump_errmsg(
-					    "Failed to write to %d (%zu): %m",
-					    fd, msglen);
-
-				goto killcleanup;
-			}
-
-			if ((r = send(fd, msg, msglen, 0)) < 0) {
-				if (errno == EPIPE) {
-					/*
-					 * Get the entry from a socket list to
-					 * delete it. This is a bit "slow", but
-					 * should be happening rarely enough
-					 * that we don't really care. A small
-					 * delay here is acceptable, as most
-					 * consumers of this event will open the
-					 * path sent to them and process the ELF
-					 * file.
-					 */
-					LOCK(&s->socklistmtx);
-					fde = dt_in_list(
-					    &s->sockfds, &fd, sizeof(int));
-					if (fde == NULL) {
-						UNLOCK(&s->socklistmtx);
-						goto killcleanup;
-					}
-
-					dt_list_delete(&s->sockfds, fde);
-					UNLOCK(&s->socklistmtx);
-				} else
-					dump_errmsg("Failed to write to %d: %m",
-					    fd);
-
-				goto killcleanup;
-			}
-
-			if (reenable_fd(s, fd, EVFILT_WRITE)) {
-				dump_errmsg("process_joblist: reenable_fd() "
-					    "failed with: %m");
-				free(msg);
-				break;
-			}
-
-killcleanup:
-			free(msg);
+			handle_kill(s, curjob);
 			break;
 
 		case NOTIFY_ELFWRITE:
