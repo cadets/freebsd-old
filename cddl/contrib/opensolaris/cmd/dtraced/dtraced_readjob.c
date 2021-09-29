@@ -38,6 +38,8 @@
  * SUCH DAMAGE.
  */
 
+#include <sys/socket.h>
+
 #include <dt_list.h>
 #include <stdlib.h>
 #include <string.h>
@@ -142,4 +144,66 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		UNLOCK(&s->joblistmtx);
 	}
 	UNLOCK(&s->socklistmtx);
+}
+
+void
+handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
+{
+	size_t n_entries, nbytes, len, i, j;
+	ssize_t r;
+	char *buf, *_buf;
+
+	/* XXX: Would be nice if __cleanup() did everything. */
+	__cleanup(freep) char **entries = NULL;
+
+	n_entries = DTRACED_MSG_NUMENTRIES(*h);
+	if (n_entries == 0) {
+		// cleanup_all();
+		return;
+	}
+
+	entries = malloc(n_entries * sizeof(char *));
+	if (entries == NULL)
+		abort();
+
+
+	memset(entries, 0, sizeof(char *) * n_entries);
+
+
+	for (i = 0; i < n_entries; i++) {
+		if (recv(fd, &len, sizeof(len), 0) < 0) {
+			dump_errmsg("recv() failed with: %m");
+			for (j = 0; j < i; j++)
+				free(entries[j]);
+			return;
+		}
+
+		buf = malloc(len);
+		if (buf == NULL)
+			abort();
+
+		_buf = buf;
+		nbytes = len;
+		while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
+			if (r < 0) {
+				dump_errmsg("recv() failed with: %m");
+				for (j = 0; j < i; j++)
+					free(entries[j]);
+				free(buf);
+				return;
+			}
+
+			assert(r != 0);
+
+			_buf += r;
+			nbytes -= r;
+		}
+
+		entries[i] = buf;
+	}
+
+	for (i = 0; i < n_entries; i++) {
+		printf("entries[%zu] = %s\n", i, entries[i]);
+		free(entries[i]);
+	}
 }

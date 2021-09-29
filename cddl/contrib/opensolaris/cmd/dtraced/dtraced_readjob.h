@@ -44,7 +44,8 @@
 
 struct dtd_state;
 
-int handle_elfmsg(struct dtd_state *, dtraced_hdr_t *, unsigned char *, size_t);
+int  handle_elfmsg(struct dtd_state *, dtraced_hdr_t *, unsigned char *, size_t);
 void handle_killmsg(struct dtd_state *, dtraced_hdr_t *);
+void handle_cleanup(struct dtd_state *, dtraced_hdr_t *, int);
 
 #endif // __DTRACED_READJOB_H_

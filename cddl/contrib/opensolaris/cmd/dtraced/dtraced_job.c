@@ -56,6 +56,7 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_lock.h"
+#include "dtraced_readjob.h"
 #include "dtraced_state.h"
 
 /*
@@ -155,9 +156,8 @@ process_joblist(void *_s)
 	pid_t pid;
 	struct stat stat;
 	unsigned char *buf, *_buf;
-	size_t nbytes, totalbytes, n_entries;
+	size_t nbytes, totalbytes;
 	dtraced_hdr_t header;
-	struct kevent change_event[1];
 	struct dtd_joblist *job;
 	uint16_t vmid;
 	const char *jobname[] = {
@@ -290,48 +290,7 @@ process_joblist(void *_s)
 				break;
 
 			case DTRACED_MSG_CLEANUP:
-				n_entries = DTRACED_MSG_NUMENTRIES(header);
-				printf("n_entries = %zu\n", n_entries);
-				if (n_entries == 0) {
-					// cleanup_all();
-					break;
-				}
-
-				for (i = 0; i < n_entries; i++) {
-					size_t len;
-					char *buf;
-
-					if (recv(fd, &len, sizeof(len), 0) < 0) {
-						dump_errmsg(
-						    "recv() failed with: %m");
-						break;
-					}
-
-					buf = malloc(len);
-					if (buf == NULL) {
-						dump_errmsg(
-"DTRACED_MSG_CLEANUP: failed to malloc");
-						abort();
-					}
-
-					_buf = buf;
-					nbytes = len;
-					while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
-						if (r < 0) {
-							dump_errmsg("recv() failed with: %m");
-							free(buf);
-							break;
-						}
-
-						assert(r != 0);
-
-						_buf += r;
-						nbytes -= r;
-					}
-
-					printf("buf = %s\n", buf);
-				}
-
+				handle_cleanup(s, &header, fd);
 				break;
 
 			default:
