@@ -45,9 +45,6 @@
 struct dtd_state;
 struct dtd_joblist;
 
-int  handle_elfmsg(struct dtd_state *, dtraced_hdr_t *, unsigned char *, size_t);
-void handle_killmsg(struct dtd_state *, dtraced_hdr_t *);
-void handle_cleanup(struct dtd_state *, dtraced_hdr_t *, int);
 void handle_read_data(struct dtd_state *, struct dtd_joblist *);
 
 #endif // __DTRACED_READJOB_H_

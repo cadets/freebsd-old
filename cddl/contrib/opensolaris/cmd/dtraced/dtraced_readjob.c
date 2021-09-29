@@ -54,7 +54,7 @@
 #include "dtraced_readjob.h"
 #include "dtraced_state.h"
 
-int
+static int
 handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
     unsigned char *buf, size_t bsize)
 {
@@ -101,7 +101,7 @@ handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
 	return (0);
 }
 
-void
+static void
 handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 {
 	struct dtd_fdlist *fd_list;
@@ -146,7 +146,7 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 	UNLOCK(&s->socklistmtx);
 }
 
-void
+static void
 handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 {
 	size_t n_entries, nbytes, len, i, j;
@@ -168,7 +168,6 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 
 
 	memset(entries, 0, sizeof(char *) * n_entries);
-
 
 	for (i = 0; i < n_entries; i++) {
 		if (recv(fd, &len, sizeof(len), 0) < 0) {
