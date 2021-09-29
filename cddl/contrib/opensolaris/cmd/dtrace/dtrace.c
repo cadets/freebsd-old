@@ -1751,11 +1751,8 @@ again:
 
 			resp = atomic_load(&pgpl->response);
 			process_new_pgp(pgpl->pgp, resp);
-
-			/*
-			 * FIXME: We need to make a new entry here... I think.
-			 */
-			dt_list_append(&g_kill_list, resp);
+			if (pgpl->vmid != 0)
+				dt_list_append(&g_kill_list, resp);
 		}
 
 		__dt_bench_snapshot_time(g_e2ebench);
