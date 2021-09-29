@@ -266,7 +266,7 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 		 * We are done receiving the data and nothing
 		 * failed, re-enable the event and keep going.
 		 */
-		if (reenable_fd(s, fd, EVFILT_READ)) {
+		if (reenable_fd(s->kq_hdl, fd, EVFILT_READ)) {
 			dump_errmsg("reenable_fd() failed with: %m");
 			return;
 		}
@@ -318,6 +318,6 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 	 * We are done receiving the data and nothing
 	 * failed, re-enable the event and keep going.
 	 */
-	if (reenable_fd(s, fd, EVFILT_READ))
+	if (reenable_fd(s->kq_hdl, fd, EVFILT_READ))
 		dump_errmsg("reenable_fd() failed with: %m");
 }

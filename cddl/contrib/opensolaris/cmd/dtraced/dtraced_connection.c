@@ -87,12 +87,12 @@ enable_fd(int kq, int fd, int filt, void *data)
 }
 
 int
-reenable_fd(struct dtd_state *s, int fd, int filt)
+reenable_fd(int kq, int fd, int filt)
 {
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
+	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
 static int
