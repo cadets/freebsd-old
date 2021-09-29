@@ -199,6 +199,7 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 			nbytes -= r;
 		}
 
+		buf[len - 1] = '\0';
 		entries[i] = buf;
 	}
 
