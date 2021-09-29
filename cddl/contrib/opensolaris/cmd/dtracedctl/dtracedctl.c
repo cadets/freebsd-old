@@ -225,7 +225,7 @@ send_clean(handle_t *hdl, names_t *n)
 	}
 
 	for (i = 0; i < n->n_strs; i++) {
-		buflen = strlen(n->str[i]);
+		buflen = strlen(n->str[i]) + 1;
 
 		if (send(hdl->sockfd, &buflen, sizeof(buflen), 0) < 0) {
 			close(hdl->sockfd);
