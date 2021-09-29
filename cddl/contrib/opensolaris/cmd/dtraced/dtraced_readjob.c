@@ -257,8 +257,8 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 	}
 
 	if (r < 0) {
-		if (send_ack(fd) < 0) {
-			dump_errmsg("send_ack() failed with: %m");
+		if (send_nak(fd) < 0) {
+			dump_errmsg("send_nak() failed with: %m");
 			return;
 		}
 
