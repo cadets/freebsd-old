@@ -78,12 +78,12 @@ send_nak(int fd)
 }
 
 int
-enable_fd(struct dtd_state *s, int fd, int filt, void *data)
+enable_fd(int kq, int fd, int filt, void *data)
 {
 	struct kevent change_event[1];
 
 	EV_SET(change_event, fd, filt, EV_ADD | EV_ENABLE, 0, 0, data);
-	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL) < 0);
+	return (kevent(kq, change_event, 1, NULL, 0, NULL) < 0);
 }
 
 int
@@ -144,14 +144,14 @@ accept_new_connection(struct dtd_state *s)
 	fde->kind = initmsg.kind;
 	fde->subs = initmsg.subs;
 
-	if (enable_fd(s, connsockfd, EVFILT_READ, fde) < 0) {
+	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, fde) < 0) {
 		close(connsockfd);
 		free(fde);
 		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	if (enable_fd(s, connsockfd, EVFILT_WRITE, fde) < 0) {
+	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_WRITE, fde) < 0) {
 		close(connsockfd);
 		free(fde);
 		dump_errmsg("kevent() adding new connection failed: %m");
@@ -209,10 +209,7 @@ process_consumers(void *_s)
 		pthread_exit(NULL);
 	}
 
-	EV_SET(
-	    change_event, s->sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, 0);
-
-	if (kevent(kq, change_event, 1, NULL, 0, NULL)) {
+	if (enable_fd(kq, s->sockfd, EVFILT_READ, NULL)) {
 		dump_errmsg("Failed to register listening socket kevent: %m");
 		close(kq);
 		pthread_exit(NULL);
