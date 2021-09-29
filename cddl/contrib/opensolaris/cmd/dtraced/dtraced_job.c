@@ -117,24 +117,6 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 	return (0);
 }
 
-static int
-send_ack(int fd)
-{
-
-	unsigned char ack = 1;
-	return (send(fd, &ack, 1, 0) < 0);
-}
-
-static int
-reenable_fd(struct dtd_state *s, int fd, int filt)
-{
-	struct kevent change_event[1];
-
-	EV_SET(change_event, fd, filt,
-	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
-	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
-}
-
 void *
 process_joblist(void *_s)
 {

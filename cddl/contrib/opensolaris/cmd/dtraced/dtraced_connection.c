@@ -61,6 +61,24 @@
 
 #define DTRACED_BACKLOG_SIZE    4
 
+int
+send_ack(int fd)
+{
+
+	unsigned char ack = 1;
+	return (send(fd, &ack, 1, 0) < 0);
+}
+
+int
+reenable_fd(struct dtd_state *s, int fd, int filt)
+{
+	struct kevent change_event[1];
+
+	EV_SET(change_event, fd, filt,
+	    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+	return (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL));
+}
+
 static int
 accept_new_connection(struct dtd_state *s)
 {
