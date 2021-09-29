@@ -101,7 +101,7 @@ handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
 	return (0);
 }
 
-static void
+static int
 handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 {
 	struct dtd_fdlist *fd_list;
@@ -144,9 +144,11 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		UNLOCK(&s->joblistmtx);
 	}
 	UNLOCK(&s->socklistmtx);
+
+	return (0);
 }
 
-static void
+static int
 handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 {
 	size_t n_entries, nbytes, len, i, j;
@@ -159,7 +161,7 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 	n_entries = DTRACED_MSG_NUMENTRIES(*h);
 	if (n_entries == 0) {
 		// cleanup_all();
-		return;
+		return (0);
 	}
 
 	entries = malloc(n_entries * sizeof(char *));
@@ -174,7 +176,7 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 			dump_errmsg("recv() failed with: %m");
 			for (j = 0; j < i; j++)
 				free(entries[j]);
-			return;
+			return (-1);
 		}
 
 		buf = malloc(len);
@@ -189,7 +191,7 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 				for (j = 0; j < i; j++)
 					free(entries[j]);
 				free(buf);
-				return;
+				return (-1);
 			}
 
 			assert(r != 0);
@@ -206,12 +208,14 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 		printf("entries[%zu] = %s\n", i, entries[i]);
 		free(entries[i]);
 	}
+
+	return (0);
 }
 
 void
 handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 {
-	int fd;
+	int fd, err;
 	size_t nbytes, totalbytes;
 	ssize_t r;
 	char *_buf;
@@ -282,25 +286,32 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 	case DTRACED_MSG_ELF:
 		_buf += DTRACED_MSGHDRSIZE;
 		nbytes -= DTRACED_MSGHDRSIZE;
-		if (handle_elfmsg(s, &header, _buf, nbytes))
-			return;
+		err = handle_elfmsg(s, &header, _buf, nbytes);
 		break;
 
 	case DTRACED_MSG_KILL:
-		handle_killmsg(s, &header);
+		err = handle_killmsg(s, &header);
 		break;
 
 	case DTRACED_MSG_CLEANUP:
-		handle_cleanup(s, &header, fd);
+		err = handle_cleanup(s, &header, fd);
 		break;
 
 	default:
-		assert(0);
+		dump_errmsg("Unknown message: %d", DTRACED_MSG_TYPE(header));
+		err = 1;
 	}
 
-	if (send_ack(fd) < 0) {
-		dump_errmsg("send_ack() failed with: %m");
-		return;
+	if (err == 0) {
+		if (send_ack(fd) < 0) {
+			dump_errmsg("send_ack() failed with: %m");
+			return;
+		}
+	} else {
+		if (send_nak(fd) < 0) {
+			dump_errmsg("send_nak() failed with: %m");
+			return;
+		}
 	}
 
 	/*

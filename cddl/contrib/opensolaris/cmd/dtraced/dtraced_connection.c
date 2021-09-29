@@ -70,6 +70,14 @@ send_ack(int fd)
 }
 
 int
+send_nak(int fd)
+{
+
+	unsigned char ack = 0;
+	return (send(fd, &ack, 1, 0) < 0);
+}
+
+int
 reenable_fd(struct dtd_state *s, int fd, int filt)
 {
 	struct kevent change_event[1];

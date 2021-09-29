@@ -57,6 +57,7 @@ void *process_consumers(void *);
 int  setup_sockfd(struct dtd_state *);
 int  destroy_sockfd(struct dtd_state *);
 int  send_ack(int);
+int  send_nak(int);
 int  reenable_fd(struct dtd_state *, int, int);
 
 #endif // _DTRACED_CONNECTION_H_
