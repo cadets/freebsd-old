@@ -273,7 +273,7 @@ main(int argc, const char **argv)
 	__cleanup(freenames) names_t names_to_stat  = { 0, 0 };
 	__cleanup(freenames) names_t names_to_clean = { 0, 0 };
 	int action = -1;
-	__cleanup(freehdl) handle_t hdl;
+	__cleanup(freehdl) handle_t hdl = { 0 };
 
 	program_name = argv[0];
 
