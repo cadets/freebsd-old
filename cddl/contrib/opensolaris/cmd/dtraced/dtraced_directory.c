@@ -392,7 +392,7 @@ dtd_closedir(dtd_dir_t *dir)
 int
 process_inbound(struct dirent *f, dtd_dir_t *dir)
 {
-	int err;
+	int err, jfd;
 	struct dtd_fdlist *fd_list;
 	struct dtd_joblist *job;
 	struct dtd_state *s;
@@ -403,7 +403,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	size_t l, dirpathlen, filepathlen;
 	char *argv[6] = { 0 };
 	identlist_t *ident_entry;
-	struct kevent change_event[1];
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
 
 	memset(ident_to_delete, 0, sizeof(ident_to_delete));
@@ -502,12 +501,10 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
-
-			EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
-			    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+			jfd = job->connsockfd;
 			UNLOCK(&s->joblistmtx);
 
-			if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
+			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
 				dump_errmsg("process_inbound: kevent() "
 					    "failed with: %m");
 		}
@@ -869,14 +866,13 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 int
 process_outbound(struct dirent *f, dtd_dir_t *dir)
 {
-	int err;
+	int err, jfd;
 	struct dtd_fdlist *fd_list;
 	struct dtd_joblist *job;
 	struct dtd_state *s;
 	int idx, ch;
 	char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
-	struct kevent change_event[1];
 
 	if (dir == NULL) {
 		dump_errmsg("dir is NULL");
@@ -939,14 +935,11 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
-
-		EV_SET(change_event, job->connsockfd, EVFILT_WRITE,
-		    EV_ENABLE | EV_KEEPUDATA, 0, 0, 0);
+		jfd = job->connsockfd;
 		UNLOCK(&s->joblistmtx);
 
-		if (kevent(s->kq_hdl, change_event, 1, NULL, 0, NULL))
-			dump_errmsg(
-			    "process_outbound:kevent() failed with: %m");
+		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
+			dump_errmsg("process_outbound:kevent() failed with: %m");
 	}
 	UNLOCK(&s->socklistmtx);
 
