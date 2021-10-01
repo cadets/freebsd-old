@@ -149,6 +149,27 @@ retry:
 	}
 }
 
+static void
+dtt_kill(struct dtd_state *s, dtt_entry_t *e)
+{
+	pidlist_t *kill_entry;
+
+	kill_entry = malloc(sizeof(pidlist_t));
+	if (kill_entry == NULL) {
+		dump_errmsg("failed to malloc kill_entry: %m");
+		abort();
+	}
+
+	kill_entry->pid = e->u.kill.pid;
+	LOCK(&s->kill_listmtx);
+	dt_list_append(&s->kill_list, kill_entry);
+	UNLOCK(&s->kill_listmtx);
+
+	LOCK(&s->killcvmtx);
+	SIGNAL(&s->killcv);
+	UNLOCK(&s->killcvmtx);
+}
+
 /*
  * Runs in its own thread. Reads ELF files from dttransport and puts them in
  * the inbound directory.
@@ -160,7 +181,6 @@ listen_dttransport(void *_s)
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
 	uintptr_t aux1, aux2;
-	pidlist_t *kill_entry;
 
 	err = 0;
 
@@ -182,21 +202,7 @@ listen_dttransport(void *_s)
 			dtt_elf(s, &e);
 			break;
 		case DTT_KILL:
-			kill_entry = malloc(sizeof(pidlist_t));
-			if (kill_entry == NULL) {
-				dump_errmsg("failed to malloc kill_entry: %m");
-				abort();
-			}
-
-			kill_entry->pid = e.u.kill.pid;
-			LOCK(&s->kill_listmtx);
-			dt_list_append(&s->kill_list, kill_entry);
-			UNLOCK(&s->kill_listmtx);
-
-			LOCK(&s->killcvmtx);
-			SIGNAL(&s->killcv);
-			UNLOCK(&s->killcvmtx);
-
+			dtt_kill(s, &e);
 			break;
 
 		default:
