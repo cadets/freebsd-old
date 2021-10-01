@@ -891,7 +891,7 @@ pci_vtdtr_events(void *xsc)
 		default:
 			fprintf(stderr, "Unknown message: %llu\n",
 			    DTRACED_MSG_TYPE(header));
-			assert(0);
+			abort();
 		}
 
 		free(buf);
