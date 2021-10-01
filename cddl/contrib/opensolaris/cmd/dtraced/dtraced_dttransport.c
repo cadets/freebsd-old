@@ -91,8 +91,6 @@ retry:
 		path = gen_filename(s->inbounddir->dirpath);
 		UNLOCK(&s->inbounddir->dirmtx);
 
-		printf("path = %s\n", path);
-
 		if (path == NULL) {
 			dump_errmsg("gen_filename() failed with %s",
 			    strerror(errno));
