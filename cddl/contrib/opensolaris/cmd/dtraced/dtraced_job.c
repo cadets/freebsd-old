@@ -48,6 +48,7 @@
 #include <unistd.h>
 
 #include "dtraced_connection.h"
+#include "dtraced_elfjob.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_job.h"
 #include "dtraced_killjob.h"

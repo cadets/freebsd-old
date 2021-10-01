@@ -44,9 +44,10 @@
 #include <dt_list.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <openssl/sha.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/sha.h>
+#include <unistd.h>
 
 #include "dtraced.h"
 #include "dtraced_connection.h"
@@ -119,6 +120,8 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
 	memset(msg, 0, msglen);
 	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
+
+	dump_debugmsg("    Header msg_type: %x", DTRACED_MSG_TYPE(header));
 
 	_msg = msg + DTRACED_MSGHDRSIZE;
 	contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
