@@ -170,6 +170,65 @@ dtt_kill(struct dtd_state *s, dtt_entry_t *e)
 	UNLOCK(&s->killcvmtx);
 }
 
+static int
+setup_connection(struct dtd_state *s)
+{
+	dtd_initmsg_t initmsg;
+	struct sockaddr_un addr;
+	int sockfd;
+	size_t l;
+
+	memset(&initmsg, 0, sizeof(initmsg));
+
+	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (sockfd == -1) {
+		dump_errmsg("Failed creating a socket: %m");
+		return (-1);
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = PF_UNIX;
+
+	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
+	if (l >= sizeof(addr.sun_path)) {
+		dump_errmsg("Failed setting addr.sun_path"
+			    " to /var/ddtrace/sub.sock");
+		close(sockfd);
+		return (-1);
+	}
+
+	SEMWAIT(&s->socksema);
+
+	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
+		close(sockfd);
+		return (-1);
+	}
+
+	if (recv(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
+		fprintf(stderr, "Failed to read from sockfd: %m");
+		close(sockfd);
+		return (-1);
+	}
+
+	if (initmsg.kind != DTRACED_KIND_DTRACED) {
+		dump_errmsg("Expected dtraced kind, got %d", initmsg.kind);
+		close(sockfd);
+		return (-1);
+	}
+
+	memset(&initmsg, 0, sizeof(initmsg));
+	initmsg.kind = DTRACED_KIND_FORWARDER;
+	initmsg.subs = DTD_SUB_ELFWRITE;
+	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
+		dump_errmsg("Failed to write initmsg to sockfd: %m");
+		close(sockfd);
+		return (-1);
+	}
+
+	return (sockfd);
+}
+
 /*
  * Runs in its own thread. Reads ELF files from dttransport and puts them in
  * the inbound directory.
@@ -222,9 +281,7 @@ write_dttransport(void *_s)
 	__cleanup(closefd_generic) int sockfd = -1;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
-	size_t l, lentoread, len, totallen;
-	struct sockaddr_un addr;
-	dtd_initmsg_t initmsg;
+	size_t lentoread, len, totallen;
 	uint32_t identifier;
 	dtraced_hdr_t header;
 	ssize_t r;
@@ -232,51 +289,11 @@ write_dttransport(void *_s)
 	unsigned char *msg;
 
 	rval = 0;
-	l = lentoread = len = totallen = 0;
-	memset(&initmsg, 0, sizeof(initmsg));
+	lentoread = len = totallen = 0;
 
-	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (sockfd == -1) {
-		dump_errmsg("Failed creating a socket: %m");
+	sockfd = setup_connection(s);
+	if (sockfd == -1)
 		pthread_exit(NULL);
-	}
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = PF_UNIX;
-
-	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
-	if (l >= sizeof(addr.sun_path)) {
-		dump_errmsg("Failed setting addr.sun_path"
-		    " to /var/ddtrace/sub.sock");
-		pthread_exit(NULL);
-	}
-
-	SEMWAIT(&s->socksema);
-
-	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
-		pthread_exit(NULL);
-	}
-
-	if (recv(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
-		fprintf(stderr, "Failed to read from sockfd: %m");
-		pthread_exit(NULL);
-	}
-
-	if (initmsg.kind != DTRACED_KIND_DTRACED) {
-		dump_errmsg("Expected dtraced kind, got %d",
-		    initmsg.kind);
-		pthread_exit(NULL);
-	}
-
-	memset(&initmsg, 0, sizeof(initmsg));
-	initmsg.kind = DTRACED_KIND_FORWARDER;
-	initmsg.subs = DTD_SUB_ELFWRITE;
-	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
-		dump_errmsg("Failed to write initmsg to sockfd: %m");
-		pthread_exit(NULL);
-	}
-
 
 	while (atomic_load(&s->shutdown) == 0) {
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
