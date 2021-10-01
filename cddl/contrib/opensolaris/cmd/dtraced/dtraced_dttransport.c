@@ -62,6 +62,93 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
+static size_t dirlen;
+
+static void
+dtt_elf(struct dtd_state *s, dtt_entry_t *e)
+{
+	static int fd = 0;
+	static char *elf = NULL;
+	static char *path = NULL;
+	static size_t len = 0;
+	static size_t offs = 0;
+	char donepath[MAXPATHLEN] = { 0 };
+	size_t donepathlen;
+	char msg[128] = { 0 };
+
+	if (fd == -1)
+		return;
+
+retry:
+	/*
+	 * At this point we have the /var/ddtrace/inbound
+	 * open and created, so we can just create new files in
+	 * it without too much worry of failure because
+	 * directory does not exist.
+	 */
+	if (fd == 0) {
+		LOCK(&s->inbounddir->dirmtx);
+		path = gen_filename(s->inbounddir->dirpath);
+		UNLOCK(&s->inbounddir->dirmtx);
+
+		printf("path = %s\n", path);
+
+		if (path == NULL) {
+			dump_errmsg("gen_filename() failed with %s",
+			    strerror(errno));
+			goto retry;
+		}
+		fd = open(path, O_CREAT | O_WRONLY, 0600);
+
+		if (fd == -1) {
+			dump_errmsg("Failed to open %s: %m", path);
+			return;
+		}
+
+		elf = malloc(e->u.elf.totallen);
+		if (elf == NULL) {
+			dump_errmsg("failed to malloc elf: %m");
+			abort();
+		}
+
+		memset(elf, 0, e->u.elf.totallen);
+		len = e->u.elf.totallen;
+	}
+
+	assert(offs < len && "Assertion happens if file was not created");
+	memcpy(elf + offs, e->u.elf.data, e->u.elf.len);
+	offs += e->u.elf.len;
+
+	if (e->u.elf.hasmore == 0) {
+		if (write(fd, elf, len) < 0) {
+			if (errno == EINTR)
+				pthread_exit(s);
+
+			dump_errmsg("Failed to write data to %s: %m", path);
+		}
+
+		donepathlen = strlen(path) - 1;
+		assert(donepathlen < MAXPATHLEN);
+		memset(donepath, 0, donepathlen);
+		memcpy(donepath, path, dirlen);
+		memcpy(donepath + dirlen, path + dirlen + 1,
+		    donepathlen - dirlen);
+
+		if (rename(path, donepath)) {
+			dump_errmsg("Failed to move %s to %s: %m",
+			    path, donepath);
+		}
+
+		free(elf);
+		close(fd);
+		free(path);
+		fd = 0;
+		offs = 0;
+		len = 0;
+		path = NULL;
+	}
+}
+
 /*
  * Runs in its own thread. Reads ELF files from dttransport and puts them in
  * the inbound directory.
@@ -70,23 +157,12 @@ void *
 listen_dttransport(void *_s)
 {
 	int err;
-	int fd;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	dtt_entry_t e;
-	char *path = NULL;
-	char *elf = NULL;
-	size_t len, offs;
-	char donepath[MAXPATHLEN] = { 0 };
 	uintptr_t aux1, aux2;
-	size_t dirlen;
-	size_t donepathlen;
 	pidlist_t *kill_entry;
 
 	err = 0;
-	fd = 0;
-	offs = len = 0;
-	
-	memset(&e, 0, sizeof(e));
 
 	LOCK(&s->inbounddir->dirmtx);
 	dirlen = strlen(s->inbounddir->dirpath);
@@ -103,81 +179,7 @@ listen_dttransport(void *_s)
 
 		switch (e.event_kind) {
 		case DTT_ELF:
-			if (fd == -1)
-				continue;
-
-retry:
-			/*
-			 * At this point we have the /var/ddtrace/inbound
-			 * open and created, so we can just create new files in
-			 * it without too much worry of failure because
-			 * directory does not exist.
-			 */
-			if (fd == 0) {
-				LOCK(&s->inbounddir->dirmtx);
-				path = gen_filename(s->inbounddir->dirpath);
-				UNLOCK(&s->inbounddir->dirmtx);
-
-				if (path == NULL) {
-					dump_errmsg(
-					    "gen_filename() failed with %s",
-					    strerror(errno));
-					goto retry;
-				}
-				fd = open(path, O_CREAT | O_WRONLY, 0600);
-
-				if (fd == -1) {
-					dump_errmsg("Failed to open %s: %m",
-					    path);
-					continue;
-				}
-
-				elf = malloc(e.u.elf.totallen);
-				if (elf == NULL) {
-					dump_errmsg("failed to malloc elf: %m");
-					abort();
-				}
-
-				memset(elf, 0, e.u.elf.totallen);
-				len = e.u.elf.totallen;
-			}
-
-			assert(offs < len);
-			memcpy(elf + offs, e.u.elf.data, e.u.elf.len);
-			offs += e.u.elf.len;
-
-			if (e.u.elf.hasmore == 0) {
-				if (write(fd, elf, len) < 0) {
-					if (errno == EINTR)
-						pthread_exit(s);
-
-					dump_errmsg(
-					    "Failed to write data to %s: %m",
-					    path);
-				}
-
-				donepathlen = strlen(path) - 1;
-				assert(donepathlen < MAXPATHLEN);
-				memset(donepath, 0, donepathlen);
-				memcpy(donepath, path, dirlen);
-				memcpy(donepath + dirlen, path + dirlen + 1,
-				    donepathlen - dirlen);
-
-				if (rename(path, donepath)) {
-					dump_errmsg(
-					    "Failed to move %s to %s: %m", path,
-					    donepath);
-				}
-
-				len = 0;
-				offs = 0;
-				free(elf);
-				close(fd);
-				free(path);
-				donepathlen = 0;
-				fd = 0;
-				path = NULL;
-			}
+			dtt_elf(s, &e);
 			break;
 		case DTT_KILL:
 			kill_entry = malloc(sizeof(pidlist_t));
