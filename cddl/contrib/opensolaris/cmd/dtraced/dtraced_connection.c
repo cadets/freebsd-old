@@ -253,7 +253,9 @@ process_consumers(void *_s)
 				dt_list_delete(&s->sockfds, event[i].udata);
 				UNLOCK(&s->socklistmtx);
 				free(event[i].udata);
+				shutdown(efd, SHUT_RDWR);
 				close(efd);
+
 				dump_errmsg("event error: %m");
 				continue;
 			}
@@ -264,6 +266,7 @@ process_consumers(void *_s)
 				UNLOCK(&s->socklistmtx);
 				free(event[i].udata);
 
+				shutdown(efd, SHUT_RDWR);
 				close(efd);
 				continue;
 			}
