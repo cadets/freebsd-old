@@ -245,7 +245,8 @@ main(int argc, char **argv)
 			break;
 
 		default:
-			break;
+			print_version();
+			exit(0);
 		}
 	}
 
