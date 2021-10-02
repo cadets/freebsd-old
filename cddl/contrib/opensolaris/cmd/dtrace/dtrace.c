@@ -293,9 +293,13 @@ fatal(const char *fmt, ...)
 	 * Close the DTrace handle to ensure that any controlled processes are
 	 * correctly restored and continued.
 	 */
+	pthread_mutex_lock(&g_dtpmtx);
 	if (g_dtp)
 		dtrace_close(g_dtp);
+	g_dtp = NULL;
+	pthread_mutex_unlock(&g_dtpmtx);
 
+	pthread_mutex_destroy(&g_dtpmtx);
 	sleep(10);
 	exit(E_ERROR);
 }
