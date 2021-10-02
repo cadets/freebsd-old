@@ -90,7 +90,7 @@ typedef struct dt_pgplist {
 	dt_list_t list;
 	dtrace_prog_t *pgp;
 	dtrace_prog_t *gpgp;
-	_Atomic(dtrace_prog_t *) response;
+	dtrace_prog_t *response;
 	uint16_t vmid;
 } dt_pgplist_t;
 
@@ -798,20 +798,34 @@ get_pgplist_entry(char *ident, uint16_t vmid, int *found, int flags)
 	char *_ident;
 	int err;
 
+	assert((flags & PGPL_HOST) != 0 || (flags & PGPL_GUEST) != 0);
+
 	*found = 0;
 	use_srcident = flags & PGPL_SRCIDENT;
+	pthread_mutex_lock(&g_pgplistmtx);
 	for (pgpl = dt_list_next(&g_pgplist); pgpl;
 	    pgpl = dt_list_next(pgpl)) {
 		pgp = flags & PGPL_HOST ? pgpl->pgp :
 		    flags & PGPL_GUEST ? pgpl->gpgp : NULL;
+
+		/*
+		 * If for some reason we're in a state where we don't have a
+		 * program associated with this pgp list entry, we simply
+		 * continue.
+		 */
+		if (pgp == NULL)
+			continue;
+
 		_ident = use_srcident ? pgp->dp_srcident : pgp->dp_ident;
 
 		if (memcmp(_ident, ident, DT_PROG_IDENTLEN) == 0 &&
 		    pgp->dp_vmid == vmid) {
 			*found = 1;
+			pthread_mutex_unlock(&g_pgplistmtx);
 			return (pgpl);
 		}
 	}
+	pthread_mutex_unlock(&g_pgplistmtx);
 
 	if ((flags & PGPL_ALLOC) == 0)
 		return (NULL);
@@ -830,8 +844,8 @@ pgpl_valid(dt_pgplist_t *pgpl)
 	if (pgpl == NULL)
 		return (0);
 
-	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp &&
-	    atomic_load(&pgpl->response)) || (pgpl->vmid == 0 && pgpl->pgp));
+	return ((pgpl->vmid > 0 && pgpl->pgp && pgpl->gpgp && pgpl->response) ||
+	    (pgpl->vmid == 0 && pgpl->pgp));
 }
 
 static int
@@ -1041,7 +1055,8 @@ listen_dtraced(void *arg)
 
 		elf = malloc(elflen);
 		if (elf == NULL)
-			fatal("malloc(elf) failed");
+			abort();
+
 		memset(elf, 0, elflen);
 
 		elf_ptr = (uintptr_t)elf;
@@ -1151,9 +1166,20 @@ process_prog:
 			newpgpl = get_pgplist_entry(buf, vmid, &found,
 			    PGPL_GUEST);
 
+			/*
+			 * If we found nothing, we're simply going to go back to
+			 * sleep. This program is not for us. If we have found
+			 * something, but it's a valid pgpl, we've raced against
+			 * another thread that is currently busy processing this
+			 * particular entry. Report it and go back to sleep.
+			 */
 			if (found == 0) {
 				__dt_bench_stop_time(bench);
 				dt_bench_hdl_attach(bench, cshdl, ABORTED);
+				continue;
+			} else if (pgpl_valid(newpgpl)) {
+				fprintf(stderr,
+				    "Found a valid pgpl. Sleeping...");
 				continue;
 			}
 
@@ -1183,6 +1209,11 @@ process_prog:
 		if (newpgpl == NULL)
 			fatal("malloc of newpgpl failed");
 
+		if (pgpl_valid(newpgpl)) {
+			fprintf(stderr, "Found a valid pgpl. Sleeping...");
+			continue;
+		}
+
 		/*
 		 * vmid is only 0 when we haven't filled in the program we will
 		 * execute on the host.
@@ -1199,7 +1230,7 @@ process_prog:
 		}
 
 		if (found) {
-			atomic_store(&newpgpl->response, newprog);
+			newpgpl->response = newprog;
 		} else {
 			if (dt_prog_verify(verictx, hostpgp, newprog)) {
 				fprintf(stderr,
@@ -1724,10 +1755,10 @@ again:
 				if (pgpl_valid(pgpl))
 					break;
 			}
-			pthread_mutex_unlock(&g_pgplistmtx);
 
 			if (pgpl == NULL) {
 				again = 1;
+				pthread_mutex_unlock(&g_pgplistmtx);
 				goto again;
 			}
 
@@ -1742,14 +1773,14 @@ again:
 						"program to run is NULL"
 						", sleeping...\n");
 				again = 1;
+				pthread_mutex_unlock(&g_pgplistmtx);
 				goto again;
 			}
 
-			pthread_mutex_lock(&g_pgplistmtx);
 			dt_list_delete(&g_pgplist, pgpl);
 			pthread_mutex_unlock(&g_pgplistmtx);
 
-			resp = atomic_load(&pgpl->response);
+			resp = pgpl->response;
 			process_new_pgp(pgpl->pgp, resp);
 			if (pgpl->vmid != 0)
 				dt_list_append(&g_kill_list, resp);
