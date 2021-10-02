@@ -33,35 +33,34 @@ __FBSDID("$FreeBSD$");
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
 #endif
+#include <sys/types.h>
+#include <sys/dtrace_bsd.h>
 #include <sys/event.h>
+#include <sys/proc.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/ucred.h>
 #include <sys/uio.h>
 #include <sys/uuid.h>
-#include <sys/types.h>
-#include <sys/proc.h>
-#include <sys/ucred.h>
-#include <sys/dtrace_bsd.h>
-#include <sys/stat.h>
 
 #include <machine/vmm.h>
 
+#include <assert.h>
+#include <dtraced.h>
+#include <err.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
-#include <unistd.h>
-#include <assert.h>
-#include <pthread.h>
-#include <errno.h>
-#include <err.h>
-#include <dtraced.h>
-
 #include <syslog.h>
-#include <stdarg.h>
-
+#include <unistd.h>
 #include <vmmapi.h>
 
-#include "dthyve.h"
 #include "bhyverun.h"
+#include "dthyve.h"
 #include "pci_emul.h"
 #include "virtio.h"
 
@@ -264,6 +263,8 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	static size_t len = 0;
 	static size_t offs = 0;
 	static char *elf;
+	static clock_t start = 0;
+	double spent_sec = 0;
 	uint64_t size;
 	char name[MAX_VMNAME];
 	uint16_t vmid;
@@ -295,6 +296,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			elf = malloc(ctrl->pvc_totalelflen);
 			memset(elf, 0, ctrl->pvc_totalelflen);
 			inprogress = 1;
+			start = clock();
 		}
 
 		assert(offs < len);
@@ -308,6 +310,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		offs += ctrl->pvc_elflen;
 
 		if (ctrl->pvc_elfhasmore == 0) {
+			spent_sec = ((double)clock() - start)/CLOCKS_PER_SEC;
+			start = 0;
+
 			assert(elf + offs == elf + len);
 			vmid = vm_get_vmid(sc->vsd_vmctx);
 
