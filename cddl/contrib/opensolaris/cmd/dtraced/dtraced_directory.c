@@ -438,6 +438,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 	}
 
+	dump_debugmsg("%s(): Working on %s", __func__, f->d_name);
+
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
 		dump_errmsg("Failed to copy %s into a path string",
@@ -617,8 +619,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			}
 			UNLOCK(&s->identlistmtx);
 
+			dump_debugmsg("%s(): num_idents %d", __func__, num_idents);
 			if (num_idents == 0)
 				waitpid(pid, &status, 0);
+			dump_debugmsg("%s(): Done waiting... status == %d",
+			    __func__, status);
 
 		} else if (pid == 0) {
 			char *curptr;

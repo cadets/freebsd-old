@@ -273,9 +273,6 @@ process_consumers(void *_s)
 			dfd = event[i].udata;
 			efd = event[i].ident;
 
-			if (dfd != NULL)
-				assert(efd == dfd->fd);
-
 			if (event[i].flags & EV_ERROR) {
 				/*
 				 * XXX: We could add some checks here to make

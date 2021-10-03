@@ -132,6 +132,8 @@ retry:
 		memcpy(donepath + dirlen, path + dirlen + 1,
 		    donepathlen - dirlen);
 
+		dump_debugmsg("%s(): Renaming %s to %s", __func__,
+		    path, donepath);
 		if (rename(path, donepath)) {
 			dump_errmsg("Failed to move %s to %s: %m",
 			    path, donepath);
@@ -246,6 +248,7 @@ listen_dttransport(void *_s)
 	UNLOCK(&s->inbounddir->dirmtx);
 
 	while (atomic_load(&s->shutdown) == 0) {
+		dump_debugmsg("%s(): Reading...", __func__);
 		if (read(s->dtt_fd, &e, sizeof(e)) < 0) {
 			if (errno == EINTR)
 				pthread_exit(s);
@@ -253,6 +256,7 @@ listen_dttransport(void *_s)
 			dump_errmsg("Failed to read an entry: %m");
 			continue;
 		}
+		dump_debugmsg("%s(): Got entry: %d.", __func__, e.event_kind);
 
 		switch (e.event_kind) {
 		case DTT_ELF:
@@ -294,6 +298,7 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 
 	while (atomic_load(&s->shutdown) == 0) {
+		dump_debugmsg("%s(): Waiting for msg.", __func__);
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
 			if (errno == EINTR)
 				pthread_exit(s);
@@ -311,8 +316,13 @@ write_dttransport(void *_s)
 		totallen = len;
 		identifier = arc4random();
 		msg_ptr = (uintptr_t)msg;
+		dump_debugmsg("%s(): Reading %zu bytes.", __func__, len);
 		while ((r = recv(sockfd, (void *)msg_ptr, len, 0)) != len) {
 			if (r < 0) {
+				if (errno == EINTR)
+					pthread_exit(s);
+
+				dump_errmsg("Exiting write_dttransport(): %m");
 				atomic_store(&s->shutdown, 1);
 				pthread_exit(NULL);
 			}
@@ -320,6 +330,7 @@ write_dttransport(void *_s)
 			len -= r;
 			msg_ptr += r;
 		}
+		dump_debugmsg("%s(): Got message.", __func__);
 
 		memcpy(&header, msg, DTRACED_MSGHDRSIZE);
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
