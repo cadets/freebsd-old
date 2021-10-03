@@ -2133,10 +2133,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	close(tmpfd);
 	close(dtraced_sock);
 
-	if (prog_exec == DT_PROG_EXEC) {
-		if (pthread_join(g_worktd, NULL))
-			fatal("failed to join worktd (%s)", strerror(errno));
-	}
+	if (prog_exec == DT_PROG_EXEC)
+		(void)pthread_join(g_worktd, NULL);
 
 	pthread_mutex_lock(&g_dtpmtx);
 	dtrace_close(g_dtp);
