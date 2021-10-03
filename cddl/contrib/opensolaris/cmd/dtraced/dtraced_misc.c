@@ -46,6 +46,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_connection.h"
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
 
@@ -133,4 +134,12 @@ cleanup_pidfile(struct pidfh **pfh)
 	if (*pfh)
 		if (pidfile_remove(*pfh))
 			dump_errmsg("Could not remove pidfile: %m");
+}
+
+void
+releasefd(dtraced_fd_t **dfd)
+{
+
+	if (*dfd)
+		fd_release(*dfd);
 }

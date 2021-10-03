@@ -104,24 +104,28 @@ handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
 static int
 handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 {
-	struct dtd_fdlist *fd_list;
+	dtraced_fd_t *dfd = NULL;
 	struct dtd_joblist *job;
 
 	dump_debugmsg("        KILL (%d)", DTRACED_MSG_KILLPID(*h));
+
 	/*
 	 * We enqueue a KILL message in the joblist
 	 * (another thread will simply pick this up). We
 	 * need to only do it for FORWARDERs.
 	 */
-
 	LOCK(&s->socklistmtx);
-	for (fd_list = dt_list_next(&s->sockfds); fd_list;
-	     fd_list = dt_list_next(fd_list)) {
-		if (fd_list->kind != DTRACED_KIND_FORWARDER)
+	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+		fd_acquire(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER) {
+			fd_release(dfd);
 			continue;
+		}
 
-		if ((fd_list->subs & DTD_SUB_KILL) == 0)
+		if ((dfd->subs & DTD_SUB_KILL) == 0) {
+			fd_release(dfd);
 			continue;
+		}
 
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
@@ -132,12 +136,12 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		memset(job, 0, sizeof(struct dtd_joblist));
 
 		job->job = KILL;
-		job->connsockfd = fd_list->fd;
+		job->connsockfd = dfd;
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
 		dump_debugmsg("        kill %d to %d",
-		    DTRACED_MSG_KILLPID(*h), fd_list->fd);
+		    DTRACED_MSG_KILLPID(*h), dfd->fd);
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
@@ -216,13 +220,14 @@ void
 handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 {
 	int fd, err;
+	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
 	size_t nbytes, totalbytes;
 	ssize_t r;
 	char *_buf;
 	dtraced_hdr_t header;
 	__cleanup(freep) char *buf = NULL;
 
-	fd = curjob->connsockfd;
+	fd = dfd->fd;
 	nbytes = 0;
 	totalbytes = 0;
 

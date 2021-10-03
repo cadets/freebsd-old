@@ -105,6 +105,13 @@ struct dtd_state {
 	pthread_t reaptd;      /* handle reaping children */
 
 	/*
+	 * filedesc management.
+	 */
+	dt_list_t deadfds;  /* dead file descriptor list (to close) */
+	mutex_t deadfdsmtx; /* mutex for deadfds */
+	pthread_t closetd;  /* file descriptor closing thread */
+
+	/*
 	 * Consumer threads
 	 */
 	pthread_t consumer_listentd; /* handle consumer messages */

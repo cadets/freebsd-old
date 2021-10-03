@@ -64,8 +64,12 @@ int
 dispatch_event(struct dtd_state *s, struct kevent *ev)
 {
 	struct dtd_joblist *job;
+	dtraced_fd_t *dfd;
 
 	if (ev->filter == EVFILT_READ) {
+		dfd = ev->udata;
+		fd_acquire(dfd);
+
 		/*
 		 * Read is a little bit more complicated than write, because we
 		 * have to read in the actual event and put it in the
@@ -79,7 +83,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		}
 
 		job->job = READ_DATA;
-		job->connsockfd = ev->ident;
+		job->connsockfd = dfd;
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);

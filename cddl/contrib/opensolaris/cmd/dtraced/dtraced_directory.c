@@ -393,7 +393,7 @@ int
 process_inbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
-	struct dtd_fdlist *fd_list;
+	dtraced_fd_t *dfd;
 	struct dtd_joblist *job;
 	struct dtd_state *s;
 	int idx;
@@ -472,14 +472,20 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		 * want to process the same file in the future.
 		 */
 		LOCK(&s->socklistmtx);
-		for (fd_list = dt_list_next(&s->sockfds); fd_list;
-		    fd_list = dt_list_next(fd_list)) {
-			if (fd_list->kind != DTRACED_KIND_CONSUMER)
+		for (dfd = dt_list_next(&s->sockfds); dfd;
+		    dfd = dt_list_next(dfd)) {
+			fd_acquire(dfd);
+			if (dfd->kind != DTRACED_KIND_CONSUMER) {
+				fd_release(dfd);
 				continue;
+			}
 
-			if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
+			if ((dfd->subs & DTD_SUB_ELFWRITE) == 0) {
+				fd_release(dfd);
 				continue;
+			}
 
+			jfd = dfd->fd;
 			job = malloc(sizeof(struct dtd_joblist));
 			if (job == NULL) {
 				dump_errmsg("Failed to malloc a new job: %m");
@@ -488,7 +494,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			memset(job, 0, sizeof(struct dtd_joblist));
 			job->job = NOTIFY_ELFWRITE;
-			job->connsockfd = fd_list->fd;
+			job->connsockfd = dfd;
 			job->j.notify_elfwrite.path = strdup(f->d_name);
 			job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 			job->j.notify_elfwrite.dir = dir;
@@ -501,7 +507,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			LOCK(&s->joblistmtx);
 			dt_list_append(&s->joblist, job);
-			jfd = job->connsockfd;
 			UNLOCK(&s->joblistmtx);
 
 			if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
@@ -867,7 +872,7 @@ int
 process_outbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
-	struct dtd_fdlist *fd_list;
+	dtraced_fd_t *dfd;
 	struct dtd_joblist *job;
 	struct dtd_state *s;
 	int idx, ch;
@@ -905,14 +910,19 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&s->socklistmtx);
-	for (fd_list = dt_list_next(&s->sockfds); fd_list;
-	    fd_list = dt_list_next(fd_list)) {
-		if (fd_list->kind != DTRACED_KIND_FORWARDER)
+	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+		fd_acquire(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER) {
+			fd_release(dfd);
 			continue;
+		}
 
-		if ((fd_list->subs & DTD_SUB_ELFWRITE) == 0)
+		if ((dfd->subs & DTD_SUB_ELFWRITE) == 0) {
+			fd_release(dfd);
 			continue;
+		}
 
+		jfd = dfd->fd;
 		job = malloc(sizeof(struct dtd_joblist));
 		if (job == NULL) {
 			dump_errmsg("Failed to malloc a new job: %m");
@@ -922,7 +932,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		memset(job, 0, sizeof(struct dtd_joblist));
 
 		job->job = NOTIFY_ELFWRITE;
-		job->connsockfd = fd_list->fd;
+		job->connsockfd = dfd;
 		job->j.notify_elfwrite.path = strdup(f->d_name);
 		job->j.notify_elfwrite.pathlen = strlen(f->d_name);
 		job->j.notify_elfwrite.dir = dir;
@@ -935,7 +945,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
-		jfd = job->connsockfd;
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))

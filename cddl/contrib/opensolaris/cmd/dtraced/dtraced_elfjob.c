@@ -70,10 +70,10 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	size_t pathlen, elflen, msglen;
 	dtraced_hdr_t header;
 	dtd_dir_t *dir;
-	struct dtd_fdlist *fde;
+	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
 	struct stat stat;
 
-	fd = curjob->connsockfd;
+	fd = dfd->fd;
 	path = curjob->j.notify_elfwrite.path;
 	pathlen = curjob->j.notify_elfwrite.pathlen;
 	dir = curjob->j.notify_elfwrite.dir;
@@ -137,59 +137,16 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	}
 
 	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-		if (errno == EPIPE) {
-			/*
-			 * Get the entry from a socket list to
-			 * delete it. This is a bit "slow", but
-			 * should be happening rarely enough
-			 * that we don't really care. A small
-			 * delay here is acceptable, as most
-			 * consumers of this event will open the
-			 * path sent to them and process the ELF
-			 * file.
-			 */
-			LOCK(&s->socklistmtx);
-			fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-			if (fde == NULL) {
-				UNLOCK(&s->socklistmtx);
-				return;
-			}
-
-			dt_list_delete(&s->sockfds, fde);
-			UNLOCK(&s->socklistmtx);
-		} else
-			dump_errmsg(
-			    "Failed to write to %d (%zu): %m", fd, msglen);
-
+		if (errno != EPIPE)
+			dump_errmsg("Failed to write to %d (%zu): %m", fd,
+			    msglen);
 		return;
 	}
 
 	if ((r = send(fd, msg, msglen, 0)) < 0) {
-		if (errno == EPIPE) {
-			/*
-			 * Get the entry from a socket list to
-			 * delete it. This is a bit "slow", but
-			 * should be happening rarely enough
-			 * that we don't really care. A small
-			 * delay here is acceptable, as most
-			 * consumers of this event will open the
-			 * path sent to them and process the ELF
-			 * file.
-			 */
-			LOCK(&s->socklistmtx);
-			fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-			if (fde == NULL) {
-				UNLOCK(&s->socklistmtx);
-				return;
-			}
-
-			dt_list_delete(&s->sockfds, fde);
-			UNLOCK(&s->socklistmtx);
-		} else
-			dump_errmsg("Failed to write to %d "
-				    "(%s, %zu): %m",
-			    fd, path, pathlen);
-
+		if (errno != EPIPE)
+			dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
+			    path, pathlen);
 		return;
 	}
 

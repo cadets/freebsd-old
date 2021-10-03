@@ -133,6 +133,12 @@ setup_threads(struct dtd_state *s)
 		return (-1);
 	}
 
+	err = pthread_create(&s->closetd, NULL, close_filedescs, s);
+	if (err != 0) {
+		dump_errmsg("Failed to create filedesc closing thread: %m");
+		return (-1);
+	}
+
 	return (0);
 }
 
@@ -186,6 +192,12 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads)
 	if ((err = mutex_init(
 	    &s->identlistmtx, NULL, "", CHECKOWNER_YES)) != 0) {
 		dump_errmsg("Failed to create identlist mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_init(
+	    &s->deadfdsmtx, NULL, "", CHECKOWNER_YES)) != 0) {
+		dump_errmsg("Failed to create deadfds mutex: %m");
 		return (-1);
 	}
 
@@ -288,6 +300,8 @@ destroy_state(struct dtd_state *s)
 	(void )pthread_join(s->killtd, (void **)&retval);
 	(void) pthread_kill(s->reaptd, SIGTERM);
 	(void) pthread_join(s->reaptd, (void **)&retval);
+	(void) pthread_kill(s->closetd, SIGTERM);
+	(void) pthread_join(s->closetd, (void **)&retval);
 
 	LOCK(&s->joblistmtx);
 	for (j = dt_list_next(&s->joblist); j; j = next) {
@@ -302,6 +316,7 @@ destroy_state(struct dtd_state *s)
 	(void) mutex_destroy(&s->joblistmtx);
 	(void) mutex_destroy(&s->kill_listmtx);
 	(void) mutex_destroy(&s->killcvmtx);
+	(void) mutex_destroy(&s->deadfdsmtx);
 	(void) pthread_cond_destroy(&s->killcv);
 	(void) pthread_cond_destroy(&s->joblistcv);
 

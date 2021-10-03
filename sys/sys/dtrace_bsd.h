@@ -33,6 +33,8 @@
 #ifndef _SYS_DTRACE_BSD_H
 #define	_SYS_DTRACE_BSD_H
 
+#ifdef _KERNEL
+
 #include <sys/_msgid.h>
 
 /* Forward definitions: */
@@ -183,6 +185,8 @@ void	kdtrace_thread_dtor(struct thread *td);
  */
 uint64_t	dtrace_gethrtime(void);
 uint64_t	dtrace_gethrestime(void);
+
+#endif /* _KERNEL */
 
 #ifndef DTRACE_TARGETNAMELEN
 #define DTRACE_TARGETNAMELEN	64

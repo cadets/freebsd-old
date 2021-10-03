@@ -44,6 +44,8 @@
 #include <dirent.h>
 #include <libutil.h>
 
+#include "_dtraced_connection.h"
+
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define __NOSANITIZE_THREAD __attribute__((no_sanitize("thread")))
@@ -62,5 +64,6 @@ void freep(void *);
 void closefd_generic(int *);
 void closedir_generic(DIR **);
 void cleanup_pidfile(struct pidfh **);
+void releasefd(dtraced_fd_t **);
 
 #endif // _DTRACED_MISC_H_

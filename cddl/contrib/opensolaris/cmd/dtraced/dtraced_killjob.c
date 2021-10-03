@@ -65,10 +65,10 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 	size_t msglen;
 	ssize_t r;
 	dtraced_hdr_t header;
-	struct dtd_fdlist *fde;
-	__cleanup(freep) unsigned char *msg;
-	
-	fd = curjob->connsockfd;
+	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
+	__cleanup(freep) unsigned char *msg = NULL;
+
+	fd = dfd->fd;
 	pid = curjob->j.kill.pid;
 	vmid = curjob->j.kill.vmid;
 
@@ -98,57 +98,15 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
 
 	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-		if (errno == EPIPE) {
-			/*
-			 * Get the entry from a socket list to
-			 * delete it. This is a bit "slow", but
-			 * should be happening rarely enough
-			 * that we don't really care. A small
-			 * delay here is acceptable, as most
-			 * consumers of this event will open the
-			 * path sent to them and process the ELF
-			 * file.
-			 */
-			LOCK(&s->socklistmtx);
-			fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-			if (fde == NULL) {
-				UNLOCK(&s->socklistmtx);
-				return;
-			}
-
-			dt_list_delete(&s->sockfds, fde);
-			UNLOCK(&s->socklistmtx);
-		} else
-			dump_errmsg(
-			    "Failed to write to %d (%zu): %m", fd, msglen);
-
+		if (errno != EPIPE)
+			dump_errmsg("Failed to write to %d (%zu): %m", fd,
+			    msglen);
 		return;
 	}
 
 	if ((r = send(fd, msg, msglen, 0)) < 0) {
-		if (errno == EPIPE) {
-			/*
-			 * Get the entry from a socket list to
-			 * delete it. This is a bit "slow", but
-			 * should be happening rarely enough
-			 * that we don't really care. A small
-			 * delay here is acceptable, as most
-			 * consumers of this event will open the
-			 * path sent to them and process the ELF
-			 * file.
-			 */
-			LOCK(&s->socklistmtx);
-			fde = dt_in_list(&s->sockfds, &fd, sizeof(int));
-			if (fde == NULL) {
-				UNLOCK(&s->socklistmtx);
-				return;
-			}
-
-			dt_list_delete(&s->sockfds, fde);
-			UNLOCK(&s->socklistmtx);
-		} else
+		if (errno == EPIPE)
 			dump_errmsg("Failed to write to %d: %m", fd);
-
 		return;
 	}
 

@@ -45,6 +45,7 @@
 #include <sys/un.h>
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,13 +105,41 @@ disable_fd(int kq, int fd, int filt)
 	return (kevent(kq, change_event, 1, NULL, 0, NULL));
 }
 
+void *
+close_filedescs(void *_s)
+{
+	struct dtd_state *s = _s;
+	dtraced_fd_t *dfd;
+
+	while (atomic_load(&s->shutdown) == 0) {
+		sleep(5);
+		LOCK(&s->deadfdsmtx);
+		while ((dfd = dt_list_next(&s->deadfds)) != NULL) {
+			/*
+			 * If it's still referenced somewhere, we don't close
+			 * it. We'll pick it up on the next run.
+			 */
+			if (atomic_load(&dfd->__count) != 0)
+				continue;
+			dt_list_delete(&s->deadfds, dfd);
+			assert(atomic_load(&dfd->__count) == 0);
+			close(dfd->fd);
+			free(dfd);
+		}
+		UNLOCK(&s->deadfdsmtx);
+	}
+
+	pthread_exit(_s);
+}
+
+
 static int
 accept_new_connection(struct dtd_state *s)
 {
 	int connsockfd;
 	int on = 1;
 	int kq = s->kq_hdl;
-	struct dtd_fdlist *fde;
+	dtraced_fd_t *dfd;
 	dtd_initmsg_t initmsg;
 	struct kevent change_event[4];
 
@@ -142,35 +171,35 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
-	fde = malloc(sizeof(struct dtd_fdlist));
-	if (fde == NULL) {
+	dfd = malloc(sizeof(dtraced_fd_t));
+	if (dfd == NULL) {
 		dump_errmsg("malloc() failed with: %m");
 		abort();
 	}
 
-	memset(fde, 0, sizeof(struct dtd_fdlist));
-	fde->fd = connsockfd;
-	fde->kind = initmsg.kind;
-	fde->subs = initmsg.subs;
+	memset(dfd, 0, sizeof(dtraced_fd_t));
+	dfd->fd = connsockfd;
+	dfd->kind = initmsg.kind;
+	dfd->subs = initmsg.subs;
 
-	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, fde) < 0) {
+	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, dfd) < 0) {
 		close(connsockfd);
-		free(fde);
+		free(dfd);
 		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_WRITE, fde) < 0) {
+	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_WRITE, dfd) < 0) {
 		close(connsockfd);
-		free(fde);
+		free(dfd);
 		dump_errmsg("kevent() adding new connection failed: %m");
 		return (-1);
 	}
 
-	dump_debugmsg("Accepted (%d, %x, %x)", fde->fd, fde->kind,
-	    fde->subs);
+	dump_debugmsg("Accepted (%d, %x, %x)", dfd->fd, dfd->kind,
+	    dfd->subs);
 	LOCK(&s->socklistmtx);
-	dt_list_append(&s->sockfds, fde);
+	dt_list_append(&s->sockfds, dfd);
 	UNLOCK(&s->socklistmtx);
 
 	return (0);
@@ -183,10 +212,10 @@ process_consumers(void *_s)
 	int on = 1;
 	int new_events;
 	__cleanup(closefd_generic) int kq = -1;
+	dtraced_fd_t *dfd;
 	int efd;
 	int dispatch;
 	size_t i;
-	struct dtd_fdlist *udata_fde;
 	struct dtd_state *s = (struct dtd_state *)_s;
 	struct dtd_joblist *jle;
 
@@ -241,7 +270,11 @@ process_consumers(void *_s)
 		}
 
 		for (i = 0; i < new_events; i++) {
+			dfd = event[i].udata;
 			efd = event[i].ident;
+
+			if (dfd != NULL)
+				assert(efd == dfd->fd);
 
 			if (event[i].flags & EV_ERROR) {
 				/*
@@ -249,25 +282,42 @@ process_consumers(void *_s)
 				 * sure we're not doing something bad and
 				 * segfaulting.
 				 */
+				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
+					dump_errmsg("kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+
 				LOCK(&s->socklistmtx);
-				dt_list_delete(&s->sockfds, event[i].udata);
+				dt_list_delete(&s->sockfds, dfd);
 				UNLOCK(&s->socklistmtx);
-				free(event[i].udata);
 				shutdown(efd, SHUT_RDWR);
-				close(efd);
+
+				memset(dfd, 0, sizeof(dt_list_t));
+
+				LOCK(&s->deadfdsmtx);
+				dt_list_append(&s->deadfds, dfd);
+				UNLOCK(&s->deadfdsmtx);
 
 				dump_errmsg("event error: %m");
 				continue;
 			}
 
 			if (event[i].flags & EV_EOF) {
-				LOCK(&s->socklistmtx);
-				dt_list_delete(&s->sockfds, event[i].udata);
-				UNLOCK(&s->socklistmtx);
-				free(event[i].udata);
+				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
+					dump_errmsg("kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
 
+				LOCK(&s->socklistmtx);
+				dt_list_delete(&s->sockfds, dfd);
+				UNLOCK(&s->socklistmtx);
 				shutdown(efd, SHUT_RDWR);
-				close(efd);
+
+				memset(dfd, 0, sizeof(dt_list_t));
+
+				LOCK(&s->deadfdsmtx);
+				dt_list_append(&s->deadfds, dfd);
+				UNLOCK(&s->deadfdsmtx);
 				continue;
 			}
 
@@ -282,12 +332,6 @@ process_consumers(void *_s)
 
 			if (event[i].filter == EVFILT_READ) {
 				/*
-				 * assert that we are in a sane state.
-				 */
-				udata_fde = event[i].udata;
-				assert(udata_fde->fd == efd);
-
-				/*
 				 * Disable the EVFILT_READ event so we don't get
 				 * spammed by it.
 				 */
@@ -301,11 +345,11 @@ process_consumers(void *_s)
 				 * to work on dtraced, we will simply ignore
 				 * it and report a warning.
 				 */
-				if ((udata_fde->subs & DTD_SUB_READDATA) == 0) {
+				if ((dfd->subs & DTD_SUB_READDATA) == 0) {
 					dump_warnmsg(
 					    "socket %d tried to READDATA, but "
 					    "is not subscribed (%lx)",
-					    efd, udata_fde->subs);
+					    efd, dfd->subs);
 					continue;
 				}
 
@@ -327,17 +371,10 @@ process_consumers(void *_s)
 
 				LOCK(&s->joblistmtx);
 				for (jle = dt_list_next(&s->joblist); jle;
-				     jle = dt_list_next(jle))
-					if (jle->connsockfd == efd) {
-						/*
-						 * Short sanity check before we
-						 * say that we should dispatch
-						 * the event.
-						 */
-						udata_fde = event[i].udata;
-						assert(udata_fde->fd == efd);
+				     jle = dt_list_next(jle)) {
+					if (jle->connsockfd == dfd)
 						dispatch = 1;
-					}
+				}
 				UNLOCK(&s->joblistmtx);
 
 				/*
