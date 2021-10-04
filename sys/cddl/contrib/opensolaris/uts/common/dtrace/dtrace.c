@@ -10521,6 +10521,8 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 {
 	int i, should_free = dtrace_nvprobes[vmid] > 0 ? 1 : 0, err;
 	dtrace_probe_t *probe;
+	int _nvprobes;
+	dtrace_probe_t **_vprobes;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
@@ -10577,13 +10579,15 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 	}
 
 	if (should_free) {
+		_vprobes = dtrace_vprobes[vmid];
+		_nvprobes = dtrace_nvprobes[vmid];
+
 		dtrace_nvprobes[vmid] = 0;
 		dtrace_vprobes[vmid] = NULL;
 
 		dtrace_sync();
 
-		kmem_free(dtrace_vprobes[vmid],
-		    dtrace_nvprobes[vmid] * sizeof(dtrace_probe_t *));
+		kmem_free(_vprobes, _nvprobes * sizeof(dtrace_probe_t *));
 	}
 }
 
