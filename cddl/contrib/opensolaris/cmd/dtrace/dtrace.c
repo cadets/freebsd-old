@@ -806,7 +806,6 @@ get_pgplist_entry(char *ident, uint16_t vmid, int *found, int flags)
 
 	*found = 0;
 	use_srcident = flags & PGPL_SRCIDENT;
-	pthread_mutex_lock(&g_pgplistmtx);
 	for (pgpl = dt_list_next(&g_pgplist); pgpl;
 	    pgpl = dt_list_next(pgpl)) {
 		pgp = flags & PGPL_HOST ? pgpl->pgp :
@@ -825,11 +824,9 @@ get_pgplist_entry(char *ident, uint16_t vmid, int *found, int flags)
 		if (memcmp(_ident, ident, DT_PROG_IDENTLEN) == 0 &&
 		    pgp->dp_vmid == vmid) {
 			*found = 1;
-			pthread_mutex_unlock(&g_pgplistmtx);
 			return (pgpl);
 		}
 	}
-	pthread_mutex_unlock(&g_pgplistmtx);
 
 	if ((flags & PGPL_ALLOC) == 0)
 		return (NULL);
@@ -1167,6 +1164,7 @@ process_prog:
 			dt_bench_hdl_attach(bench, cshdl, CALL_EAGAIN);
 
 			(void) dt_get_srcident(buf);
+			pthread_mutex_lock(&g_pgplistmtx);
 			newpgpl = get_pgplist_entry(buf, vmid, &found,
 			    PGPL_GUEST);
 
@@ -1180,10 +1178,12 @@ process_prog:
 			if (found == 0) {
 				__dt_bench_stop_time(bench);
 				dt_bench_hdl_attach(bench, cshdl, ABORTED);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
 			} else if (pgpl_valid(newpgpl)) {
 				fprintf(stderr,
 				    "Found a valid pgpl. Sleeping...");
+				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
 			}
 
@@ -1193,6 +1193,7 @@ process_prog:
 				__dt_bench_stop_time(bench);
 				dt_bench_hdl_attach(bench, cshdl, ABORTED);
 				close(fd);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
 			}
 		}
@@ -1206,15 +1207,18 @@ process_prog:
 		 * relation. However, scoping it with vmid as well *should* give
 		 * us a unique program.
 		 */
-		if (newpgpl == NULL)
+		if (newpgpl == NULL) {
+			pthread_mutex_lock(&g_pgplistmtx);
 			newpgpl = get_pgplist_entry(newprog->dp_srcident, vmid,
 			    &found, PGPL_ALLOC | PGPL_HOST);
+		}
 
 		if (newpgpl == NULL)
 			fatal("malloc of newpgpl failed");
 
 		if (pgpl_valid(newpgpl)) {
 			fprintf(stderr, "Found a valid pgpl. Sleeping...");
+			pthread_mutex_unlock(&g_pgplistmtx);
 			continue;
 		}
 
@@ -1241,6 +1245,7 @@ process_prog:
 				    "failed to verify DIF from %s (%u)\n",
 				    vm_name == NULL ? "host" : vm_name, vmid);
 				free(newpgpl);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				continue;
 			}
 
@@ -1269,6 +1274,7 @@ process_prog:
 				fprintf(stderr, "failed to sync file: %s\n",
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				pthread_exit(NULL);
 			}
 
@@ -1276,6 +1282,7 @@ process_prog:
 				fprintf(stderr, "lseek() failed: %s\n",
 				    strerror(errno));
 				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				pthread_exit(NULL);
 			}
 			__dt_bench_snapshot_time(bench);
@@ -1284,6 +1291,7 @@ process_prog:
 			    "outbound", 0)) {
 				fprintf(stderr, "failed to dtrace_send_elf()\n");
 				dt_verictx_teardown(verictx);
+				pthread_mutex_unlock(&g_pgplistmtx);
 				pthread_exit(NULL);
 			}
 
@@ -1302,10 +1310,9 @@ process_prog:
 		 * If this is a new program, we add it to the list.
 		 */
 		if (newpgpl->pgp == newprog) {
-			pthread_mutex_lock(&g_pgplistmtx);
 			dt_list_append(&g_pgplist, newpgpl);
-			pthread_mutex_unlock(&g_pgplistmtx);
 		}
+		pthread_mutex_unlock(&g_pgplistmtx);
 
 		/*
 		 * For vmid == 0, we allow signalling because there will never
