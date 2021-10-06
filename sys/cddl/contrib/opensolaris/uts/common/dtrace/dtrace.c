@@ -10534,6 +10534,9 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 	}
 
 	for (i = 0; i < dtrace_nvprobes[vmid]; i++) {
+		if (dtrace_vprobes[vmid] == NULL)
+			panic("dtrace_vprobes[%u] == NULL", vmid);
+
 		probe = dtrace_vprobes[vmid][i];
 
 		if (probe == NULL)
