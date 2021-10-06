@@ -198,7 +198,7 @@ main(int argc, char **argv)
 				 */
 				dump_warnmsg(
 				    "Specified '-O' (overlord mode) on a "
-				    "virtual machine. This is not (really)"
+				    "virtual machine. This is not (really) "
 				    "supported... Don't report bugs.");
 			}
 
