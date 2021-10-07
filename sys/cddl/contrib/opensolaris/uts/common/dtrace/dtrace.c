@@ -259,7 +259,6 @@ static taskq_t		*dtrace_taskq;		/* task queue */
 static struct unrhdr	*dtrace_arena;
 						/* Probe ID number.     */
 #endif
-size_t			dtrace_nvmids;	/* number of VMs instantiated */
 dtrace_probe_t		**dtrace_vprobes[HYPERTRACE_MAX_VMS];
 						/* array of all vprobes */
 int			dtrace_nvprobes[HYPERTRACE_MAX_VMS];
@@ -8332,13 +8331,6 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				    HYPERTRACE_MAX_VMS);
 			return;
 		}
-
-		if (vmid >= dtrace_nvmids) {
-			if (dtrace_err_verbose)
-				cmn_err(CE_WARN, "%u > dtrace_nvmids (%zu)\n",
-				    vmid, dtrace_nvmids);
-			return;
-		}
 	} else
 		vmid = 0;
 
@@ -10475,9 +10467,6 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 	ASSERT(dtrace_vprobes[vmid][id - 1] == NULL);
 	dtrace_vprobes[vmid][id - 1] = probe;
 
-	if (needs_increment)
-		dtrace_nvmids++;
-
 	if (needs_unlock)
 		mutex_exit(&dtrace_lock);
 
@@ -10535,7 +10524,9 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 	for (i = 0; i < dtrace_nvprobes[vmid]; i++) {
 		if (dtrace_vprobes[vmid] == NULL)
-			panic("dtrace_vprobes[%u] == NULL", vmid);
+			continue;
+
+		ASSERT(dtrace_nvprobes[vmid] > 0);
 
 		probe = dtrace_vprobes[vmid][i];
 
@@ -19012,7 +19003,7 @@ dtrace_dtr(void *data)
 		/*
 		 * XXX: Worth doing a full cleanup on every close()?
 		 */
-		for (i = 1; i < dtrace_nvmids; i++)
+		for (i = 1; i < HYPERTRACE_MAX_VMS; i++)
 			dtrace_vprobespace_destroy(i);
 	}
 #endif
@@ -19875,14 +19866,14 @@ dtrace_destroy_vprobes(dtrace_vmid_t vmid)
 {
 	dtrace_probe_t *probe;
 
+	if (dtrace_vprobes[vmid] == NULL)
+		return;
+
 	mutex_enter(&dtrace_lock);
 
 	/*
-	 * vmid < dtrace_nvmids should also imply:
-	 *   (1) dtrace_vprobes[vmid] != NULL
-	 *   (2) dtrace_nvprobes[vmid] > 0
+	 * We should have some probes if it's not NULL.
 	 */
-	ASSERT(vmid < dtrace_nvmids);
 	ASSERT(dtrace_vprobes[vmid] != NULL);
 	ASSERT(dtrace_nvprobes[vmid] > 0);
 
@@ -19981,13 +19972,13 @@ dtrace_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
 	dtrace_probes = NULL;
 	dtrace_nprobes = 0;
 
-	for (i = 0; i < dtrace_nvmids; i++) {
+	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
 		dtrace_destroy_vprobes(i);
 		dtrace_vprobes[i] = NULL;
 		dtrace_nvprobes[i] = 0;
 	}
 
-	for (i = 0; i < dtrace_nvmids; i++) {
+	for (i = 0; i < HYPERTRACE_MAX_VMS; i++) {
 		dtrace_hash_destroy(dtrace_bymod[i]);
 		dtrace_hash_destroy(dtrace_byfunc[i]);
 		dtrace_hash_destroy(dtrace_byname[i]);
