@@ -274,17 +274,18 @@ process_consumers(void *_s)
 			efd = event[i].ident;
 
 			if (event[i].flags & EV_ERROR) {
-				/*
-				 * XXX: We could add some checks here to make
-				 * sure we're not doing something bad and
-				 * segfaulting.
-				 */
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					dump_errmsg("kevent() failed with: %m");
 					pthread_exit(NULL);
 				}
 
+				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
+					dump_errmsg("kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+
 				LOCK(&s->socklistmtx);
+				dump_debugmsg("%s(): Deleting %d", __func__, dfd->fd);
 				dt_list_delete(&s->sockfds, dfd);
 				UNLOCK(&s->socklistmtx);
 				shutdown(efd, SHUT_RDWR);
@@ -305,6 +306,12 @@ process_consumers(void *_s)
 					pthread_exit(NULL);
 				}
 
+				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
+					dump_errmsg("kevent() failed with: %m");
+					pthread_exit(NULL);
+				}
+
+				dump_debugmsg("%s(): Deleting %d", __func__, dfd->fd);
 				LOCK(&s->socklistmtx);
 				dt_list_delete(&s->sockfds, dfd);
 				UNLOCK(&s->socklistmtx);
