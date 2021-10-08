@@ -150,6 +150,7 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 		return;
 	}
 
+	dump_debugmsg("    Re-enabling %d", fd);
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
 		dump_errmsg("process_joblist: reenable_fd() "
 			    "failed with: %m");
