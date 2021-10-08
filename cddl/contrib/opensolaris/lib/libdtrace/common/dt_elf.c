@@ -2171,7 +2171,7 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 		 */
 		if (err = dtrace_setopt(dtp, dteop->eo_name,
 		    dteop->eo_len > 0 ? strdup(dteop->eo_arg) : NULL)) {
-			fprintf(stderr, "failed to setopt %s\n",
+			fprintf(stderr, "setopt failed: %s\n",
 			    dteop->eo_name);
 			return (err);
 		}
@@ -2579,7 +2579,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 		if (needsclosing)
 			close(fd);
-		fprintf(stderr, "the program has no statements\n");
+		fprintf(stderr, "The program has no statements\n");
 		return (NULL);
 	}
 
@@ -2592,7 +2592,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		if (needsclosing)
 			close(fd);
 
-		fprintf(stderr, "failed getting options\n");
+		fprintf(stderr, "Failed to get options\n");
 		return (NULL);
 	}
 
