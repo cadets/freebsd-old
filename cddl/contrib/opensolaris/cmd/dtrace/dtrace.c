@@ -116,7 +116,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
 static char *g_script;
 static dt_benchmark_t *g_e2ebench;
@@ -134,6 +134,7 @@ static char *g_pname;
 static int g_quiet;
 static int g_flowindent;
 static int g_allow_root_srcident;
+static int g_unsafe;
 static int g_has_idents;
 static _Atomic int g_intr;
 static _Atomic int g_impatient;
@@ -1640,7 +1641,9 @@ exec_prog(const dtrace_cmd_t *dcp)
 		fclose(graph_file);
 	}
 
-	if (!g_exec) {
+	if (g_unsafe) {
+		return;
+	} else if (!g_exec) {
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		if (g_elf) {
 			tmpfd = mkstemp(template);
@@ -2125,7 +2128,6 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
 
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
-
 	if (fsync(tmpfd))
 		fatal("failed to sync file");
 
@@ -2915,6 +2917,10 @@ main(int argc, char *argv[])
 			case 'U':
 				if (dtrace_setopt(g_dtp, "undef", optarg) != 0)
 					dfatal("failed to set -U %s", optarg);
+				break;
+
+			case 'u':
+				g_unsafe = 1;
 				break;
 
 			case 'v':
