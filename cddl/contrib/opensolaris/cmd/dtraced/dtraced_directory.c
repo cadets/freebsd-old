@@ -46,6 +46,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -115,6 +116,7 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		return (-1);
 	}
 
+	dump_debugmsg("%s(): Create %s", __func__, donename);
 	if (rename(newname, donename)) {
 		dump_errmsg("rename() failed %s -> %s: %m", newname, donename);
 		return (-1);
@@ -438,8 +440,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 	}
 
-	dump_debugmsg("%s(): Working on %s", __func__, f->d_name);
-
 	l = strlcpy(fullpath, dir->dirpath, sizeof(fullpath));
 	if (l >= sizeof(fullpath)) {
 		dump_errmsg("Failed to copy %s into a path string",
@@ -451,8 +451,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	dirpathlen = strlen(dir->dirpath);
 	UNLOCK(&dir->dirmtx);
 
-	l = strlcpy(
-	    fullpath + dirpathlen, f->d_name, sizeof(fullpath) - dirpathlen);
+	l = strlcpy(fullpath + dirpathlen, f->d_name,
+	    sizeof(fullpath) - dirpathlen);
 	if (l >= sizeof(fullpath) - dirpathlen) {
 		dump_errmsg("Failed to copy %s into a path string", f->d_name);
 		return (-1);
@@ -554,6 +554,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			return (-1);
 		} else if (pid > 0) {
 			size_t current;
+			struct timeval timeout = { 0 };
+			fd_set set;
+			int remove = 1, rv = 0;
 
 			close(stdin_rdr[0]);
 			close(stdout_rdr[1]);
@@ -591,12 +594,47 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			/*
 			 * This will give us the identifier that matched and
-			 * needs to be deleted.
+			 * needs to be deleted. We give the child 5 seconds to
+			 * give us the identifier, otherwise we simply kill it.
+			 * This avoids a deadlock in dtraced in the case of a
+			 * bug in dtrace(1).
 			 */
-			if (read(stdout_rdr[0], ident_to_delete,
-			    DTRACED_PROGIDENTLEN) == -1) {
-				dump_errmsg("read() failed: %m");
+			timeout.tv_sec = 5;
+			timeout.tv_usec = 0;
+
+			FD_ZERO(&set);
+			FD_SET(stdout_rdr[0], &set);
+
+			rv = select(stdout_rdr[0] + 1, &set,
+			    NULL, NULL, &timeout);
+			if (rv < 0) {
+				dump_errmsg("%s(): select() failed: %m",
+				    __func__);
 				return (-1);
+			} else if (rv == 0) {
+				/* Timeout */
+				kill(pid, SIGKILL);
+				waitpid(pid, &status, 0);
+				return (0);
+			}
+
+			/*
+			 * It should be safe to read at this point due to the
+			 * select above, ensuring that we have data to read
+			 * here.
+			 */
+			if ((rv = read(stdout_rdr[0], ident_to_delete,
+			    DTRACED_PROGIDENTLEN)) == -1) {
+				dump_errmsg("read() failed: %m");
+				remove = 0;
+			}
+
+			if (rv != DTRACED_PROGIDENTLEN && rv != 0) {
+				dump_warnmsg(
+				    "%s(): Expected a read of %zu bytes, "
+				    "but got %zu. Not removing ident.",
+				    __func__, DTRACED_PROGIDENTLEN, rv);
+				return (0);
 			}
 
 			close(stdout_rdr[0]);
@@ -605,25 +643,25 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * Remove the entry that the child tells us from the
 			 * pidlist.
 			 */
-			LOCK(&s->identlistmtx);
-			for (ident_entry = dt_list_next(&s->identlist);
-			     ident_entry;
-			     ident_entry = dt_list_next(ident_entry)) {
-				if (memcmp(ident_to_delete, ident_entry->ident,
-				    DTRACED_PROGIDENTLEN) == 0) {
-					dt_list_delete(
-					    &s->identlist, ident_entry);
-					free(ident_entry);
-					break;
+			if (remove) {
+				LOCK(&s->identlistmtx);
+				for (ident_entry = dt_list_next(&s->identlist);
+				     ident_entry;
+				     ident_entry = dt_list_next(ident_entry)) {
+					if (memcmp(ident_to_delete,
+					    ident_entry->ident,
+					    DTRACED_PROGIDENTLEN) == 0) {
+						dt_list_delete(
+						    &s->identlist, ident_entry);
+						free(ident_entry);
+						break;
+					}
 				}
+				UNLOCK(&s->identlistmtx);
 			}
-			UNLOCK(&s->identlistmtx);
 
-			dump_debugmsg("%s(): num_idents %d", __func__, num_idents);
 			if (num_idents == 0)
 				waitpid(pid, &status, 0);
-			dump_debugmsg("%s(): Done waiting... status == %d",
-			    __func__, status);
 
 		} else if (pid == 0) {
 			char *curptr;
@@ -829,9 +867,9 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	if (pid == -1) {
 		dump_errmsg("Failed to fork: %m");
 		return (-1);
-	} else if (pid > 0)
+	} else if (pid > 0) {
 		waitpid(pid, &status, 0);
-	else {
+	} else {
 		argv[0] = strdup("/usr/sbin/dtrace");
 		if (argv[0] == NULL)
 			abort();
