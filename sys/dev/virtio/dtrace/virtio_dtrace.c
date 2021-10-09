@@ -221,8 +221,6 @@ static void vtdtr_fill_desc(struct virtio_dtrace_queue *,
 static void vtdtr_cq_init(struct vtdtr_ctrlq *);
 static void vtdtr_cq_enqueue(struct vtdtr_ctrlq *,
     struct vtdtr_ctrl_entry *);
-static void vtdtr_cq_enqueue_front(struct vtdtr_ctrlq *,
-    struct vtdtr_ctrl_entry *);
 static int vtdtr_cq_empty(struct vtdtr_ctrlq *);
 static size_t vtdtr_cq_count(struct vtdtr_ctrlq *);
 static struct vtdtr_ctrl_entry * vtdtr_cq_dequeue(struct vtdtr_ctrlq *);
@@ -1071,15 +1069,6 @@ vtdtr_cq_enqueue(struct vtdtr_ctrlq *cq,
 {
 
 	STAILQ_INSERT_TAIL(&cq->head, ctrl_entry, entries);
-	cq->n_entries++;
-}
-
-static __inline void
-vtdtr_cq_enqueue_front(struct vtdtr_ctrlq *cq,
-    struct vtdtr_ctrl_entry *ctrl_entry)
-{
-
-	STAILQ_INSERT_HEAD(&cq->head, ctrl_entry, entries);
 	cq->n_entries++;
 }
 
