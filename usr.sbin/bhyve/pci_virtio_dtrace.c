@@ -30,6 +30,8 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+
+#include <stdatomic.h>
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
 #endif
@@ -93,8 +95,6 @@ static int pci_vtdtr_debug;
 struct pci_vtdtr_control {
 	uint32_t 		pvc_event;
 	union {
-		uint32_t	pvc_probeid;	/* install/uninstall event */
-
 		struct {	/*  elf event */
 			size_t		pvc_elflen;
 			size_t		pvc_totalelflen;
@@ -106,11 +106,6 @@ struct pci_vtdtr_control {
 		struct {
 			pid_t pvc_pid; /* kill a dtrace process */
 		} kill;
-
-		/*
-		 * Defines for easy access into the union and underlying structs
-		 */
-#define	pvc_probeid	uctrl.pvc_probeid
 
 #define	pvc_identifier	uctrl.elf.pvc_identifier
 #define	pvc_elflen	uctrl.elf.pvc_elflen
@@ -143,7 +138,7 @@ struct pci_vtdtr_softc {
 	pthread_cond_t		vsd_cond;
 	pthread_mutex_t		vsd_mtx;
 	uint64_t		vsd_cfg;
-	int			vsd_guest_ready;
+	_Atomic int		vsd_guest_ready;
 	int			vsd_ready;
 };
 
@@ -249,11 +244,6 @@ gen_filename(void)
 	return (filename);
 }
 
-/*
- * In this function we process each of the events, for probe and provider
- * related events, we delegate the processing to a function specialized for that
- * type of event.
- */
 static int
 pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 {
@@ -284,9 +274,7 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
 	switch (ctrl->pvc_event) {
 	case VTDTR_DEVICE_READY:
-		pthread_mutex_lock(&sc->vsd_mtx);
-		sc->vsd_guest_ready = 1;
-		pthread_mutex_unlock(&sc->vsd_mtx);
+		atomic_store(&sc->vsd_guest_ready, 1);
 		break;
 		
 	case VTDTR_DEVICE_ELF:
@@ -539,25 +527,13 @@ pci_vtdtr_poll(struct vqueue_info *vq, int all_used)
 static void
 pci_vtdtr_notify_ready(struct pci_vtdtr_softc *sc)
 {
-	struct pci_vtdtr_ctrl_entry *ctrl_entry;
-	struct pci_vtdtr_control *ctrl;
+	struct pci_vtdtr_control ctrl = { 0 };
 
 	sc->vsd_ready = 1;
 
-	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-	assert(ctrl_entry != NULL);
-	memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
-
-	ctrl = malloc(sizeof(struct pci_vtdtr_control));
-	assert(ctrl != NULL);
-	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
-
-	ctrl->pvc_event = VTDTR_DEVICE_READY;
-	ctrl_entry->ctrl = ctrl;
-
-	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
-	pci_vtdtr_cq_enqueue_front(sc->vsd_ctrlq, ctrl_entry);
-	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+	ctrl.pvc_event = VTDTR_DEVICE_READY;
+	pci_vtdtr_fill_desc(&sc->vsd_queues[0], &ctrl);
+	pci_vtdtr_poll(&sc->vsd_queues[0], 1);
 }
 
 static void
@@ -566,11 +542,9 @@ pci_vtdtr_fill_eof_desc(struct vqueue_info *vq)
 	/*
 	 * Do a malloc to ensure that we don't break the stack
 	 */
-	struct pci_vtdtr_control *ctrl;
-	ctrl = malloc(sizeof(struct pci_vtdtr_control));
-	ctrl->pvc_event = VTDTR_DEVICE_EOF;
-	pci_vtdtr_fill_desc(vq, ctrl);
-	free(ctrl);
+	struct pci_vtdtr_control ctrl;
+	ctrl.pvc_event = VTDTR_DEVICE_EOF;
+	pci_vtdtr_fill_desc(vq, &ctrl);
 }
 
 /*
@@ -604,10 +578,10 @@ pci_vtdtr_run(void *xsc)
 		 * (1) We have messages in the control queue
 		 * (2) The guest is ready
 		 */
-		while (!sc->vsd_guest_ready ||
+		while (!atomic_load(&sc->vsd_guest_ready) ||
 		    pci_vtdtr_cq_empty(sc->vsd_ctrlq)) {
-			error =
-			    pthread_cond_wait(&sc->vsd_cond, &sc->vsd_condmtx);
+			error = pthread_cond_wait(
+			    &sc->vsd_cond, &sc->vsd_condmtx);
 			assert(error == 0);
 		}
 		error = pthread_mutex_unlock(&sc->vsd_condmtx);
@@ -652,11 +626,10 @@ pci_vtdtr_run(void *xsc)
 			}
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
-			pthread_mutex_lock(&sc->vsd_mtx);
-			sc->vsd_guest_ready = ready_flag;
-			pthread_mutex_unlock(&sc->vsd_mtx);
+			atomic_store(&sc->vsd_guest_ready, ready_flag);
 			pci_vtdtr_poll(vq, 1);
 		} else {
+			pci_vtdtr_poll(vq, 0);
 			error = pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
 			assert(error == 0);
 		}

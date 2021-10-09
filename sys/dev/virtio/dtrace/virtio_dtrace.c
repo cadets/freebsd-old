@@ -22,42 +22,38 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * $FreeBSD$
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/uio.h>
-#include <sys/stat.h>
+#include <sys/bus.h>
+#include <sys/condvar.h>
+#include <sys/conf.h>
 #include <sys/kernel.h>
+#include <sys/kthread.h>
+#include <sys/lock.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
-#include <sys/sysctl.h>
-#include <sys/condvar.h>
-#include <sys/lock.h>
 #include <sys/mutex.h>
-#include <sys/sglist.h>
 #include <sys/proc.h>
-#include <sys/kthread.h>
-#include <sys/taskqueue.h>
 #include <sys/queue.h>
+#include <sys/sema.h>
+#include <sys/sglist.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/taskqueue.h>
+#include <sys/uio.h>
 #include <sys/uuid.h>
 #include <sys/vnode.h>
-#include <sys/sema.h>
-#include <sys/conf.h>
 
+#include <machine/atomic.h>
 #include <machine/bus.h>
 #include <machine/resource.h>
-#include <sys/bus.h>
-
-#include <dev/virtio/virtio.h>
-#include <dev/virtio/virtqueue.h>
 
 #include <dev/dttransport/dttransport.h>
+#include <dev/virtio/virtio.h>
+#include <dev/virtio/virtqueue.h>
 
 #include "virtio_dtrace.h"
 #include "virtio_if.h"
@@ -91,9 +87,6 @@ struct virtio_dtrace_control {
 			pid_t vd_pid;
 		} kill;
 
-		/*
-		 * Defines for easy access into the union and underlying structs
-		 */
 #define vd_identifier	uctrl.elf.vd_identifier
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
@@ -158,7 +151,7 @@ struct vtdtr_softc {
 
 	int                        vtdtr_shutdown;
 	int                        vtdtr_ready;
-	int                        vtdtr_host_ready;
+	_Atomic int                vtdtr_host_ready;
 };
 
 #define	VTDTR_QUEUE_LOCK(__q)   mtx_lock(&((__q)->vtdq_mtx))
@@ -172,6 +165,8 @@ struct vtdtr_softc {
 static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
 
 static struct vtdtr_softc *gsc = NULL;
+static struct virtio_dtrace_control eof_ctrl;
+static struct virtio_dtrace_control ready_ctrl;
 
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
@@ -215,7 +210,7 @@ static void vtdtr_drain_taskqueues(struct vtdtr_softc *);
 static int vtdtr_vq_enable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_vq_disable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_rxq_tq_intr(void *, int);
-static int vtdtr_notify_ready(struct vtdtr_softc *);
+static void vtdtr_notify_ready(struct vtdtr_softc *);
 static void vtdtr_rxq_vq_intr(void *);
 static void vtdtr_txq_vq_intr(void *);
 static int vtdtr_init_txq(struct vtdtr_softc *, int);
@@ -272,6 +267,8 @@ vtdtr_modevent(module_t mod, int type, void *unused)
 
 	switch (type) {
 	case MOD_LOAD:
+		eof_ctrl.vd_event = VIRTIO_DTRACE_EOF;
+		ready_ctrl.vd_event = VIRTIO_DTRACE_DEVICE_READY;
 		error = 0;
 		break;
 	case MOD_QUIESCE:
@@ -334,7 +331,7 @@ vtdtr_attach(device_t dev)
 	sc->vtdtr_rx_nseg = 1;
 	sc->vtdtr_tx_nseg = 1;
 	sc->vtdtr_shutdown = 0;
-	sc->vtdtr_host_ready = 1;
+	atomic_store_int(&sc->vtdtr_host_ready, 1);
 
 	sc->vtdtr_ctrlq = malloc(sizeof(struct vtdtr_ctrlq),
 	    M_DEVBUF, M_WAITOK | M_ZERO);
@@ -399,10 +396,7 @@ vtdtr_attach(device_t dev)
 
 	vtdtr_start_taskqueues(sc);
 	sc->vtdtr_ready = 0;
-again:
-	error = vtdtr_notify_ready(sc);
-	if (error)
-		goto again;
+	vtdtr_notify_ready(sc);
 
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 	    0, 0, NULL, "vtdtr_communicator");
@@ -675,7 +669,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 	case VIRTIO_DTRACE_DEVICE_READY:
 		if (debug)
 			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
-		sc->vtdtr_host_ready = 1;
+		atomic_store_int(&sc->vtdtr_host_ready, 1);
 		break;
 
 	case VIRTIO_DTRACE_ELF:
@@ -862,20 +856,11 @@ vtdtr_vq_disable_intr(struct virtio_dtrace_queue *q)
 	virtqueue_disable_intr(q->vtdq_vq);
 }
 
-static int
+static void
 vtdtr_send_eof(struct virtio_dtrace_queue *q)
 {
-	struct virtio_dtrace_control *ctrl;
-	ctrl = malloc(sizeof(struct virtio_dtrace_control),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (ctrl == NULL) {
-		return (-1);
-	}
 
-	ctrl->vd_event = VIRTIO_DTRACE_EOF;
-	vtdtr_fill_desc(q, ctrl);
-
-	return (0);
+	vtdtr_fill_desc(q, &eof_ctrl);
 }
 
 /*
@@ -884,49 +869,20 @@ vtdtr_send_eof(struct virtio_dtrace_queue *q)
  * safe to proceed execution. If not, we enqueue the said descriptor and
  * following that notify the communicator.
  */
-static int
+static void
 vtdtr_notify_ready(struct vtdtr_softc *sc)
 {
 	struct virtio_dtrace_queue *q;
-	struct vtdtr_ctrl_entry *ctrl_entry;
-	struct virtio_dtrace_control *ctrl;
 	device_t dev;
 
 	dev = sc->vtdtr_dev;
 	q = &sc->vtdtr_txq;
-
 	sc->vtdtr_ready = 1;
 
-	/*
-	 * We can wait for this, it won't really deadlock anything and a failure
-	 * mode here would make it a bit diffucult to get the driver in a
-	 * sensible state.
-	 */
-	ctrl_entry = malloc(sizeof(struct vtdtr_ctrl_entry),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (ctrl_entry == NULL)
-		return (-1);
-
-	ctrl = malloc(sizeof(struct virtio_dtrace_control),
-	    M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (ctrl == NULL) {
-		free(ctrl_entry, M_DEVBUF);
-		return (-1);
-	}
-
-	ctrl->vd_event = VIRTIO_DTRACE_DEVICE_READY;
-	ctrl_entry->ctrl = ctrl;
-
-	mtx_lock(&sc->vtdtr_ctrlq->mtx);
-	vtdtr_cq_enqueue_front(sc->vtdtr_ctrlq, ctrl_entry);
-	mtx_unlock(&sc->vtdtr_ctrlq->mtx);
-
-	mtx_lock(&sc->vtdtr_condmtx);
-	cv_signal(&sc->vtdtr_condvar);
-	mtx_unlock(&sc->vtdtr_condmtx);
-
-	return (0);
+	vtdtr_fill_desc(q, &ready_ctrl);
+	vtdtr_poll(q);
 }
+
 /*
  * The separate thread (created by the taskqueue) that acts as an interrupt
  * handler that blocks, allowing us to process more interrupts. In here we
@@ -969,10 +925,7 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 		taskqueue_enqueue(rxq->vtdq_tq, &rxq->vtdq_intrtask);
 
 	if (sc->vtdtr_ready == 0) {
-again:
-		retval = vtdtr_notify_ready(sc);
-		if (retval)
-			goto again;
+		vtdtr_notify_ready(sc);
 	}
 	mtx_unlock(&sc->vtdtr_mtx);
 
@@ -1162,9 +1115,8 @@ vtdtr_notify(struct virtio_dtrace_queue *q)
 {
 	struct virtqueue *vq;
 
-	vq = q->vtdq_vq;
-
 	VTDTR_QUEUE_LOCK(q);
+	vq = q->vtdq_vq;
 	virtqueue_notify(vq);
 	VTDTR_QUEUE_UNLOCK(q);
 }
@@ -1174,9 +1126,8 @@ vtdtr_poll(struct virtio_dtrace_queue *q)
 {
 	struct virtqueue *vq;
 
-	vq = q->vtdq_vq;
-
 	VTDTR_QUEUE_LOCK(q);
+	vq = q->vtdq_vq;
 	virtqueue_notify(vq);
 	virtqueue_poll(vq, NULL);
 	VTDTR_QUEUE_UNLOCK(q);
@@ -1227,7 +1178,7 @@ vtdtr_run(void *xsc)
 		 * (3) Shutting down
 		 */
 		while ((vtdtr_cq_empty(sc->vtdtr_ctrlq) ||
-		    !sc->vtdtr_host_ready)              &&
+		    !atomic_load_int(&sc->vtdtr_host_ready)) &&
 		    (!sc->vtdtr_shutdown)) {
 			cv_wait(&sc->vtdtr_condvar, &sc->vtdtr_condmtx);
 		}
@@ -1241,8 +1192,6 @@ vtdtr_run(void *xsc)
 			kthread_exit();
 		}
 
-		KASSERT(!virtqueue_full(vq),
-		    ("%s: virtqueue is full", __func__));
 		KASSERT(!vtdtr_cq_empty(sc->vtdtr_ctrlq),
 		    ("%s: control queue is empty", __func__));
 
@@ -1279,17 +1228,14 @@ vtdtr_run(void *xsc)
 		 */
 		if (nent) {
 			if (vtdtr_cq_empty(sc->vtdtr_ctrlq) &&
-			   !virtqueue_full(vq)) {
-again:
-				err = vtdtr_send_eof(txq);
-				if (err)
-					goto again;
+			    !virtqueue_full(vq)) {
+				vtdtr_send_eof(txq);
 			}
 
-			sc->vtdtr_host_ready = ready_flag;
-			vtdtr_poll(txq);
+			atomic_store_int(&sc->vtdtr_host_ready, ready_flag);
 		}
 
+		vtdtr_poll(txq);
 		mtx_unlock(&sc->vtdtr_ctrlq->mtx);
 	}
 }
