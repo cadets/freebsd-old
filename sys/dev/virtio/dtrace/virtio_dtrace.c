@@ -258,6 +258,10 @@ static struct virtio_feature_desc vtdtr_feature_desc[] = {
 	{ 0, NULL }
 };
 
+#define debug_printf(dev, ...) \
+	if (debug)             \
+		device_printf(dev, __VA_ARGS__);
+
 static int
 vtdtr_modevent(module_t mod, int type, void *unused)
 {
@@ -558,7 +562,7 @@ vtdtr_queue_requeue_ctrl(struct virtio_dtrace_queue *q,
 	sc = q->vtdq_sc;
 	dev = sc->vtdtr_dev;
 
-	bzero(ctrl, sizeof(struct virtio_dtrace_control));
+	memset(ctrl, 0, sizeof(struct virtio_dtrace_control));
 	error = vtdtr_queue_enqueue_ctrl(q, ctrl, readable, writable);
 	KASSERT(error == 0, ("%s: cannot requeue control buffer %d",
 	    __func__, error));
@@ -665,17 +669,14 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 	switch (ctrl->vd_event) {
 	case VIRTIO_DTRACE_DEVICE_READY:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
+		debug_printf(dev, "VIRTIO_DTRACE_DEVICE_READY\n");
 		atomic_store_int(&sc->vtdtr_host_ready, 1);
 		break;
 
 	case VIRTIO_DTRACE_ELF:
+		debug_printf(dev, "VIRTIO_DTRACE_ELF\n");
+
 		sc->vtdtr_ready = 0;
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_ELF\n");
-
 		e.event_kind = DTT_ELF;
 		KASSERT(ctrl->vd_elflen <= DTT_MAXDATALEN,
 		    ("%s: elflen > DTT_MAXDATALEN (%zu > %zu)",
@@ -691,11 +692,9 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 
 	case VIRTIO_DTRACE_KILL:
+		debug_printf(dev, "VIRTIO_DTRACE_KILL\n");
+
 		sc->vtdtr_ready = 0;
-
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_KILL\n");
-
 		e.event_kind = DTT_KILL;
 		e.u.kill.pid = ctrl->vd_pid;
 
@@ -704,8 +703,7 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 		break;
 
 	case VIRTIO_DTRACE_EOF:
-		if (debug)
-			device_printf(dev, "VIRTIO_DTRACE_EOF\n");
+		debug_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;
 		break;
 
@@ -922,9 +920,8 @@ vtdtr_rxq_tq_intr(void *xrxq, int pending)
 	if (vtdtr_vq_enable_intr(rxq) != 0)
 		taskqueue_enqueue(rxq->vtdq_tq, &rxq->vtdq_intrtask);
 
-	if (sc->vtdtr_ready == 0) {
+	if (sc->vtdtr_ready == 0)
 		vtdtr_notify_ready(sc);
-	}
 	mtx_unlock(&sc->vtdtr_mtx);
 
 	mtx_lock(&sc->vtdtr_condmtx);
