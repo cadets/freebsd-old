@@ -2353,6 +2353,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	char *ident;
 	dt_identlist_t *ident_entry;
 	int i, found, chk;
+	char msg[] = "DEL ident";
 
 	needsclosing = 0;
 
@@ -2553,6 +2554,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	 * calls us -- command line users have no reason to pass '-N'.
 	 */
 	if (chk && found) {
+		write(STDOUT_FILENO, msg, sizeof(msg));
 		write(STDOUT_FILENO, eprog->dtep_srcident, DT_PROG_IDENTLEN);
 		fsync(STDOUT_FILENO);
 	}

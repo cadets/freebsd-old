@@ -557,6 +557,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			struct timeval timeout = { 0 };
 			fd_set set;
 			int remove = 1, rv = 0;
+			char msg[] = "DEL ident";
 
 			close(stdin_rdr[0]);
 			close(stdout_rdr[1]);
@@ -615,6 +616,35 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				/* Timeout */
 				kill(pid, SIGKILL);
 				waitpid(pid, &status, 0);
+				return (0);
+			}
+
+			/*
+			 * It should be safe to read at this point due to the
+			 * select above, ensuring that we have data to read
+			 * here.
+			 */
+			if ((rv = read(stdout_rdr[0], msg,
+			    sizeof(msg))) == -1) {
+				dump_errmsg("read() failed: %m");
+				remove = 0;
+			}
+
+			if (rv != sizeof(msg) && rv != 0) {
+				dump_warnmsg(
+				    "%s(): Expected a read of %zu bytes, "
+				    "but got %zu. Not removing ident.",
+				    __func__, sizeof(msg), rv);
+				return (0);
+			}
+
+			msg[sizeof(msg) - 1] = '\0';
+			dump_debugmsg("%s(): Got msg %s\n", __func__, msg);
+			if (strcmp(msg, "DEL ident") != 0) {
+				kill(pid, SIGKILL);
+				dump_warnmsg(
+				    "%s(): Expected DEL ident, but got %s",
+				    __func__, msg);
 				return (0);
 			}
 
