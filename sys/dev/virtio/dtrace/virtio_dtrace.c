@@ -1044,11 +1044,21 @@ vtdtr_fill_desc(struct virtio_dtrace_queue *q,
     struct virtio_dtrace_control *ctrl)
 {
 	int error;
+	struct virtio_dtrace_control *_ctrl;
+	uint32_t last = 0;
+	struct virtqueue *vq;
 
 	VTDTR_QUEUE_LOCK(q);
-	error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
-	KASSERT(error == 0, ("%s: cannot enqueue control buffer %d",
-	    __func__, error));
+	vq = q->vtdq_vq;
+	do {
+		printf("vtdtr: enqueue\n");
+		error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
+		if (error == ENOSPC)
+			while ((_ctrl = virtqueue_drain(vq, &last)) != NULL)
+				free(_ctrl, M_DEVBUF);
+		KASSERT(error == 0 || error == ENOSPC,
+		    ("%s: cannot enqueue control buffer %d", __func__, error));
+	} while (error == ENOSPC);
 	VTDTR_QUEUE_UNLOCK(q);
 }
 
