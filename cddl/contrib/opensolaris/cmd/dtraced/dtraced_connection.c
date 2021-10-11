@@ -275,12 +275,12 @@ process_consumers(void *_s)
 
 			if (event[i].flags & EV_ERROR) {
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
 				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
@@ -302,12 +302,12 @@ process_consumers(void *_s)
 
 			if (event[i].flags & EV_EOF) {
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
 				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
@@ -319,6 +319,10 @@ process_consumers(void *_s)
 
 				memset(dfd, 0, sizeof(dt_list_t));
 
+				/*
+				 * TODO: Check if it already exists. For some
+				 * reason we are requeueing it sometimes...
+				 */
 				LOCK(&s->deadfdsmtx);
 				dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
@@ -340,7 +344,7 @@ process_consumers(void *_s)
 				 * spammed by it.
 				 */
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
@@ -367,7 +371,7 @@ process_consumers(void *_s)
 
 			if (event[i].filter == EVFILT_WRITE) {
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
-					dump_errmsg("kevent() failed with: %m");
+					dump_errmsg("disable_fd() failed with: %m");
 					pthread_exit(NULL);
 				}
 
