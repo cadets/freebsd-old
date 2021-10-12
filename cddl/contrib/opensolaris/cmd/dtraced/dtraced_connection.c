@@ -212,7 +212,7 @@ process_consumers(void *_s)
 	int on = 1;
 	int new_events;
 	__cleanup(closefd_generic) int kq = -1;
-	dtraced_fd_t *dfd;
+	dtraced_fd_t *dfd, *_dfd;
 	int efd;
 	int dispatch;
 	size_t i;
@@ -293,7 +293,12 @@ process_consumers(void *_s)
 				memset(dfd, 0, sizeof(dt_list_t));
 
 				LOCK(&s->deadfdsmtx);
-				dt_list_append(&s->deadfds, dfd);
+				for (_dfd = dt_list_next(&s->deadfds); _dfd;
+				     _dfd = dt_list_next(_dfd))
+					if (_dfd == dfd)
+						break;
+				if (_dfd == NULL)
+					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
 
 				dump_errmsg("event error: %m");
@@ -319,12 +324,13 @@ process_consumers(void *_s)
 
 				memset(dfd, 0, sizeof(dt_list_t));
 
-				/*
-				 * TODO: Check if it already exists. For some
-				 * reason we are requeueing it sometimes...
-				 */
 				LOCK(&s->deadfdsmtx);
-				dt_list_append(&s->deadfds, dfd);
+				for (_dfd = dt_list_next(&s->deadfds); _dfd;
+				     _dfd = dt_list_next(_dfd))
+					if (_dfd == dfd)
+						break;
+				if (_dfd == NULL)
+					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
 				continue;
 			}
