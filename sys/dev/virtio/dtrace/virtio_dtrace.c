@@ -1051,7 +1051,6 @@ vtdtr_fill_desc(struct virtio_dtrace_queue *q,
 	VTDTR_QUEUE_LOCK(q);
 	vq = q->vtdq_vq;
 	do {
-		printf("vtdtr: enqueue\n");
 		error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
 		if (error == ENOSPC)
 			while ((_ctrl = virtqueue_drain(vq, &last)) != NULL)
