@@ -307,6 +307,18 @@ fatal(const char *fmt, ...)
 
 /*PRINTFLIKE1*/
 static void
+dabort(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	verror(fmt, ap);
+	va_end(ap);
+	abort();
+}
+
+/*PRINTFLIKE1*/
+static void
 dfatal(const char *fmt, ...)
 {
 #if !defined(illumos) && defined(NEED_ERRLOC)
@@ -1030,9 +1042,7 @@ listen_dtraced(void *arg)
 		if (!done && !atomic_load(&g_intr) &&
 		    ((r = recv(rx_sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
 		    errno != EINTR) {
-			fprintf(stderr, "failed to read elf length");
-			dt_verictx_teardown(verictx);
-			pthread_exit(NULL);
+			dabort("failed to read elf length");
 		}
 		bench = __dt_bench_new_time(5);
 
@@ -1042,22 +1052,20 @@ listen_dtraced(void *arg)
 		}
 
 		if (r != sizeof(elflen)) {
-			fprintf(stderr, "received %zu bytes, expected %zu\n", r,
+			dabort("received %zu bytes, expected %zu\n", r,
 			    sizeof(elflen));
-			dt_verictx_teardown(verictx);
-			pthread_exit(NULL);
 		}
 
 		if (elflen <= 0)
-			fatal("elflen is <= 0");
+			dabort("elflen is <= 0");
 
 		if (elflen <= DTRACED_MSGHDRSIZE)
-			fatal("elflen (%zu) needs to be > %zu", elflen,
+			dabort("elflen (%zu) needs to be > %zu", elflen,
 			    DTRACED_MSGHDRSIZE);
 
 		elf = malloc(elflen);
 		if (elf == NULL)
-			abort();
+			dabort("elf is NULL");
 
 		memset(elf, 0, elflen);
 
@@ -1068,7 +1076,7 @@ listen_dtraced(void *arg)
 		    ((r = recv(rx_sockfd,
 		    (void *)elf_ptr, len_to_recv, 0)) != len_to_recv)) {
 			if (r < 0)
-				fatal("failed to read from dtraced: %s",
+				dabort("failed to read from dtraced: %s",
 				    strerror(errno));
 
 			len_to_recv -= r;
@@ -1130,7 +1138,7 @@ listen_dtraced(void *arg)
 		elf += *size;
 
 		if (*size > VM_MAX_NAMELEN)
-			fatal("size (%zu) > VM_MAX_NAMELEN (%zu)",
+			dabort("size (%zu) > VM_MAX_NAMELEN (%zu)",
 			    *size, VM_MAX_NAMELEN);
 
 		memcpy(vm_name, name, *size);
@@ -1138,7 +1146,7 @@ listen_dtraced(void *arg)
 process_prog:
 		fd = mkstemp(template);
 		if (fd == -1)
-			fatal("failed to create a temporary file (%s)",
+			dabort("failed to create a temporary file (%s)",
 			    strerror(errno));
 		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
@@ -1146,10 +1154,10 @@ process_prog:
 		    elflen :
 		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
 		if (write(fd, elf, lentowrite) < 0)
-			fatal("failed to write to a temporary file");
+			dabort("failed to write to a temporary file");
 
 		if (fsync(fd))
-			fatal("failed to sync file");
+			dabort("failed to sync file");
 
 		cshdl = __dt_bench_snapshot_time(bench);
 		newprog = dt_elf_to_prog(g_dtp, fd, 0, &err, hostpgp);
@@ -1215,7 +1223,7 @@ process_prog:
 		}
 
 		if (newpgpl == NULL)
-			fatal("malloc of newpgpl failed");
+			dabort("malloc of newpgpl failed");
 
 		if (pgpl_valid(newpgpl)) {
 			fprintf(stderr, "Found a valid pgpl. Sleeping...");
@@ -1260,13 +1268,13 @@ process_prog:
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
 			if (guestpgp == NULL)
-				fatal("failed to create a guest program");
+				dabort("failed to create a guest program");
 
 			guestpgp->dp_exec = DT_PROG_EXEC;
 
 			tmpfd = mkstemp(template);
 			if (tmpfd == -1)
-				fatal("failed to mkstemp()");
+				dabort("failed to mkstemp()");
 			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
 			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
