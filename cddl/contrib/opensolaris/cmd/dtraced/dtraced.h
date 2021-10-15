@@ -47,6 +47,7 @@
 #define DTD_SUB_READDATA               1
 #define DTD_SUB_ELFWRITE               (1 << 1)
 #define DTD_SUB_KILL                   (1 << 2)
+#define DTD_SUB_CLEANUP                (1 << 3)
 
 #define DTRACED_LOCSIZE                64ul
 #define DTRACED_PROGIDENTLEN           128ull

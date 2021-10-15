@@ -7,6 +7,7 @@
 PROG=		dtraced
 SRCS=		dtraced.c \
 		dtraced_chld.c \
+		dtraced_cleanupjob.c \
 		dtraced_connection.c \
 		dtraced_directory.c \
 		dtraced_dttransport.c \

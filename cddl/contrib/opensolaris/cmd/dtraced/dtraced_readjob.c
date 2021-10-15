@@ -153,11 +153,13 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 }
 
 static int
-handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
+handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 {
 	size_t n_entries, nbytes, len, i, j;
 	ssize_t r;
 	char *buf, *_buf;
+	struct dtd_joblist *job;
+	dtraced_fd_t *dfd;
 
 	/* XXX: Would be nice if __cleanup() did everything. */
 	__cleanup(freep) char **entries = NULL;
@@ -172,40 +174,80 @@ handle_cleanup(struct dtd_state *s, dtraced_hdr_t *h, int fd)
 	if (entries == NULL)
 		abort();
 
-
 	memset(entries, 0, sizeof(char *) * n_entries);
 
-	for (i = 0; i < n_entries; i++) {
-		if (recv(fd, &len, sizeof(len), 0) < 0) {
-			dump_errmsg("recv() failed with: %m");
-			for (j = 0; j < i; j++)
-				free(entries[j]);
-			return (-1);
+	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
+		fd_acquire(dfd);
+		if (dfd->kind != DTRACED_KIND_FORWARDER) {
+			fd_release(dfd);
+			continue;
 		}
 
-		buf = malloc(len);
-		if (buf == NULL)
-			abort();
+		if ((dfd->subs & DTD_SUB_CLEANUP) == 0) {
+			fd_release(dfd);
+			continue;
+		}
 
-		_buf = buf;
-		nbytes = len;
-		while ((r = recv(fd, _buf, nbytes, 0)) != nbytes) {
-			if (r < 0) {
+		for (i = 0; i < n_entries; i++) {
+			if (recv(dfd->fd, &len, sizeof(len), 0) < 0) {
 				dump_errmsg("recv() failed with: %m");
 				for (j = 0; j < i; j++)
 					free(entries[j]);
-				free(buf);
 				return (-1);
 			}
 
-			assert(r != 0);
+			buf = malloc(len);
+			if (buf == NULL)
+				abort();
 
-			_buf += r;
-			nbytes -= r;
+			_buf = buf;
+			nbytes = len;
+			while ((r = recv(dfd->fd, _buf, nbytes, 0)) != nbytes) {
+				if (r < 0) {
+					dump_errmsg("recv() failed with: %m");
+					for (j = 0; j < i; j++)
+						free(entries[j]);
+					free(buf);
+					return (-1);
+				}
+
+				assert(r != 0);
+
+				_buf += r;
+				nbytes -= r;
+			}
+
+			buf[len - 1] = '\0';
+			entries[i] = buf;
 		}
 
-		buf[len - 1] = '\0';
-		entries[i] = buf;
+		job = malloc(sizeof(struct dtd_joblist));
+		if (job == NULL)
+			abort();
+
+		memset(job, 0, sizeof(struct dtd_joblist));
+
+		/*
+		 * Prepare the job.
+		 */
+		job->job = CLEANUP;
+		job->connsockfd = dfd;
+		job->j.cleanup.n_entries = n_entries;
+		job->j.cleanup.entries = malloc(sizeof(char *) * n_entries);
+		if (job->j.cleanup.entries == NULL)
+			abort();
+
+		memset(job->j.cleanup.entries, 0, sizeof(char *) * n_entries);
+
+		for (i = 0; i < n_entries; i++) {
+			job->j.cleanup.entries[i] = strdup(entries[i]);
+			if (job->j.cleanup.entries[i] == NULL)
+				abort();
+		}
+
+		LOCK(&s->joblistmtx);
+		dt_list_append(&s->joblist, job);
+		UNLOCK(&s->joblistmtx);
 	}
 
 	for (i = 0; i < n_entries; i++) {
@@ -299,7 +341,7 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 		break;
 
 	case DTRACED_MSG_CLEANUP:
-		err = handle_cleanup(s, &header, fd);
+		err = handle_cleanupmsg(s, &header);
 		break;
 
 	default:

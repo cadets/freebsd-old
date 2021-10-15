@@ -47,6 +47,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_cleanupjob.h"
 #include "dtraced_connection.h"
 #include "dtraced_elfjob.h"
 #include "dtraced_errmsg.h"
@@ -129,7 +130,8 @@ process_joblist(void *_s)
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
 		[KILL]            = "KILL",
-		[READ_DATA]       = "READ_DATA"
+		[READ_DATA]       = "READ_DATA",
+		[CLEANUP]         = "CLEANUP"
 	};
 
 	while (atomic_load(&s->shutdown) == 0) {
@@ -177,6 +179,10 @@ process_joblist(void *_s)
 
 		case NOTIFY_ELFWRITE:
 			handle_elfwrite(s, curjob);
+			break;
+
+		case CLEANUP:
+			handle_cleanup(s, curjob);
 			break;
 
 		default:
