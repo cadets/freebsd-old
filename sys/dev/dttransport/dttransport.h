@@ -30,8 +30,9 @@
 
 #define DTT_MAXDATALEN 2048ul
 
-#define	DTT_ELF		1
-#define	DTT_KILL	2
+#define	DTT_ELF			1
+#define	DTT_KILL		2
+#define	DTT_CLEANUP_DTRACED	3
 
 typedef struct dtt_entry {
 	uint8_t event_kind; /* kind of event */

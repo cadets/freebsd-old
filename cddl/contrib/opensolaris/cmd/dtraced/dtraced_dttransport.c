@@ -168,6 +168,13 @@ dtt_kill(struct dtd_state *s, dtt_entry_t *e)
 	UNLOCK(&s->killcvmtx);
 }
 
+static void
+dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
+{
+	/* Clean up all of the dtraced state */
+	dump_debugmsg("Got cleanup message.");
+}
+
 static int
 setup_connection(struct dtd_state *s)
 {
@@ -258,8 +265,13 @@ listen_dttransport(void *_s)
 		case DTT_ELF:
 			dtt_elf(s, &e);
 			break;
+
 		case DTT_KILL:
 			dtt_kill(s, &e);
+			break;
+
+		case DTT_CLEANUP_DTRACED:
+			dtt_cleanup(s, &e);
 			break;
 
 		default:

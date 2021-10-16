@@ -702,6 +702,16 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 			device_printf(dev, "dtt_queue_enqueue() failed\n");
 		break;
 
+	case VIRTIO_DTRACE_CLEANUP_DTRACED:
+		debug_printf(dev, "VIRTIO_DTRACE_CLEANUP_DTRACED\n");
+
+		sc->vtdtr_ready = 0;
+		e.event_kind = DTT_CLEANUP_DTRACED;
+
+		if (dtt_queue_enqueue(&e))
+			device_printf(dev, "dtt_queue_enqueue() failed\n");
+		break;
+
 	case VIRTIO_DTRACE_EOF:
 		debug_printf(dev, "VIRTIO_DTRACE_EOF\n");
 		retval = 1;

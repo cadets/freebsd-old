@@ -83,6 +83,7 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_ELF		0x09 /* Send an ELF file */
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 #define	VTDTR_DEVICE_KILL		0x0B /* Kill a DTrace process */
+#define	VTDTR_DEVICE_CLEANUP_DTRACED	0x0C /* Clean up dtraced state */
 
 #define PCI_VTDTR_MAXELFLEN		2048ul
 
@@ -731,6 +732,23 @@ vtdtr_kill_event(pid_t pid)
 	return (ctrl);
 }
 
+static struct pci_vtdtr_control *
+vtdtr_cleanup_event()
+{
+	struct pci_vtdtr_control *ctrl;
+
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	if (ctrl == NULL) {
+		fprintf(stderr, "failed to malloc new control event\n");
+		return (NULL);
+	}
+
+	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
+	ctrl->pvc_event = VTDTR_DEVICE_CLEANUP_DTRACED;
+	return (ctrl);
+}
+
 static struct stat *
 vtdtr_get_filestat(int fd)
 {
@@ -867,6 +885,19 @@ pci_vtdtr_events(void *xsc)
 			break;
 
 		case DTRACED_MSG_CLEANUP:
+			if (vm_get_name(sc->vsd_vmctx, buf, VM_MAX_NAMELEN + 1))
+				abort();
+
+			ctrl = vtdtr_cleanup_event();
+			ctrl_entry->ctrl = ctrl;
+
+			pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+			pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+			pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+			pthread_mutex_lock(&sc->vsd_condmtx);
+			pthread_cond_signal(&sc->vsd_cond);
+			pthread_mutex_unlock(&sc->vsd_condmtx);
 			fprintf(stderr, "DTRACED_MSG_CLEANUP received!\n");
 			break;
 
