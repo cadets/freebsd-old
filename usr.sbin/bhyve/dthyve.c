@@ -119,7 +119,8 @@ dtraced_sockinit(uint64_t subs)
 int
 dthyve_init(void)
 {
-	rx_sockfd = dtraced_sockinit(DTD_SUB_ELFWRITE | DTD_SUB_KILL);
+	rx_sockfd = dtraced_sockinit(
+	    DTD_SUB_ELFWRITE | DTD_SUB_KILL | DTD_SUB_CLEANUP);
 	if (rx_sockfd == -1)
 		fprintf(stderr, "failed to init rx_socktfd\n");
 

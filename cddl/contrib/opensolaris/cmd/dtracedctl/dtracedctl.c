@@ -292,12 +292,12 @@ main(int argc, const char **argv)
 				return (-1);
 			}
 
+			action = CLEAN;
 			if (optarg == NULL) {
 				cleanup_all = 1;
 				break;
 			}
 
-			action = CLEAN;
 			names_to_clean = parse_names(optarg);
 			break;
 

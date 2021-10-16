@@ -866,6 +866,10 @@ pci_vtdtr_events(void *xsc)
 			len = 0;
 			break;
 
+		case DTRACED_MSG_CLEANUP:
+			fprintf(stderr, "DTRACED_MSG_CLEANUP received!\n");
+			break;
+
 		default:
 			fprintf(stderr, "Unknown message: %llu\n",
 			    DTRACED_MSG_TYPE(header));

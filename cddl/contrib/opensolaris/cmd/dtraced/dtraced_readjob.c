@@ -165,11 +165,6 @@ handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 	__cleanup(freep) char **entries = NULL;
 
 	n_entries = DTRACED_MSG_NUMENTRIES(*h);
-	if (n_entries == 0) {
-		// cleanup_all();
-		return (0);
-	}
-
 	entries = malloc(n_entries * sizeof(char *));
 	if (entries == NULL)
 		abort();
@@ -250,10 +245,8 @@ handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		UNLOCK(&s->joblistmtx);
 	}
 
-	for (i = 0; i < n_entries; i++) {
-		printf("entries[%zu] = %s\n", i, entries[i]);
+	for (i = 0; i < n_entries; i++)
 		free(entries[i]);
-	}
 
 	return (0);
 }
