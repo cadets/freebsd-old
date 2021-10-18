@@ -58,7 +58,7 @@ void *
 manage_children(void *_s)
 {
 	struct dtd_state *s = (struct dtd_state *)_s;
-	pidlist_t *kill_entry;
+	pidlist_t *kill_entry, *pe;
 	int status;
 
 	while (atomic_load(&s->shutdown) == 0) {
@@ -79,6 +79,7 @@ manage_children(void *_s)
 		if (atomic_load(&s->shutdown) == 1)
 			pthread_exit(_s);
 
+		LOCK(&s->pidlistmtx);
 		LOCK(&s->kill_listmtx);
 		kill_entry = dt_list_next(&s->kill_list);
 		if (kill_entry == NULL) {
@@ -89,6 +90,14 @@ manage_children(void *_s)
 
 		dt_list_delete(&s->kill_list, kill_entry);
 		UNLOCK(&s->kill_listmtx);
+
+		for (pe = dt_list_next(&s->pidlist); pe; pe = dt_list_next(pe))
+			if (pe->pid == kill_entry->pid)
+				break;
+
+		if (pe != NULL)
+			dt_list_delete(&s->pidlist, pe);
+		UNLOCK(&s->pidlistmtx);
 
 		if (kill(kill_entry->pid, SIGTERM)) {
 			assert(errno != EINVAL);

@@ -184,6 +184,12 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads)
 	}
 
 	if ((err = mutex_init(
+	    &s->pidlistmtx, NULL, "pidlist", CHECKOWNER_YES)) != 0) {
+		dump_errmsg("Failed to create pidlist mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_init(
 	    &s->killcvmtx, NULL, "", CHECKOWNER_NO)) != 0) {
 		dump_errmsg("Failed to create kill condvar mutex: %m");
 		return (-1);

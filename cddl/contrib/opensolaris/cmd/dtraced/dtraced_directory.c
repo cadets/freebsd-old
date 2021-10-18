@@ -53,6 +53,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "dtraced_chld.h"
 #include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_errmsg.h"
@@ -406,6 +407,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char *argv[6] = { 0 };
 	identlist_t *ident_entry;
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
+	pidlist_t *pe;
 
 	memset(ident_to_delete, 0, sizeof(ident_to_delete));
 
@@ -671,7 +673,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			/*
 			 * Remove the entry that the child tells us from the
-			 * pidlist.
+			 * identlist.
 			 */
 			if (remove) {
 				LOCK(&s->identlistmtx);
@@ -692,6 +694,16 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 
 			if (num_idents == 0)
 				waitpid(pid, &status, 0);
+			else {
+				pe = malloc(sizeof(pidlist_t));
+				if (pe == NULL)
+					abort();
+
+				pe->pid = pid;
+				LOCK(&s->pidlistmtx);
+				dt_list_append(&s->pidlist, pe);
+				UNLOCK(&s->pidlistmtx);
+			}
 
 		} else if (pid == 0) {
 			char *curptr;

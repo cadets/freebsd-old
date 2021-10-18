@@ -46,6 +46,7 @@
 #include <dttransport.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,8 +172,25 @@ dtt_kill(struct dtd_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
 {
+	pidlist_t *pe;
 	/* Clean up all of the dtraced state */
 	dump_debugmsg("Got cleanup message.");
+
+	LOCK(&s->pidlistmtx);
+	while (pe = dt_list_next(&s->pidlist)) {
+		dt_list_delete(&s->pidlist, pe);
+		(void)kill(pe->pid, SIGKILL);
+		free(pe);
+	}
+	UNLOCK(&s->pidlistmtx);
+
+	LOCK(&s->joblistcvmtx);
+	SIGNAL(&s->joblistcv);
+	UNLOCK(&s->joblistcvmtx);
+
+	LOCK(&s->killcvmtx);
+	SIGNAL(&s->killcv);
+	UNLOCK(&s->killcvmtx);
 }
 
 static int

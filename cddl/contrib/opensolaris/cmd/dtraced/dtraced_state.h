@@ -104,6 +104,9 @@ struct dtd_state {
 	pthread_cond_t killcv; /* kill list condvar */
 	pthread_t reaptd;      /* handle reaping children */
 
+	dt_list_t pidlist;   /* a list of pids running */
+	mutex_t pidlistmtx;  /* mutex of the pidlist */
+
 	/*
 	 * filedesc management.
 	 */
