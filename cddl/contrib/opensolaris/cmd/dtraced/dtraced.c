@@ -62,7 +62,6 @@
 #include "dtraced_state.h"
 
 #define LOCK_FILE                "/var/run/dtraced.pid"
-#define THREADPOOL_SIZE          4
 
 #define NEXISTS                  0
 #define EXISTS_CHANGED           1
@@ -75,6 +74,7 @@ char version_str[128];
  */
 static struct dtd_state state;
 static const char *program_name;
+static unsigned long threadpool_size = 1;
 
 static void
 sig_term(int __unused signo)
@@ -111,6 +111,7 @@ print_help(void)
 	    "\t-m  run dtraced in 'minion' mode.\n"
 	    "\t-O  run dtraced in 'overlord' mode.\n"
 	    "\t-q  quiet mode.\n"
+	    "\t-t  specify threadpool size.\n"
 	    "\t-v  print dtraced version.\n"
 	    "\t-Z  do not checksum DTrace programs when transmitting them.\n");
 }
@@ -155,7 +156,7 @@ main(int argc, char **argv)
 	memset(pidstr, 0, sizeof(pidstr));
 	memset(hypervisor, 0, sizeof(hypervisor));
 
-	while ((ch = getopt(argc, argv, "D:OdhmvqZ")) != -1) {
+	while ((ch = getopt(argc, argv, "D:Odhmvt:qZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -236,6 +237,21 @@ main(int argc, char **argv)
 			daemonize = 1;
 			break;
 
+		case 't':
+			optlen = strlen(optarg);
+			threadpool_size = strtoul(optarg, optarg + optlen, 10);
+			if (errno != 0) {
+				dump_errmsg(
+				    "Invalid argument (-t): failed to parse %s "
+				    "as a number",
+				    optarg);
+				exit(EXIT_FAILURE);
+			}
+
+			dump_debugmsg("Setting threadpool size to %lu",
+			    threadpool_size);
+			break;
+
 		case 'Z':
 			nosha = 1;
 			break;
@@ -314,7 +330,7 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	errval = init_state(&state, ctrlmachine, nosha, THREADPOOL_SIZE);
+	errval = init_state(&state, ctrlmachine, nosha, threadpool_size);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
 		return (EXIT_FAILURE);
