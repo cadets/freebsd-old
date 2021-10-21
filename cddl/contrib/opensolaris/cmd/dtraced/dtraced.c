@@ -162,7 +162,7 @@ main(int argc, char **argv)
 		switch (ch) {
 		case 'h':
 			print_help();
-			return (0);
+			return (-1);
 
 		case 'v':
 			print_version();
@@ -264,7 +264,7 @@ main(int argc, char **argv)
 
 		default:
 			print_version();
-			return (0);
+			return (-1);
 		}
 	}
 
