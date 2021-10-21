@@ -143,11 +143,13 @@ setup_threads(struct dtd_state *s)
 }
 
 int
-init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads)
+init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
+    const char **argv)
 {
 	int err;
 
 	memset(s, 0, sizeof(struct dtd_state));
+	s->argv = argv;
 	s->sockfd = -1;
 	s->ctrlmachine = ctrlmachine;
 	s->nosha = nosha;

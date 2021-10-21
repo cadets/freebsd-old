@@ -80,6 +80,7 @@ static void
 sig_term(int __unused signo)
 {
 
+	dump_debugmsg("SIGTERM, shutdown!");
 	atomic_store(&state.shutdown, 1);
 	SIGNAL(&state.joblistcv);
 	SIGNAL(&state.killcv);
@@ -89,6 +90,7 @@ static void
 sig_int(int __unused signo)
 {
 
+	dump_debugmsg("SIGINT, shutdown!");
 	atomic_store(&state.shutdown, 1);
 	SIGNAL(&state.joblistcv);
 	SIGNAL(&state.killcv);
@@ -160,11 +162,11 @@ main(int argc, char **argv)
 		switch (ch) {
 		case 'h':
 			print_help();
-			exit(0);
+			return (0);
 
 		case 'v':
 			print_version();
-			exit(0);
+			return (0);
 
 		case 'D':
 			optlen = strlen(optarg);
@@ -245,7 +247,7 @@ main(int argc, char **argv)
 				    "Invalid argument (-t): failed to parse %s "
 				    "as a number",
 				    optarg);
-				exit(EXIT_FAILURE);
+				return (EXIT_FAILURE);
 			}
 
 			dump_debugmsg("Setting threadpool size to %lu",
@@ -262,7 +264,7 @@ main(int argc, char **argv)
 
 		default:
 			print_version();
-			exit(0);
+			return (0);
 		}
 	}
 
@@ -330,7 +332,7 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	errval = init_state(&state, ctrlmachine, nosha, threadpool_size);
+	errval = init_state(&state, ctrlmachine, nosha, threadpool_size, argv);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
 		return (EXIT_FAILURE);

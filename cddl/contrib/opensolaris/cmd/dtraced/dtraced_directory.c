@@ -641,7 +641,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			}
 
 			msg[sizeof(msg) - 1] = '\0';
-			dump_debugmsg("%s(): Got msg %s\n", __func__, msg);
 			if (strcmp(msg, "DEL ident") != 0) {
 				kill(pid, SIGKILL);
 				dump_warnmsg(

@@ -109,9 +109,6 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 		abort();
 	}
 
-	dump_debugmsg("    Length of ELF file: %zu", elflen);
-	dump_debugmsg("    Message length: %zu", msglen);
-
 	if (msg == NULL) {
 		dump_errmsg("Failed to allocate ELF contents: %m");
 		return;
@@ -120,8 +117,6 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
 	memset(msg, 0, msglen);
 	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
-
-	dump_debugmsg("    Header msg_type: %x", DTRACED_MSG_TYPE(header));
 
 	_msg = msg + DTRACED_MSGHDRSIZE;
 	contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;

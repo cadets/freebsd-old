@@ -140,9 +140,6 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		job->j.kill.pid = DTRACED_MSG_KILLPID(*h);
 		job->j.kill.vmid = DTRACED_MSG_KILLVMID(*h);
 
-		dump_debugmsg("        kill %d to %d",
-		    DTRACED_MSG_KILLPID(*h), dfd->fd);
-
 		LOCK(&s->joblistmtx);
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
@@ -272,8 +269,6 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 	}
 
 	assert(r == sizeof(totalbytes));
-	dump_debugmsg("    %zu bytes from %d", totalbytes, fd);
-
 	nbytes = totalbytes;
 
 	buf = malloc(nbytes);

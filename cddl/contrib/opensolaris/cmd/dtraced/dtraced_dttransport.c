@@ -55,6 +55,7 @@
 
 #include "dtraced.h"
 #include "dtraced_chld.h"
+#include "dtraced_connection.h"
 #include "dtraced_directory.h"
 #include "dtraced_dttransport.h"
 #include "dtraced_errmsg.h"
@@ -172,9 +173,42 @@ dtt_kill(struct dtd_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
 {
+	struct dtd_joblist *job;
 	pidlist_t *pe;
+	size_t i;
+
 	/* Clean up all of the dtraced state */
 	dump_debugmsg("Got cleanup message.");
+
+	LOCK(&s->joblistmtx);
+	while (job = dt_list_next(&s->joblist)) {
+		dt_list_delete(&s->joblist, job);
+		switch (job->job) {
+		case READ_DATA:
+			fd_release(job->connsockfd);
+			break;
+
+		case KILL:
+			fd_release(job->connsockfd);
+			break;
+
+		case NOTIFY_ELFWRITE:
+			fd_release(job->connsockfd);
+			break;
+
+		case CLEANUP:
+			fd_release(job->connsockfd);
+			for (i = 0; i < job->j.cleanup.n_entries; i++)
+				free(job->j.cleanup.entries[i]);
+			free(job->j.cleanup.entries);
+			break;
+
+		default:
+			dump_errmsg("Unknown job: %d", job->job);
+		}
+		free(job);
+	}
+	UNLOCK(&s->joblistmtx);
 
 	LOCK(&s->pidlistmtx);
 	while (pe = dt_list_next(&s->pidlist)) {
@@ -183,14 +217,10 @@ dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
 		free(pe);
 	}
 	UNLOCK(&s->pidlistmtx);
+	destroy_state(s);
 
-	LOCK(&s->joblistcvmtx);
-	SIGNAL(&s->joblistcv);
-	UNLOCK(&s->joblistcvmtx);
-
-	LOCK(&s->killcvmtx);
-	SIGNAL(&s->killcv);
-	UNLOCK(&s->killcvmtx);
+	/* Re-exec ourselves to ensure full cleanup. */
+	execve(s->argv[0], s->argv, NULL);
 }
 
 static int
@@ -324,7 +354,6 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 
 	while (atomic_load(&s->shutdown) == 0) {
-		dump_debugmsg("%s(): Waiting for msg.", __func__);
 		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
 			if (errno == EINTR)
 				pthread_exit(s);
@@ -401,7 +430,6 @@ write_dttransport(void *_s)
 			assert((uintptr_t)msg <=
 			    (msg_ptr + totallen + DTRACED_MSGHDRSIZE));
 		}
-
 		assert(len == 0);
 
 		free((void *)msg_ptr);
@@ -409,4 +437,3 @@ write_dttransport(void *_s)
 
 	pthread_exit(s);
 }
-
