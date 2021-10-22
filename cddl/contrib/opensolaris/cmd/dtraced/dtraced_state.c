@@ -220,7 +220,8 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
 	}
 
 	if (s->ctrlmachine == 0) {
-		s->dtt_fd = open("/dev/dttransport", O_RDWR);
+		/* We close dttransport on exec. */
+		s->dtt_fd = open("/dev/dttransport", O_RDWR | O_CLOEXEC);
 		if (s->dtt_fd == -1) {
 			dump_errmsg("Failed to open /dev/dttransport: %m");
 			return (-1);
