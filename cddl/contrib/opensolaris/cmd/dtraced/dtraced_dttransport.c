@@ -217,7 +217,6 @@ dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
 		free(pe);
 	}
 	UNLOCK(&s->pidlistmtx);
-	destroy_state(s);
 
 	/* Re-exec ourselves to ensure full cleanup. */
 	execve(s->argv[0], s->argv, NULL);
