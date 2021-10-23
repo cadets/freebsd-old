@@ -798,10 +798,12 @@ pci_vtdtr_events(void *xsc)
 	for (;;) {
 		error = dthyve_read((void **)&buf, &len);
 		if (error) {
-			fprintf(stderr, "Error in dthyve_read(): %s\n",
-			    strerror(errno));
-			if (errno == EINTR)
-				exit(1);
+			if (dthyve_configured()) {
+				fprintf(stderr, "Error in dthyve_read(): %s\n",
+				    strerror(errno));
+				if (errno == EINTR)
+					exit(1);
+			}
 
 			if (errno == EAGAIN)
 				sleep(PCI_VTDTR_EVENTSLEEPTIME);
@@ -809,7 +811,12 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
-		assert(len >= DTRACED_MSGHDRSIZE);
+		if (len < DTRACED_MSGHDRSIZE) {
+			fprintf(stderr,
+			    "%s(%d): len < DTRACED_MSGHDRSIZE (%zu < %zu)\n",
+			    __func__, __LINE__, len, DTRACED_MSGHDRSIZE);
+			continue;
+		}
 		memcpy(&header, buf, DTRACED_MSGHDRSIZE);
 		/*
 		 * We don't need the header anymore...
@@ -898,13 +905,11 @@ pci_vtdtr_events(void *xsc)
 			pthread_mutex_lock(&sc->vsd_condmtx);
 			pthread_cond_signal(&sc->vsd_cond);
 			pthread_mutex_unlock(&sc->vsd_condmtx);
-			fprintf(stderr, "DTRACED_MSG_CLEANUP received!\n");
 			break;
 
 		default:
 			fprintf(stderr, "Unknown message: %llu\n",
 			    DTRACED_MSG_TYPE(header));
-			abort();
 		}
 
 		free(buf);

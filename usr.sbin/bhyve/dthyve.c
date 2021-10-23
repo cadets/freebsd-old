@@ -164,10 +164,8 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
-	if (rx_sockfd == -1) {
-		fprintf(stderr, "dthyve: rx_sockfd has not been initialised\n");
+	if (rx_sockfd == -1)
 		return (-1);
-	}
 
 	if ((rval = recv(rx_sockfd, len, sizeof(size_t), 0)) <= 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
@@ -188,7 +186,8 @@ dthyve_read(void **buf, size_t *len)
 
 	*buf = malloc(*len);
 	if (*buf == NULL) {
-		fprintf(stderr, "dthyve: failed to allocate buf\n");
+		fprintf(stderr, "dthyve: failed to allocate buf (len = %zu)\n",
+		    *len);
 		return (-1);
 	}
 	
@@ -232,10 +231,8 @@ dthyve_write(void *buf, size_t len)
 		return (-1);
 	}
 
-	if (wx_sockfd == -1) {
-		fprintf(stderr, "wx_sock is not initialized\n");
+	if (wx_sockfd == -1)
 		return (-1);
-	}
 
 	if (send(wx_sockfd, &len, sizeof(len), 0) < 0) {
 		close(wx_sockfd);
