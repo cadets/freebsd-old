@@ -269,7 +269,6 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 	assert(niov == 1);
 	retval = 0;
 	vmid = 0;
-	buflen = 0;
 	buf = _buf = NULL;
 
 	ctrl = (struct pci_vtdtr_control *)iov->iov_base;
@@ -437,6 +436,7 @@ pci_vtdtr_notify_rx(void *xsc, struct vqueue_info *vq)
 
 	while (vq_has_descs(vq)) {
 		n = vq_getchain(vq, iov, 1, &req);
+		assert(n == 1);
 		retval = pci_vtdtr_control_rx(sc, iov, 1);
 		vq_relchain(vq, req.idx, sizeof(struct pci_vtdtr_control));
 		if (retval == 1)
@@ -568,7 +568,6 @@ pci_vtdtr_run(void *xsc)
 
 	for (;;) {
 		nent = 0;
-		error = 0;
 		ready_flag = 1;
 
 		error = pthread_mutex_lock(&sc->vsd_condmtx);
@@ -671,11 +670,7 @@ vtdtr_elf_event(void *buf, size_t size, size_t offs)
 	size_t len_to_read;
 	int hasmore;
 
-	rval = 0;
 	ctrl = NULL;
-	maxlen = 0;
-	len_to_read = 0;
-	hasmore = 0;
 
 	/*
 	 * Compute how much we'll actually be reading.
@@ -756,7 +751,6 @@ vtdtr_get_filestat(int fd)
 	int rval;
 
 	st = NULL;
-	rval = 0;
 
 	st = malloc(sizeof(struct stat));
 	assert(st != NULL);
@@ -789,7 +783,6 @@ pci_vtdtr_events(void *xsc)
 
 	buf = NULL;
 	sc = xsc;
-	fd = 0;
 	st = NULL;
 	offs = 0;
 	len = 0;
@@ -928,7 +921,6 @@ pci_vtdtr_init(struct vmctx *ctx, struct pci_devinst *pci_inst, nvlist_t *nvl)
 	pthread_t communicator, reader;
 	int error;
 
-	error = 0;
 	sc = calloc(1, sizeof(struct pci_vtdtr_softc));
 	assert(sc != NULL);
 	sc->vsd_ctrlq = calloc(1, sizeof(struct pci_vtdtr_ctrlq));
