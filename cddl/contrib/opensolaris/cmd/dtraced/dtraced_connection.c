@@ -138,7 +138,6 @@ accept_new_connection(struct dtd_state *s)
 {
 	int connsockfd;
 	int on = 1;
-	int kq = s->kq_hdl;
 	dtraced_fd_t *dfd;
 	dtd_initmsg_t initmsg;
 	struct kevent change_event[4];
@@ -220,8 +219,6 @@ process_consumers(void *_s)
 	struct dtd_joblist *jle;
 
 	struct kevent change_event[4], event[4];
-
-	dispatch = 0;
 
 	/*
 	 * Sanity checks on the state.

@@ -64,7 +64,7 @@
 int
 dispatch_event(struct dtd_state *s, struct kevent *ev)
 {
-	struct dtd_joblist *job;
+	struct dtd_joblist *job = NULL; /* in case we free */
 	dtraced_fd_t *dfd;
 
 	if (ev->filter == EVFILT_READ) {

@@ -139,8 +139,7 @@ main(int argc, char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	__cleanup(closefd_generic) int efd = -1;
-	int errval, retry, nosha;
-	__cleanup(closedir_generic) DIR *elfdir = NULL;
+	int errval, retry, nosha = 0;
 	size_t i;
 	char ch;
 	char pidstr[256];
@@ -314,8 +313,6 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	elfdir = fdopendir(efd);
-
 	if (signal(SIGTERM, sig_term) == SIG_ERR) {
 		dump_errmsg("Failed to install SIGTERM handler");
 		return (EX_OSERR);
@@ -332,7 +329,8 @@ againefd:
 		return (EX_OSERR);
 	}
 
-	errval = init_state(&state, ctrlmachine, nosha, threadpool_size, argv);
+	errval = init_state(&state, ctrlmachine, nosha,
+	    threadpool_size, (char **)argv);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
 		return (EXIT_FAILURE);

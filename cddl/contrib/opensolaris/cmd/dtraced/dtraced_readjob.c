@@ -162,11 +162,13 @@ handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 	__cleanup(freep) char **entries = NULL;
 
 	n_entries = DTRACED_MSG_NUMENTRIES(*h);
-	entries = malloc(n_entries * sizeof(char *));
-	if (entries == NULL)
-		abort();
+	if (n_entries > 0) {
+		entries = malloc(n_entries * sizeof(char *));
+		if (entries == NULL)
+			abort();
 
-	memset(entries, 0, sizeof(char *) * n_entries);
+		memset(entries, 0, sizeof(char *) * n_entries);
+	}
 
 	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
 		fd_acquire(dfd);
@@ -225,11 +227,15 @@ handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 		job->job = CLEANUP;
 		job->connsockfd = dfd;
 		job->j.cleanup.n_entries = n_entries;
-		job->j.cleanup.entries = malloc(sizeof(char *) * n_entries);
-		if (job->j.cleanup.entries == NULL)
-			abort();
+		if (n_entries > 0) {
+			job->j.cleanup.entries = malloc(
+			    sizeof(char *) * n_entries);
+			if (job->j.cleanup.entries == NULL)
+				abort();
 
-		memset(job->j.cleanup.entries, 0, sizeof(char *) * n_entries);
+			memset(job->j.cleanup.entries, 0,
+			    sizeof(char *) * n_entries);
+		}
 
 		for (i = 0; i < n_entries; i++) {
 			job->j.cleanup.entries[i] = strdup(entries[i]);
@@ -260,7 +266,6 @@ handle_read_data(struct dtd_state *s, struct dtd_joblist *curjob)
 	__cleanup(freep) char *buf = NULL;
 
 	fd = dfd->fd;
-	nbytes = 0;
 	totalbytes = 0;
 
 	if ((r = recv(fd, &totalbytes, sizeof(totalbytes), 0)) < 0) {

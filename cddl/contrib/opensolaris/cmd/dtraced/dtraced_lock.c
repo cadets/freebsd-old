@@ -40,6 +40,7 @@
 
 #include <sys/param.h>
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "dtraced_errmsg.h"

@@ -138,7 +138,7 @@ listen_dir(void *_dir)
 	dir = (dtd_dir_t *)_dir;
 	s = dir->state;
 
-	rval = err = kq = 0;
+	err = kq = 0;
 
 	if ((kq = kqueue()) == -1) {
 		dump_errmsg("Failed to create a kqueue %m");
@@ -312,8 +312,6 @@ dtd_mkdir(const char *path, foreach_fn_t fn)
 	int retry;
 	int err;
 
-	err = 0;
-
 	dir = malloc(sizeof(dtd_dir_t));
 	if (dir == NULL) {
 		dump_errmsg("failed to allocate directory: %m");
@@ -401,9 +399,9 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	struct dtd_state *s;
 	int idx;
 	pid_t pid;
-	char fullpath[MAXPATHLEN] = { 0 };
+	char fullpath[MAXPATHLEN];
 	int status;
-	size_t l, dirpathlen, filepathlen;
+	size_t l, dirpathlen;
 	char *argv[6] = { 0 };
 	identlist_t *ident_entry;
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
@@ -459,7 +457,6 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		dump_errmsg("Failed to copy %s into a path string", f->d_name);
 		return (-1);
 	}
-	filepathlen = strlen(fullpath);
 
 	assert(s->ctrlmachine == 1 || s->ctrlmachine == 0);
 	if (s->ctrlmachine == 1) {
