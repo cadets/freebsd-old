@@ -138,8 +138,6 @@ listen_dir(void *_dir)
 	dir = (dtd_dir_t *)_dir;
 	s = dir->state;
 
-	err = kq = 0;
-
 	if ((kq = kqueue()) == -1) {
 		dump_errmsg("Failed to create a kqueue %m");
 		return (NULL);
@@ -553,10 +551,17 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			return (-1);
 		} else if (pid > 0) {
 			size_t current;
-			struct timeval timeout = { 0 };
-			fd_set set;
+			struct timespec timeout = { 0 };
 			int remove = 1, rv = 0;
 			char msg[] = "DEL ident";
+			__cleanup(closefd_generic) int kq = kqueue();
+			struct kevent ev, ev_data;
+
+			if (kq == -1) {
+				dump_errmsg("%s(): Failed to create timeout kq",
+				    __func__);
+				return (-1);
+			}
 
 			close(stdin_rdr[0]);
 			close(stdout_rdr[1]);
@@ -600,15 +605,14 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			 * bug in dtrace(1).
 			 */
 			timeout.tv_sec = 5;
-			timeout.tv_usec = 0;
+			timeout.tv_nsec = 0;
 
-			FD_ZERO(&set);
-			FD_SET(stdout_rdr[0], &set);
+			EV_SET(&ev, stdout_rdr[0], EVFILT_READ,
+			    EV_ADD | EV_CLEAR | EV_ENABLE, 0, 0, 0);
+			rv = kevent(kq, &ev, 1, &ev_data, 1, &timeout);
 
-			rv = select(stdout_rdr[0] + 1, &set,
-			    NULL, NULL, &timeout);
 			if (rv < 0) {
-				dump_errmsg("%s(): select() failed: %m",
+				dump_errmsg("%s(): kevent() failed: %m",
 				    __func__);
 				return (-1);
 			} else if (rv == 0) {
@@ -958,7 +962,6 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	struct dtd_state *s;
 	int idx, ch;
 	char *newname = NULL;
-	char fullpath[MAXPATHLEN] = { 0 };
 
 	if (dir == NULL) {
 		dump_errmsg("dir is NULL");
@@ -1029,7 +1032,8 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		UNLOCK(&s->joblistmtx);
 
 		if (reenable_fd(s->kq_hdl, jfd, EVFILT_WRITE))
-			dump_errmsg("process_outbound:kevent() failed with: %m");
+			dump_errmsg("%s(): reenable_fd() failed with: %m",
+			    __func__);
 	}
 	UNLOCK(&s->socklistmtx);
 
