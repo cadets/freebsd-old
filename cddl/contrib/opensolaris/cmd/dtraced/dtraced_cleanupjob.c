@@ -32,6 +32,7 @@ handle_cleanup(struct dtd_state *s, struct dtd_joblist *curjob)
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
 	DTRACED_MSG_NUMENTRIES(header) = curjob->j.cleanup.n_entries;
 
+	assert(hdrlen >= DTRACED_MSGHDRSIZE);
 	if (send(fd, &hdrlen, sizeof(hdrlen), 0) < 0) {
 		if (errno != EPIPE)
 			dump_errmsg("Failed to write to %d (%zu): %m",

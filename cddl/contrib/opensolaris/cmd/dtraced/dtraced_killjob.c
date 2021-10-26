@@ -97,6 +97,7 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 
 	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
 
+	assert(msglen >= DTRACED_MSGHDRSIZE);
 	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
 		if (errno != EPIPE)
 			dump_errmsg("Failed to write to %d (%zu): %m", fd,
