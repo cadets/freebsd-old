@@ -1060,6 +1060,10 @@ vtdtr_fill_desc(struct virtio_dtrace_queue *q,
 
 	VTDTR_QUEUE_LOCK(q);
 	vq = q->vtdq_vq;
+	/*
+	 * FIXME: We seem to fault on the free(_ctrl, M_DEVBUF). We should
+	 * probably handle this differently.
+	 */
 	do {
 		error = vtdtr_queue_enqueue_ctrl(q, ctrl, 1, 0);
 		if (error == ENOSPC)
