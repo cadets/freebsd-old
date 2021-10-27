@@ -42,7 +42,6 @@ CFLAGS+=	-flto
 LDFLAGS+=	-flto
 .endif
 
-# TODO: LLVM changes this to ignorelist. Needs to be fixed in the future.
 .if ${MK_DTRACE_DEBUG_ASAN} != "no"
 CFLAGS+=	-fsanitize=address -fsanitize=undefined
 LDFLAGS+=	-fsanitize=address -fsanitize=undefined
