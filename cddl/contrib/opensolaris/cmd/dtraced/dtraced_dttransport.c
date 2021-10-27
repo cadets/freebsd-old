@@ -116,6 +116,14 @@ retry:
 	}
 
 	assert(offs < len && "Assertion happens if file was not created");
+	if (offs + e->u.elf.len > len) {
+		dump_errmsg("%s(): offs + elflen (%zu) > len (%zu)", __func__,
+		    offs + e->u.elf.len, len);
+		return;
+	}
+
+	assert(offs + e->u.elf.len <= len &&
+	    "Assertion happens if ELF segment length is too long");
 	memcpy(elf + offs, e->u.elf.data, e->u.elf.len);
 	offs += e->u.elf.len;
 
