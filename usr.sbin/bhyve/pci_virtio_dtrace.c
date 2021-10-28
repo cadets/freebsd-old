@@ -301,6 +301,9 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 			spent_sec = ((double)clock() - start)/CLOCKS_PER_SEC;
 			start = 0;
 
+			/*
+			 * FIXME: This assertion happens after a very long run.
+			 */
 			assert(elf + offs == elf + len);
 			vmid = vm_get_vmid(sc->vsd_vmctx);
 
