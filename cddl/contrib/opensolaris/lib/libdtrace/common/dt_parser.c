@@ -808,6 +808,9 @@ dt_node_type_size(const dt_node_t *dnp)
 	if (dt_node_is_dynamic(dnp) && dnp->dn_ident != NULL)
 		return (dt_ident_size(dnp->dn_ident));
 
+	if (dt_node_is_bottom(dnp))
+		return (0);
+
 	base = ctf_type_resolve(dnp->dn_ctfp, dnp->dn_type);
 
 	if (ctf_type_kind(dnp->dn_ctfp, base) == CTF_K_FORWARD)
@@ -4143,35 +4146,40 @@ asgn_common:
 		rtype = ctf_type_resolve(rp->dn_ctfp, rp->dn_type);
 		rkind = ctf_type_kind(rp->dn_ctfp, rtype);
 
-		/*
-		 * The rules for casting are loosely explained in K&R[A7.5]
-		 * and K&R[A6].  Basically, we can cast to the same type or
-		 * same base type, between any kind of scalar values, from
-		 * arrays to pointers, and we can cast anything to void.
-		 * To these rules D adds casts from scalars to strings.
-		 */
-		if (ctf_type_compat(lp->dn_ctfp, lp->dn_type,
-		    rp->dn_ctfp, rp->dn_type))
-			/*EMPTY*/;
-		else if (dt_node_is_scalar(lp) &&
-		    (dt_node_is_scalar(rp) || rkind == CTF_K_FUNCTION))
-			/*EMPTY*/;
-		else if (dt_node_is_void(lp))
-			/*EMPTY*/;
-		else if (lkind == CTF_K_POINTER && dt_node_is_pointer(rp))
-			/*EMPTY*/;
-		else if (dt_node_is_string(lp) && (dt_node_is_scalar(rp) ||
-		    dt_node_is_pointer(rp) || dt_node_is_strcompat(rp)))
-			/*EMPTY*/;
-		/* XXX TEMPORARY HACK! FIX ME! XXX */
-		/* We need to be able to cast arg0-9 to float */
-		else if (dt_node_is_float(lp) && dt_node_is_integer(rp))
-			/*EMPTY*/;
-		else {
-			xyerror(D_CAST_INVAL,
-			    "invalid cast expression: \"%s\" to \"%s\"\n",
-			    dt_node_type_name(rp, n1, sizeof (n1)),
-			    dt_node_type_name(lp, n2, sizeof (n2)));
+		if (rp->dn_type != CTF_BOTTOM_TYPE) {
+			/*
+			 * The rules for casting are loosely explained in
+			 * K&R[A7.5] and K&R[A6].  Basically, we can cast to the
+			 * same type or same base type, between any kind of
+			 * scalar values, from arrays to pointers, and we can
+			 * cast anything to void. To these rules D adds casts
+			 * from scalars to strings.
+			 */
+			if (ctf_type_compat(lp->dn_ctfp, lp->dn_type,
+				rp->dn_ctfp, rp->dn_type))
+				/*EMPTY*/;
+			else if (dt_node_is_scalar(lp) &&
+			    (dt_node_is_scalar(rp) || rkind == CTF_K_FUNCTION))
+				/*EMPTY*/;
+			else if (dt_node_is_void(lp))
+				/*EMPTY*/;
+			else if (lkind == CTF_K_POINTER &&
+			    dt_node_is_pointer(rp))
+				/*EMPTY*/;
+			else if (dt_node_is_string(lp) &&
+			    (dt_node_is_scalar(rp) || dt_node_is_pointer(rp) ||
+				dt_node_is_strcompat(rp)))
+				/*EMPTY*/;
+			/* XXX TEMPORARY HACK! FIX ME! XXX */
+			/* We need to be able to cast arg0-9 to float */
+			else if (dt_node_is_float(lp) && dt_node_is_integer(rp))
+				/*EMPTY*/;
+			else {
+				xyerror(D_CAST_INVAL,
+				    "invalid cast expression: \"%s\" to \"%s\"\n",
+				    dt_node_type_name(rp, n1, sizeof(n1)),
+				    dt_node_type_name(lp, n2, sizeof(n2)));
+			}
 		}
 
 		dt_node_type_propagate(lp, dnp); /* see K&R[A7.5] */
