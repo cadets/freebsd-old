@@ -154,3 +154,98 @@ confused about namespaces across different guests (and the host). Furthermore,
 the timestamps gathered in the last script are in fact gathered on the host, so
 they don't suffer any of the traditional issues when it comes to time on virtual
 machines.
+
+
+Source Code Guide
+------------------
+
+libdtrace (`cddl/contrib/opensolaris/lib/libdtrace/common`) changes:
+
+New files:
+
+ - `dt_elf.c, dt_elf.h` -- Implements conversion from a DTrace program to ELF.
+ - `dt_typefile.c, dt_typefile.h, _dt_typefile.h` -- Similar to
+   `dt_module.{c,h}`, but intended for use with HyperTrace, as the API differs
+   a little bit.
+ - `dt_cfg.{c,h}` -- Control flow graph implemntation for DIF.
+ - `dt_basic_block.c, dt_basic_block.h, _dt_basic_block.h` -- Basic block
+   implementation for DIF.
+ - `dt_ifg.{c,h} -- Information flow graph implementation for DIF.
+ - `dt_ifgnode.c, dt_ifgnode.h, _dt_ifgnode_h` -- helpers for IFG.
+ - `dt_typing*` -- Implementation of a type inference & checking system on top
+   of DIF. Similar to D and C type systems.
+ - `dt_resolver.{c,h}` -- A simple implementation to compare the 5th tuple entry
+   (standing for target) to various names of the current machine, such as an IP
+   address, hostname, FreeBSD version, etc.
+ - `dt_prog_link.{c,h}` -- Linking implementation (applying relocations,
+   patching up return types, etc.).
+ - `dt_linker_subr.{c,h}` -- Linking helpers.
+ - `dt_analysis.{c,h}` -- Various helpers.
+ - `dt_benchmark.{c,h}` -- DTrace benchmarking API.
+ - `dt_hashmap.{c,h}` -- Hash map implementation for DTrace.
+
+There are plenty of changes in existing libdtrace files as well.
+
+
+dtraced (`cddl/contrib/opensolaris/cmd/dtraced`):
+
+ - `dtraced.c` -- `main` function, initialization, main thread.
+ - `dtraced_chld.{c,h}` -- child management.
+ - `dtraced_*job.{c,h}` -- processing functions of various jobs.
+ - `dtraced_connection.{c,h}, _dtraced_connection.h` -- management of dtraced
+   socket connections.
+ - `dtraced_directory.{c,h}` -- directory-related functionality.
+ - `dtraced_dttransport.{c,h}` -- dtraced communication with dttransport.
+ - `dtraced_errmsg.{c,h}` -- logging functions.
+ - `dtraced.h` -- main includes.
+ - `dtraced_lock.{c,h}` -- locking helpers.
+ - `dtraced_misc.{c,h}` -- various functions that don't fit anywhere else.
+ - `dtraced_state.{c,h}` -- state management.
+
+dttransport (`sys/dev/dttransport`):
+
+ - `dttransport.{c,h}` -- simple kernel module to forward DTrace-related
+   events from the virtio frontend to userspace.
+
+dtvirt (`sys/cddl/dev/dtvirt`):
+
+ - `dtvirt.{c,h}` -- shim layer to bhyve from `dtrace.ko`.
+
+virtio-dtrace:
+
+ - `sys/dev/virtio/dtrace/virtio_dtrace.{c,h}` -- virtio dtrace frontend.
+ - `usr.sbin/bhyve/pci_virtio_dtrace.c` -- virtio dtrace backend.
+
+hypertrace (`sys/cddl/dev/hypertrace`):
+
+ - `hypertrace.{c,h}` -- a kernel module for safely managing HyperTrace state.
+ - `hypertrace_map.c` -- probe map helpers.
+
+packet tagging:
+
+ - `sys/kern/subr_mbufid.c` -- Core implementation of packet tagging.
+ - `sys/sys/_mbufid.h` -- structs/defines.
+ - `sys/sys/mbufid.h` -- mbuf tagging header.
+ - `sys/kern/subr_msgid.c` -- light-weight alternative to UUIDs (used for tags).
+ - `sys/sys/_msgid.h` -- structs/defines.
+ - `sys/sys/msgid.h` -- msgid header.
+
+Packet tagging includes many changes in various existing files revolving around
+networking, such as tap, tun, bpf, various mbuf copy routines and virtio-net.
+
+dtracedctl (`cddl/contrib/opensolaris/cmd/dtracedctl`):
+
+ - `dtracedctl.{c,h}` -- A simple interface to `dtraced`.
+
+hypercall interface:
+ - `sys/amd64/amd64/bhyve_hypercall.S` -- implementation of hypercalls.
+ - `sys/amd64/include/bhyve_hypercall.h` -- header for hypercalls.
+
+This functionality also involves heavy changes to the bhyve kernel module
+(`vmm.ko`).
+
+Nested page table walk:
+
+ - `sys/cddl/dev/dtrace/amd64/dtrace_vm_subr.c` -- Implements a nested page
+   table walk suitable for use inside the DTrace probe context.
+
