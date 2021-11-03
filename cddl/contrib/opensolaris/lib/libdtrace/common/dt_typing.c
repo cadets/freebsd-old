@@ -364,8 +364,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		    dn1->din_tf, type, dn1->din_sym, mip) == 0)
 			dt_set_progerr(g_dtp, g_pgp,
 			    "dt_infer_type(%s, %zu): failed to get member info"
-			    " for %s(%s): %s",
+			    " for %s(%s) in %s: %s",
 			    insname[opcode], n->din_uidx, buf, dn1->din_sym,
+			    dt_typefile_stringof(dn1->din_tf),
 			    dt_typefile_error(dn1->din_tf));
 
 		n->din_mip = mip;
