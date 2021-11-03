@@ -3528,7 +3528,7 @@ dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 		rp = dnp->dn_right = dt_node_cook(rp, DT_IDFLG_REF);
 		rbottom = dt_node_is_bottom(rp);
 
-		if (lbottom && rbottom)
+		if (lbottom || rbottom)
 			goto endlt;
 
 		/*
@@ -3545,15 +3545,13 @@ dt_cook_op2(dt_node_t *dnp, uint_t idflags)
 		if (ctf_type_compat(lp->dn_ctfp, lp->dn_type,
 		    rp->dn_ctfp, rp->dn_type))
 			/*EMPTY*/;
-		else if (!lbottom && !rbottom &&
-		    dt_node_is_integer(lp) && dt_node_is_integer(rp))
+		else if (dt_node_is_integer(lp) && dt_node_is_integer(rp))
 			/*EMPTY*/;
-		else if ((!lbottom && !rbottom) &&
-		    (dt_node_is_strcompat(lp) && dt_node_is_strcompat(rp) &&
+		else if ((dt_node_is_strcompat(lp) &&
+		    dt_node_is_strcompat(rp) &&
 		    (dt_node_is_string(lp) || dt_node_is_string(rp))))
 			/*EMPTY*/;
-		else if (!lbottom && !rbottom &&
-		    dt_node_is_ptrcompat(lp, rp, NULL, NULL) == 0) {
+		else if (dt_node_is_ptrcompat(lp, rp, NULL, NULL) == 0) {
 			xyerror(D_OP_INCOMPAT, "operands have "
 			    "incompatible types: \"%s\" %s \"%s\"\n",
 			    dt_node_type_name(lp, n1, sizeof (n1)), opstr(op),
