@@ -20,6 +20,8 @@ SRCS=		dtraced.c \
 		dtraced_readjob.c \
 		dtraced_state.c
 
+MAN=		dtraced.8
+
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
