@@ -29,7 +29,7 @@ dtraced_precmd()
 		;;
 	esac
 
-	rc_flags="-d ${rc_flags}"
+	rc_flags="${rc_flags}"
 	return 0
 }
 

@@ -144,7 +144,7 @@ main(int argc, char **argv)
 	char ch;
 	char pidstr[256];
 	char hypervisor[128];
-	int daemonize = 0;
+	int debug_mode = 0;
 	size_t len = sizeof(hypervisor);
 	size_t optlen;
 	__cleanup(cleanup_pidfile) struct pidfh *pfh = NULL;
@@ -235,7 +235,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'd':
-			daemonize = 1;
+			debug_mode = 1;
 			break;
 
 		case 't':
@@ -287,7 +287,7 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-	if (daemonize && daemon(0, 0) != 0) {
+	if (!debug_mode && daemon(0, 0) != 0) {
 		dump_errmsg("Failed to daemonize %m");
 		return (EX_OSERR);
 	}
