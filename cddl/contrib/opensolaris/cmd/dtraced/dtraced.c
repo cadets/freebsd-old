@@ -107,7 +107,7 @@ print_help(void)
 	fprintf(stderr, "Usage: %s [-dhmOqvZ] [-D directory]\n", program_name);
 
 	fprintf(stderr, "\n"
-	    "\t-d  run dtraced in daemon mode.\n"
+	    "\t-d  run dtraced in debug (foreground) mode.\n"
 	    "\t-D  specify the directory to use for dtraced state.\n"
 	    "\t-h  display this help page.\n"
 	    "\t-m  run dtraced in 'minion' mode.\n"
@@ -144,18 +144,31 @@ main(int argc, char **argv)
 	char ch;
 	char pidstr[256];
 	char hypervisor[128];
-	int daemonize = 0;
+	int debug_mode = 0;
 	size_t len = sizeof(hypervisor);
 	size_t optlen;
 	__cleanup(cleanup_pidfile) struct pidfh *pfh = NULL;
 	pid_t otherpid;
-	int ctrlmachine = -1;
+	int ctrlmachine = 1; /* default to control machine (-O) */
 
 	program_name = argv[0];
 
 	retry = 0;
 	memset(pidstr, 0, sizeof(pidstr));
-	memset(hypervisor, 0, sizeof(hypervisor));
+
+	if (sysctlbyname("kern.vm_guest", hypervisor, &len, NULL, 0)) {
+		dump_errmsg("Failed to get kern.vm_guest: %m");
+		return (EX_OSERR);
+	}
+
+	/* If we're running under bhyve, assume minion mode */
+	if (strcmp(hypervisor, "bhyve") == 0)
+		ctrlmachine = 0;
+
+	if (ctrlmachine == 0)
+		dump_debugmsg("Running in minion mode.");
+	else
+		dump_debugmsg("Running in overlord mode.");
 
 	while ((ch = getopt(argc, argv, "D:Odhmvt:qZ")) != -1) {
 		switch (ch) {
@@ -185,13 +198,6 @@ main(int argc, char **argv)
 		 * linking.
 		 */
 		case 'O':
-			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
-			    NULL, 0)) {
-				dump_errmsg(
-				    "Failed to get kern.vm_guest: %m");
-				return (EX_OSERR);
-			}
-
 			if (strcmp(hypervisor, "none") != 0) {
 				/*
 				 * We are virtualized, so we can't be an
@@ -211,14 +217,7 @@ main(int argc, char **argv)
 		 * Run the daemon in 'minion' mode.
 		 */
 		case 'm':
-			if (sysctlbyname("kern.vm_guest", hypervisor, &len,
-			    NULL, 0)) {
-				dump_errmsg(
-				    "Failed to get kern.vm_guest: %m");
-				return (EX_OSERR);
-			}
-
-			if (strcmp(hypervisor, "bhyve") != 0) {
+			if (strcmp(hypervisor, "none") == 0) {
 				/*
 				 * Warn the user that this makes very little
 				 * sense on a non-virtualized machine...
@@ -235,7 +234,7 @@ main(int argc, char **argv)
 			break;
 
 		case 'd':
-			daemonize = 1;
+			debug_mode = 1;
 			break;
 
 		case 't':
@@ -287,7 +286,7 @@ main(int argc, char **argv)
 		return (EX_OSERR);
 	}
 
-	if (daemonize && daemon(0, 0) != 0) {
+	if (!debug_mode && daemon(0, 0) != 0) {
 		dump_errmsg("Failed to daemonize %m");
 		return (EX_OSERR);
 	}

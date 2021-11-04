@@ -24,12 +24,8 @@ dtraced_precmd()
 		rc_flags="-m ${rc_flags}"
 		;;
 	*)
-		warn "Invalid type for dtraced"
-		return 1
 		;;
 	esac
-
-	rc_flags="-d ${rc_flags}"
 	return 0
 }
 
