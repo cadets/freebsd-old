@@ -28,3 +28,4 @@ cscope.po.out
 compile_commands.json
 .clangd
 .ccls-cache
+.DS_Store
