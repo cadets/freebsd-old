@@ -1,4 +1,5 @@
 .\" Copyright (c) 2020 Domagoj Stolfa
+.\" Copyright (c) 2021 Robert N. M. Watson
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -24,14 +25,86 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd July 10, 2020
+.Dd November 4, 2021
 .Dt DTRACED 8
 .Os
-.Sh NAME
-.Nm DTRACED
-.Nd DTrace daemon
+.Sh DTRACED
+.Nm dtraced
+.Nd DTrace hypervisor management daemon
+.Sh SYNOPSIS
+.Nm dtraced
+.Fl OZdhmqv
+.Op Fl D Ar directory
+.Op Fl t Ar size
+.Sh DESCRIPTION
+.Nm
+is a system daemon responsible for coordinating DTrace-based tracing across
+virtualization hosts and guests.
+This is required for hypervisor-based tracing where scripts execute in the
+host kernel, but probes are instrumented and fire within a combination of the
+host and guest kernels.
+On the host,
+.Nm
+receives connections from local
+.Xr dtrace 1
+clients, loading DTrace scripts and distributing suitably linked versions of
+scripts to all affected guests.
+On the guest size,
+.Nm receives DTrace scripts provided by the host and installs them so that
+suitable guest probes fire.
+.Nm
+currently supports only the
+.Xr bhyve 8
+hypervisor.
+.Pp
+The following options are available:
+.Bl -tag -width flag
+.It Fl D Ar directory
+Specify the
+.Nm
+base directory, where scripts will be stored during excution.
+The base directory defaults to
+.Pa /var/ddtrace .
+.It Fl O
+Run
+.Nm
+in overlord mode, overriding automatic detection of being a hypervisor host.
+.It Fl Z
+Disable support for SHA256 hashing of all scripts.
+Hashes are used when moving them between the host and guest, or on guest
+reboot, to detect potential integrity issues.
+This flag exists for debugging purposes only.
+.It Fl d
+Cause
+.Nm
+to run in the background a daemon.
+NOTE: This option may change in the future to indicate debug mode, with the
+default for daemonizing inverted.
+.It Fl h
+Print a help message and temrinate.
+.It Fl m
+Run
+.Nm
+in minion mode, overriding automatic detection of being a hypervisor guest.
+.It Fl q
+Enable quiet mode, suppressing print of status updates and errors on the
+terminal.
+.It Fl v
+Display version information.
+.El
 .Sh SEE ALSO
 .Xr dtrace 1 ,
+.Xr bhyve 8
 .Rs
 .%T Solaris Dynamic Tracing Guide
 .Re
+.Sh HISTORY
+.Nm
+was created as part of the DARPA CADETS project, a collaboration between BAE
+Systems, the University of Cambridge, and Memorial University Newfoundland.
+.Sh AUTHORS
+.Nm
+was created by
+.An Domagoj Stolfa .
+This manual page was written by
+.An Robert Watson .
