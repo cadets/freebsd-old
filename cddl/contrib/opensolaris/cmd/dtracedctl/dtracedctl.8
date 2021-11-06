@@ -29,7 +29,7 @@
 .\"
 .\" $FreeBSD$
 .\"
-.Dd November 4, 2021
+.Dd November 6, 2021
 .Dt DTRACEDCTL 8
 .Os
 .Sh NAME
@@ -37,9 +37,9 @@
 .Nd DTrace hypervisor management daemon control
 .Sh SYNOPSIS
 .Nm dtracedctl
-.Op Fl -cleanup-state Op Ar vm
+.Op Fl -cleanup-state Op Ar "vm1,..."
 .Op Fl -help
-.Op Fl -show-stats Op Ar vm
+.Op Fl -show-stats Op Ar "vm1,..."
 .Sh DESCRIPTION
 .Nm
 controls the operation of
@@ -48,18 +48,16 @@ the DTrace hypervisor management daemon.
 .Pp
 The following options are available:
 .Bl -tag -width flag
-.It Fl -cleanup-state Op Ar vm
+.It Fl -cleanup-state Op Ar "vm1,..."
 Clean up the
 .Xr dtraced 8
-state associated with the virtual machine
-.Ar vm ,
-or for all virtual machines if the argument is not set.
+state associated with virtual machines named in the comma-separated optional
+argument, or for all virtual machines if the argument is not set.
 .It Fl -help
 Print a help message and terminate.
-.It Fl -show-stats Op Ar vm
-Show statistics for the virtual machine
-.Ar vm ,
-or for all virtual machines if the argument is not set.
+.It Fl -show-stats Op Ar "vm1,..."
+Show statistics for the virtual machines named in a comma-separated optional
+argumet, or for all virtual machines if the argument is not set.
 .El
 .Sh SEE ALSO
 .Xr dtraced 8
