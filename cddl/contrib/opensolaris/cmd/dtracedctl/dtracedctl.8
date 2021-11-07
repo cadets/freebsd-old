@@ -1,0 +1,77 @@
+.\"-
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\"
+.\" Copyright (c) 2021 Robert N. M. Watson
+.\"
+.\" This software was developed by the University of Cambridge Computer
+.\" Laboratory.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd November 6, 2021
+.Dt DTRACEDCTL 8
+.Os
+.Sh NAME
+.Nm dtracedctl
+.Nd DTrace hypervisor management daemon control
+.Sh SYNOPSIS
+.Nm dtracedctl
+.Op Fl -cleanup-state Op Ar "vm1,..."
+.Op Fl -help
+.Op Fl -show-stats Op Ar "vm1,..."
+.Sh DESCRIPTION
+.Nm
+controls the operation of
+.Xr dtraced 8 ,
+the DTrace hypervisor management daemon.
+.Pp
+The following options are available:
+.Bl -tag -width flag
+.It Fl -cleanup-state Op Ar "vm1,..."
+Clean up the
+.Xr dtraced 8
+state associated with virtual machines named in the comma-separated optional
+argument, or for all virtual machines if the argument is not set.
+.It Fl -help
+Print a help message and terminate.
+.It Fl -show-stats Op Ar "vm1,..."
+Show statistics for the virtual machines named in a comma-separated optional
+argumet, or for all virtual machines if the argument is not set.
+.El
+.Sh SEE ALSO
+.Xr dtraced 8
+.Rs
+.%T Solaris Dynamic Tracing Guide
+.Re
+.Sh HISTORY
+.Nm
+was created as part of the DARPA CADETS project, a collaboration between BAE
+Systems, the University of Cambridge, and Memorial University Newfoundland.
+.Sh AUTHORS
+.Nm
+was created by
+.An Domagoj Stolfa .
+This manual page was written by
+.An -nosplit
+.An Robert N. M. Watson .

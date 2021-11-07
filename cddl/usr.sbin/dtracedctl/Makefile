@@ -7,6 +7,8 @@
 PROG=		dtracedctl
 SRCS=		dtracedctl.c
 
+MAN=		dtracedctl.8
+
 BINDIR?=	/usr/sbin
 
 WARNS?=		1
