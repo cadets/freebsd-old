@@ -284,7 +284,7 @@ main(int argc, const char **argv)
 
 		case HELP_PAGE:
 			print_help();
-			break;
+			return (0);
 
 		case CLEANUP_STATE:
 			if (action != -1) {
