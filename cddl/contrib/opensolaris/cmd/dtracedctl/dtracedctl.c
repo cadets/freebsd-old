@@ -171,7 +171,7 @@ open_dtraced(const char *sockpath)
 		else
 			fprintf(stderr,
 			    "connect() failed: %s\n", strerror(errno));
-		exit(EXIT_FAILURE);
+		exit(EX_UNAVAILABLE);
 	}
 
 	if (recv(sock, &initmsg, sizeof(initmsg), 0) < 0) {
@@ -214,14 +214,14 @@ send_clean(handle_t *hdl, names_t *n)
 		close(hdl->sockfd);
 		fprintf(stderr, "send() failed: %s\n", strerror(errno));
 		fprintf(stderr, "Consider restarting dtraced.\n");
-		exit(EXIT_FAILURE);
+		exit(EX_IOERR);
 	}
 
 	if (send(hdl->sockfd, &header, hdrlen, 0) < 0) {
 		close(hdl->sockfd);
 		fprintf(stderr, "send() failed: %s\n", strerror(errno));
 		fprintf(stderr, "Consider restarting dtraced.\n");
-		exit(EXIT_FAILURE);
+		exit(EX_IOERR);
 	}
 
 	for (i = 0; i < n->n_strs; i++) {
@@ -231,14 +231,14 @@ send_clean(handle_t *hdl, names_t *n)
 			close(hdl->sockfd);
 			fprintf(stderr, "send() failed: %s\n", strerror(errno));
 			fprintf(stderr, "Consider restarting dtraced.\n");
-			exit(EXIT_FAILURE);
+			exit(EX_IOERR);
 		}
 
 		if (send(hdl->sockfd, n->str[i], buflen, 0) < 0) {
 			close(hdl->sockfd);
 			fprintf(stderr, "send() failed: %s\n", strerror(errno));
 			fprintf(stderr, "Consider restarting dtraced.\n");
-			exit(EXIT_FAILURE);
+			exit(EX_IOERR);
 		}
 	}
 
@@ -246,13 +246,13 @@ send_clean(handle_t *hdl, names_t *n)
 		close(hdl->sockfd);
 		fprintf(stderr, "recv() failed: %s\n", strerror(errno));
 		fprintf(stderr, "Consider restarting dtraced.\n");
-		exit(EXIT_FAILURE);
+		exit(EX_IOERR);
 	}
 
 	if (data != 1) {
 		close(hdl->sockfd);
 		fprintf(stderr, "Data was NAK'd by dtraced... exiting.\n");
-		exit(EXIT_FAILURE);
+		exit(EX_UNAVAILABLE);
 	}
 }
 
@@ -284,12 +284,12 @@ main(int argc, const char **argv)
 
 		case HELP_PAGE:
 			print_help();
-			return (0);
+			return (EX_OK);
 
 		case CLEANUP_STATE:
 			if (action != -1) {
 				print_help();
-				return (-1);
+				return (EX_USAGE);
 			}
 
 			action = CLEAN;
@@ -304,7 +304,7 @@ main(int argc, const char **argv)
 		case SHOW_STATS:
 			if (action != -1) {
 				print_help();
-				return (-1);
+				return (EX_USAGE);
 			}
 
 			if (optarg == NULL) {
@@ -337,5 +337,5 @@ main(int argc, const char **argv)
 		break;
 	}
 
-	return (0);
+	return (EX_OK);
 }
