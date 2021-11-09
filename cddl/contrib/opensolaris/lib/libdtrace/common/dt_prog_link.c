@@ -252,6 +252,12 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 						rtype->dtdt_flags =
 						    orig_rtype->dtdt_flags;
 
+
+						if (ctf_kind == CTF_K_ARRAY) {
+							rtype->dtdt_flags |=
+							    DIF_TF_BYREF;
+						}
+
 						rtype->dtdt_size =
 						    dt_typefile_typesize(
 							node->din_tf,
