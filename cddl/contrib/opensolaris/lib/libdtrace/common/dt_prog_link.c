@@ -109,6 +109,127 @@ dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 }
 
 static void
+relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
+{
+	size_t size, kind;
+	ctf_id_t ctfid;
+	uint8_t rd, r1;
+	uint8_t opcode, new_op;
+	ctf_encoding_t encoding;
+	dif_instr_t instr, new_instr;
+	uint16_t offset;
+	dt_ifg_list_t *usetx_ifgl;
+	dt_ifg_node_t *usetx_node;
+	dtrace_difo_t *difo;
+	int index;
+
+	difo = node->din_difo;
+	instr = node->din_buf[node->din_uidx];
+	opcode = DIF_INSTR_OP(instr);
+
+	ctfid = dt_typefile_resolve(node->din_tf, node->din_mip->ctm_type);
+	size = dt_typefile_typesize(node->din_tf, ctfid);
+	kind = dt_typefile_typekind(node->din_tf, ctfid);
+
+	/*
+	 * NOTE: We support loading of CTF_K_ARRAY due to it
+	 * just being a pointer, really.
+	 */
+	if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER &&
+	    kind != CTF_K_ARRAY)
+		errx(EXIT_FAILURE, "a load of kind %zu is unsupported in DIF.",
+		    kind);
+
+	if (kind == CTF_K_POINTER || kind == CTF_K_ARRAY) {
+		new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX : DIF_OP_ULDX;
+		rd = DIF_INSTR_RD(instr);
+		r1 = DIF_INSTR_R1(instr);
+
+		new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
+	} else {
+		if (dt_typefile_encoding(node->din_tf, ctfid, &encoding) != 0)
+			errx(EXIT_FAILURE, "failed to get encoding for %ld",
+			    ctfid);
+
+		if (encoding.cte_format & CTF_INT_SIGNED) {
+			if (size == 1)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSB :
+									DIF_OP_ULDSB;
+			else if (size == 2)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSH :
+									DIF_OP_ULDSH;
+			else if (size == 4)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSW :
+									DIF_OP_ULDSW;
+			else if (size == 8)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX :
+									DIF_OP_ULDX;
+			else
+				errx(
+				    EXIT_FAILURE, "unsupported size %zu", size);
+		} else {
+			if (size == 1)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUB :
+									DIF_OP_ULDUB;
+			else if (size == 2)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUH :
+									DIF_OP_ULDUH;
+			else if (size == 4)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUW :
+									DIF_OP_ULDUW;
+			else if (size == 8)
+				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX :
+									DIF_OP_ULDX;
+			else
+				errx(
+				    EXIT_FAILURE, "unsupported size %zu", size);
+		}
+
+		rd = DIF_INSTR_RD(instr);
+		r1 = DIF_INSTR_R1(instr);
+
+		new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
+	}
+
+	offset = node->din_mip->ctm_offset / 8; /* bytes */
+
+	for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
+	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
+		usetx_node = usetx_ifgl->dil_ifgnode;
+		if (usetx_node->din_relocated == 1)
+			continue;
+
+		instr = usetx_node->din_buf[usetx_node->din_uidx];
+		opcode = DIF_INSTR_OP(instr);
+		if (opcode != DIF_OP_USETX)
+			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
+
+		rd = DIF_INSTR_RD(instr);
+
+		if (difo->dtdo_inthash == NULL) {
+			difo->dtdo_inthash = dt_inttab_create(dtp);
+
+			if (difo->dtdo_inthash == NULL)
+				errx(EXIT_FAILURE,
+				    "failed "
+				    "to allocate inttab");
+		}
+
+		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
+		    -1)
+			errx(EXIT_FAILURE, "failed to insert %u into inttab",
+			    offset);
+
+		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
+		    index, rd);
+		usetx_node->din_relocated = 1;
+	}
+
+	node->din_buf[node->din_uidx] = new_instr;
+	node->din_relocated = 1;
+}
+
+static void
 relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
     dtrace_diftype_t *orig_rtype)
@@ -307,117 +428,7 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
 
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
-		ctfid = dt_typefile_resolve(
-		    node->din_tf, node->din_mip->ctm_type);
-		size = dt_typefile_typesize(node->din_tf, ctfid);
-		kind = dt_typefile_typekind(node->din_tf, ctfid);
-
-		/*
-		 * NOTE: We support loading of CTF_K_ARRAY due to it
-		 * just being a pointer, really.
-		 */
-		if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER &&
-		    kind != CTF_K_ARRAY)
-			errx(EXIT_FAILURE,
-			    "a load of kind %zu is unsupported in DIF.", kind);
-
-		if (kind == CTF_K_POINTER || kind == CTF_K_ARRAY) {
-			new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX : DIF_OP_ULDX;
-			rd = DIF_INSTR_RD(instr);
-			r1 = DIF_INSTR_R1(instr);
-
-			new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
-		} else {
-			if (dt_typefile_encoding(
-				node->din_tf, ctfid, &encoding) != 0)
-				errx(EXIT_FAILURE,
-				    "failed to get encoding for %ld", ctfid);
-
-			if (encoding.cte_format & CTF_INT_SIGNED) {
-				if (size == 1)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDSB :
-						  DIF_OP_ULDSB;
-				else if (size == 2)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDSH :
-						  DIF_OP_ULDSH;
-				else if (size == 4)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDSW :
-						  DIF_OP_ULDSW;
-				else if (size == 8)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDX :
-						  DIF_OP_ULDX;
-				else
-					errx(EXIT_FAILURE,
-					    "unsupported size %zu", size);
-			} else {
-				if (size == 1)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDUB :
-						  DIF_OP_ULDUB;
-				else if (size == 2)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDUH :
-						  DIF_OP_ULDUH;
-				else if (size == 4)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDUW :
-						  DIF_OP_ULDUW;
-				else if (size == 8)
-					new_op = opcode == DIF_OP_ULOAD ?
-						  DIF_OP_LDX :
-						  DIF_OP_ULDX;
-				else
-					errx(EXIT_FAILURE,
-					    "unsupported size %zu", size);
-			}
-
-			rd = DIF_INSTR_RD(instr);
-			r1 = DIF_INSTR_R1(instr);
-
-			new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
-		}
-
-		offset = node->din_mip->ctm_offset / 8; /* bytes */
-
-		for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
-		     usetx_ifgl = dt_list_next(usetx_ifgl)) {
-			usetx_node = usetx_ifgl->dil_ifgnode;
-			if (usetx_node->din_relocated == 1)
-				continue;
-
-			instr = usetx_node->din_buf[usetx_node->din_uidx];
-			opcode = DIF_INSTR_OP(instr);
-			if (opcode != DIF_OP_USETX)
-				errx(EXIT_FAILURE, "opcode (%d) is not usetx",
-				    opcode);
-
-			rd = DIF_INSTR_RD(instr);
-
-			if (difo->dtdo_inthash == NULL) {
-				difo->dtdo_inthash = dt_inttab_create(dtp);
-
-				if (difo->dtdo_inthash == NULL)
-					errx(EXIT_FAILURE,
-					    "failed "
-					    "to allocate inttab");
-			}
-
-			if ((index = dt_inttab_insert(
-				 difo->dtdo_inthash, offset, 0)) == -1)
-				errx(EXIT_FAILURE,
-				    "failed to insert %u into inttab", offset);
-
-			usetx_node->din_buf[usetx_node->din_uidx] =
-			    DIF_INSTR_SETX(index, rd);
-			usetx_node->din_relocated = 1;
-		}
-
-		node->din_buf[node->din_uidx] = new_instr;
-		node->din_relocated = 1;
+		relocate_uload(dtp, node);
 		break;
 
 	case DIF_OP_TYPECAST:
