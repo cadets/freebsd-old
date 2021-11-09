@@ -594,8 +594,7 @@ dtrace_get_paging(void *_vmhdl)
 
 #define DTRACE_LOADFUNC(bits)                                                 \
 	/*CSTYLED*/                                                           \
-	uint##bits##_t dtrace_load##bits(                                     \
-	    void *vmhdl, uintptr_t addr)                                      \
+	uint##bits##_t dtrace_load##bits(void *vmhdl, uintptr_t addr)         \
 	{                                                                     \
 		size_t size = bits / NBBY;                                    \
 		/*CSTYLED*/                                                   \
