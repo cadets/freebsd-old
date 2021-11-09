@@ -108,14 +108,14 @@ dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memcpy(t_thread, thread_str, MAXPATHLEN);
 }
 
-static int
-dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
-    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
+static void
+relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
+    dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
+    dtrace_diftype_t *orig_rtype)
 {
-	size_t idx;
-	dt_ifg_list_t *ifgl, *usetx_ifgl;
 	dt_ifg_node_t *node, *usetx_node;
 	dif_instr_t instr, new_instr;
+	dt_ifg_list_t *usetx_ifgl;
 	uint8_t opcode, new_op;
 	size_t size, kind;
 	ctf_id_t ctfid;
@@ -123,23 +123,322 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 	uint16_t offset;
 	ctf_encoding_t encoding;
 	dtrace_diftype_t *rtype;
-	int index, i;
+	int index;
 	int ctf_kind;
 
+	node = ifgl->dil_ifgnode;
+	if (node->din_difo != difo)
+		return;
+
 	rtype = NULL;
-	ifgl = NULL;
-	node = NULL;
-	idx = 0;
-	instr = 0;
-	opcode = 0;
 	size = 0;
 	kind = 0;
 	ctfid = 0;
 	new_instr = 0;
 	new_op = 0;
-	index = i = 0;
+	index = 0;
 	ctf_kind = 0;
 	memset(&encoding, 0, sizeof(ctf_encoding_t));
+
+	instr = node->din_buf[node->din_uidx];
+	opcode = DIF_INSTR_OP(instr);
+
+	switch (opcode) {
+	case DIF_OP_RET:
+	case DIF_OP_PUSHTR:
+		/*
+		 * In case of a RET, we first patch up the DIFO with the
+		 * correct return type and size.
+		 */
+		if (opcode == DIF_OP_RET) {
+			rtype = &difo->dtdo_rtype;
+
+			rtype->dtdt_kind = node->din_type;
+			if (node->din_type == DIF_TYPE_CTF)
+				rtype->dtdt_ckind = node->din_ctfid;
+			else if (node->din_type == DIF_TYPE_STRING)
+				rtype->dtdt_ckind = DT_STR_TYPE(dtp);
+			else if (node->din_type == DIF_TYPE_BOTTOM)
+				/*
+				 * If we have a bottom type, we really
+				 * don't care which CTF type the host
+				 * wants here. It can be patched in
+				 * later on demand.
+				 */
+				rtype->dtdt_ckind = CTF_BOTTOM_TYPE;
+			else
+				errx(EXIT_FAILURE,
+				    "unexpected node->din_type "
+				    "(%x) at location %zu",
+				    node->din_type, node->din_uidx);
+
+			assert(actkind != DTRACEACT_NONE);
+			if (actkind != DTRACEACT_DIFEXPR)
+				assert(ad != NULL);
+
+			switch (actkind) {
+			case DTRACEACT_EXIT:
+				*rtype = dt_int_rtype;
+				rtype->dtdt_size = sizeof(int);
+				break;
+
+			case DTRACEACT_PRINTA:
+			case DTRACEACT_PRINTF:
+			case DTRACEACT_PRINTM:
+			case DTRACEACT_TRACEMEM:
+			case DTRACEACT_TRACEMEM_DYNSIZE:
+				break;
+
+			case DTRACEAGG_QUANTIZE:
+			case DTRACEAGG_LQUANTIZE:
+			case DTRACEAGG_LLQUANTIZE:
+				break;
+
+			case DTRACEACT_DIFEXPR:
+				if (ad && ad->dtad_return == 0) {
+					*rtype = dt_void_rtype;
+					break;
+				}
+
+				/*
+				 * Fall through to the default case.
+				 */
+			default:
+				if (node->din_mip == NULL &&
+				    rtype->dtdt_kind == DIF_TYPE_CTF) {
+					ctf_kind = dt_typefile_typekind(
+					    node->din_tf, node->din_ctfid);
+
+					/*
+					 * XXX(dstolfa, important): Is
+					 * this a sensible thing to be
+					 * doing for all guests? We
+					 * claim to know on the host
+					 * whether or not we need to
+					 * dereference something -- but
+					 * is that actually true? Need
+					 * to think about this a bit
+					 * more. On the guest, we lack
+					 * the information about what
+					 * takes a dereferenced value
+					 * in, but on the host we lack
+					 * type information.
+					 */
+					rtype->dtdt_flags =
+					    orig_rtype->dtdt_flags;
+
+					if (ctf_kind == CTF_K_ARRAY) {
+						rtype->dtdt_flags |=
+						    DIF_TF_BYREF;
+					}
+
+					rtype->dtdt_size = dt_typefile_typesize(
+					    node->din_tf, node->din_ctfid);
+				} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
+					/*
+					 * We don't care what the size
+					 * is, we just need to set the
+					 * correct flags.
+					 */
+					rtype->dtdt_flags =
+					    orig_rtype->dtdt_flags;
+				else
+					rtype->dtdt_flags |= DIF_TF_BYREF;
+
+				break;
+			}
+			/*
+			 * Safety guard
+			 */
+			if (node->din_type == DIF_TYPE_STRING) {
+				rtype->dtdt_flags |= DIF_TF_BYREF;
+				rtype->dtdt_ckind = CTF_ERR;
+				break;
+			}
+		}
+
+		/*
+		 * If this instruction does not come from a usetx,
+		 * we don't really have to do anything with it.
+		 */
+		if (node->din_mip == NULL)
+			break;
+
+		ctfid = dt_typefile_resolve(
+		    node->din_tf, node->din_mip->ctm_type);
+		size = dt_typefile_typesize(node->din_tf, ctfid);
+		kind = dt_typefile_typekind(node->din_tf, ctfid);
+		offset = node->din_mip->ctm_offset / 8; /* bytes */
+
+		for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
+		     usetx_ifgl = dt_list_next(usetx_ifgl)) {
+			usetx_node = usetx_ifgl->dil_ifgnode;
+			if (usetx_node->din_relocated == 1)
+				continue;
+
+			instr = usetx_node->din_buf[usetx_node->din_uidx];
+			opcode = DIF_INSTR_OP(instr);
+			if (opcode != DIF_OP_USETX)
+				errx(EXIT_FAILURE, "opcode (%d) is not usetx",
+				    opcode);
+
+			rd = DIF_INSTR_RD(instr);
+
+			if (difo->dtdo_inthash == NULL) {
+				difo->dtdo_inthash = dt_inttab_create(dtp);
+
+				if (difo->dtdo_inthash == NULL)
+					errx(EXIT_FAILURE,
+					    "failed "
+					    "to allocate inttab");
+			}
+
+			if ((index = dt_inttab_insert(
+				 difo->dtdo_inthash, offset, 0)) == -1)
+				errx(EXIT_FAILURE,
+				    "failed to insert %u into inttab", offset);
+
+			usetx_node->din_buf[usetx_node->din_uidx] =
+			    DIF_INSTR_SETX(index, rd);
+			usetx_node->din_relocated = 1;
+		}
+
+		break;
+
+	case DIF_OP_ULOAD:
+	case DIF_OP_UULOAD:
+		ctfid = dt_typefile_resolve(
+		    node->din_tf, node->din_mip->ctm_type);
+		size = dt_typefile_typesize(node->din_tf, ctfid);
+		kind = dt_typefile_typekind(node->din_tf, ctfid);
+
+		/*
+		 * NOTE: We support loading of CTF_K_ARRAY due to it
+		 * just being a pointer, really.
+		 */
+		if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER &&
+		    kind != CTF_K_ARRAY)
+			errx(EXIT_FAILURE,
+			    "a load of kind %zu is unsupported in DIF.", kind);
+
+		if (kind == CTF_K_POINTER || kind == CTF_K_ARRAY) {
+			new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX : DIF_OP_ULDX;
+			rd = DIF_INSTR_RD(instr);
+			r1 = DIF_INSTR_R1(instr);
+
+			new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
+		} else {
+			if (dt_typefile_encoding(
+				node->din_tf, ctfid, &encoding) != 0)
+				errx(EXIT_FAILURE,
+				    "failed to get encoding for %ld", ctfid);
+
+			if (encoding.cte_format & CTF_INT_SIGNED) {
+				if (size == 1)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDSB :
+						  DIF_OP_ULDSB;
+				else if (size == 2)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDSH :
+						  DIF_OP_ULDSH;
+				else if (size == 4)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDSW :
+						  DIF_OP_ULDSW;
+				else if (size == 8)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDX :
+						  DIF_OP_ULDX;
+				else
+					errx(EXIT_FAILURE,
+					    "unsupported size %zu", size);
+			} else {
+				if (size == 1)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDUB :
+						  DIF_OP_ULDUB;
+				else if (size == 2)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDUH :
+						  DIF_OP_ULDUH;
+				else if (size == 4)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDUW :
+						  DIF_OP_ULDUW;
+				else if (size == 8)
+					new_op = opcode == DIF_OP_ULOAD ?
+						  DIF_OP_LDX :
+						  DIF_OP_ULDX;
+				else
+					errx(EXIT_FAILURE,
+					    "unsupported size %zu", size);
+			}
+
+			rd = DIF_INSTR_RD(instr);
+			r1 = DIF_INSTR_R1(instr);
+
+			new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
+		}
+
+		offset = node->din_mip->ctm_offset / 8; /* bytes */
+
+		for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
+		     usetx_ifgl = dt_list_next(usetx_ifgl)) {
+			usetx_node = usetx_ifgl->dil_ifgnode;
+			if (usetx_node->din_relocated == 1)
+				continue;
+
+			instr = usetx_node->din_buf[usetx_node->din_uidx];
+			opcode = DIF_INSTR_OP(instr);
+			if (opcode != DIF_OP_USETX)
+				errx(EXIT_FAILURE, "opcode (%d) is not usetx",
+				    opcode);
+
+			rd = DIF_INSTR_RD(instr);
+
+			if (difo->dtdo_inthash == NULL) {
+				difo->dtdo_inthash = dt_inttab_create(dtp);
+
+				if (difo->dtdo_inthash == NULL)
+					errx(EXIT_FAILURE,
+					    "failed "
+					    "to allocate inttab");
+			}
+
+			if ((index = dt_inttab_insert(
+				 difo->dtdo_inthash, offset, 0)) == -1)
+				errx(EXIT_FAILURE,
+				    "failed to insert %u into inttab", offset);
+
+			usetx_node->din_buf[usetx_node->din_uidx] =
+			    DIF_INSTR_SETX(index, rd);
+			usetx_node->din_relocated = 1;
+		}
+
+		node->din_buf[node->din_uidx] = new_instr;
+		node->din_relocated = 1;
+		break;
+
+	case DIF_OP_TYPECAST:
+		/*
+		 * For typecast, we simply turn it into a nop. We only
+		 * ever use typecast for type inference and can't
+		 * actually execute it as an instruction. We will
+		 * collapse the nops later.
+		 */
+		node->din_buf[node->din_uidx] = DIF_INSTR_NOP;
+		node->din_relocated = 1;
+		break;
+	}
+}
+
+static int
+dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
+{
+	dt_ifg_list_t *ifgl;
+	int i, index;
 
 	if (difo->dtdo_inttab != NULL) {
 		assert(difo->dtdo_intlen != 0);
@@ -160,303 +459,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 
 	for (ifgl = dt_list_next(&node_list); ifgl != NULL;
 	    ifgl = dt_list_next(ifgl)) {
-		node = ifgl->dil_ifgnode;
-
-		if (node->din_difo != difo)
-			continue;
-
-		instr = node->din_buf[node->din_uidx];
-		opcode = DIF_INSTR_OP(instr);
-		switch (opcode) {
-		case DIF_OP_RET:
-		case DIF_OP_PUSHTR:
-			/*
-			 * In case of a RET, we first patch up the DIFO with the
-			 * correct return type and size.
-			 */
-			if (opcode == DIF_OP_RET) {
-				rtype = &difo->dtdo_rtype;
-
-				rtype->dtdt_kind = node->din_type;
-				if (node->din_type == DIF_TYPE_CTF)
-					rtype->dtdt_ckind = node->din_ctfid;
-				else if (node->din_type == DIF_TYPE_STRING)
-					rtype->dtdt_ckind = DT_STR_TYPE(dtp);
-				else if (node->din_type == DIF_TYPE_BOTTOM)
-					/*
-					 * If we have a bottom type, we really
-					 * don't care which CTF type the host
-					 * wants here. It can be patched in
-					 * later on demand.
-					 */
-					rtype->dtdt_ckind = CTF_BOTTOM_TYPE;
-				else
-					errx(EXIT_FAILURE,
-					    "unexpected node->din_type "
-					    "(%x) at location %zu",
-					    node->din_type, node->din_uidx);
-
-				assert(actkind != DTRACEACT_NONE);
-				if (actkind != DTRACEACT_DIFEXPR)
-					assert(ad != NULL);
-
-				switch (actkind) {
-				case DTRACEACT_EXIT:
-					*rtype = dt_int_rtype;
-					rtype->dtdt_size = sizeof(int);
-					break;
-
-				case DTRACEACT_PRINTA:
-				case DTRACEACT_PRINTF:
-				case DTRACEACT_PRINTM:
-				case DTRACEACT_TRACEMEM:
-				case DTRACEACT_TRACEMEM_DYNSIZE:
-					break;
-
-				case DTRACEAGG_QUANTIZE:
-				case DTRACEAGG_LQUANTIZE:
-				case DTRACEAGG_LLQUANTIZE:
-					break;
-
-				case DTRACEACT_DIFEXPR:
-					if (ad && ad->dtad_return == 0) {
-						*rtype = dt_void_rtype;
-						break;
-					}
-
-					/*
-					 * Fall through to the default case.
-					 */
-				default:
-					if (node->din_mip == NULL &&
-					    rtype->dtdt_kind == DIF_TYPE_CTF) {
-						ctf_kind = dt_typefile_typekind(
-						    node->din_tf,
-						    node->din_ctfid);
-
-						/*
-						 * XXX(dstolfa, important): Is
-						 * this a sensible thing to be
-						 * doing for all guests? We
-						 * claim to know on the host
-						 * whether or not we need to
-						 * dereference something -- but
-						 * is that actually true? Need
-						 * to think about this a bit
-						 * more. On the guest, we lack
-						 * the information about what
-						 * takes a dereferenced value
-						 * in, but on the host we lack
-						 * type information.
-						 */
-						rtype->dtdt_flags =
-						    orig_rtype->dtdt_flags;
-
-
-						if (ctf_kind == CTF_K_ARRAY) {
-							rtype->dtdt_flags |=
-							    DIF_TF_BYREF;
-						}
-
-						rtype->dtdt_size =
-						    dt_typefile_typesize(
-							node->din_tf,
-							node->din_ctfid);
-					} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
-						/*
-						 * We don't care what the size
-						 * is, we just need to set the
-						 * correct flags.
-						 */
-						rtype->dtdt_flags =
-						    orig_rtype->dtdt_flags;
-					else
-						rtype->dtdt_flags |=
-						    DIF_TF_BYREF;
-
-					break;
-				}
-				/*
-				 * Safety guard
-				 */
-				if (node->din_type == DIF_TYPE_STRING) {
-					rtype->dtdt_flags |= DIF_TF_BYREF;
-					rtype->dtdt_ckind = CTF_ERR;
-					break;
-				}
-			}
-
-			/*
-			 * If this instruction does not come from a usetx,
-			 * we don't really have to do anything with it.
-			 */
-			if (node->din_mip == NULL)
-				break;
-
-			ctfid = dt_typefile_resolve(
-			    node->din_tf, node->din_mip->ctm_type);
-			size = dt_typefile_typesize(node->din_tf, ctfid);
-			kind = dt_typefile_typekind(node->din_tf, ctfid);
-			offset = node->din_mip->ctm_offset / 8; /* bytes */
-
-			for (usetx_ifgl = dt_list_next(&node->din_usetxs);
-			     usetx_ifgl; usetx_ifgl = dt_list_next(usetx_ifgl)) {
-				usetx_node = usetx_ifgl->dil_ifgnode;
-				if (usetx_node->din_relocated == 1)
-					continue;
-
-				instr = usetx_node->din_buf[usetx_node->din_uidx];
-				opcode = DIF_INSTR_OP(instr);
-				if (opcode != DIF_OP_USETX)
-					errx(EXIT_FAILURE,
-					    "opcode (%d) is not usetx", opcode);
-
-				rd = DIF_INSTR_RD(instr);
-
-				if (difo->dtdo_inthash == NULL) {
-					difo->dtdo_inthash =
-					    dt_inttab_create(dtp);
-
-					if (difo->dtdo_inthash == NULL)
-						errx(EXIT_FAILURE, "failed "
-						    "to allocate inttab");
-				}
-
-				if ((index = dt_inttab_insert(
-				    difo->dtdo_inthash, offset, 0)) == -1)
-					errx(EXIT_FAILURE,
-					    "failed to insert %u into inttab",
-					    offset);
-
-				usetx_node->din_buf[usetx_node->din_uidx] =
-				    DIF_INSTR_SETX(index, rd);
-				usetx_node->din_relocated = 1;
-			}
-
-			break;
-
-		case DIF_OP_ULOAD:
-		case DIF_OP_UULOAD:
-			ctfid = dt_typefile_resolve(
-			    node->din_tf, node->din_mip->ctm_type);
-			size = dt_typefile_typesize(node->din_tf, ctfid);
-			kind = dt_typefile_typekind(node->din_tf, ctfid);
-
-			/*
-			 * NOTE: We support loading of CTF_K_ARRAY due to it
-			 * just being a pointer, really.
-			 */
-			if (kind != CTF_K_INTEGER && kind != CTF_K_POINTER &&
-			    kind != CTF_K_ARRAY)
-				errx(EXIT_FAILURE, "a load of kind %zu is"
-				    " unsupported in DIF.", kind);
-
-			if (kind == CTF_K_POINTER || kind == CTF_K_ARRAY) {
-				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX : DIF_OP_ULDX;
-				rd = DIF_INSTR_RD(instr);
-				r1 = DIF_INSTR_R1(instr);
-
-				new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
-			} else {
-				if (dt_typefile_encoding(
-				    node->din_tf, ctfid, &encoding) != 0)
-					errx(EXIT_FAILURE,
-					    "failed to get encoding for %ld",
-					    ctfid);
-
-				if (encoding.cte_format & CTF_INT_SIGNED) {
-					if (size == 1)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDSB : DIF_OP_ULDSB;
-					else if (size == 2)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDSH : DIF_OP_ULDSH;
-					else if (size == 4)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDSW : DIF_OP_ULDSW;
-					else if (size == 8)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDX : DIF_OP_ULDX;
-					else
-						errx(EXIT_FAILURE,
-						    "unsupported size %zu",
-						    size);
-				} else {
-					if (size == 1)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDUB : DIF_OP_ULDUB;
-					else if (size == 2)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDUH : DIF_OP_ULDUH;
-					else if (size == 4)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDUW : DIF_OP_ULDUW;
-					else if (size == 8)
-						new_op = opcode == DIF_OP_ULOAD ?
-						    DIF_OP_LDX : DIF_OP_ULDX;
-					else
-						errx(EXIT_FAILURE,
-						    "unsupported size %zu",
-						    size);
-				}
-
-				rd = DIF_INSTR_RD(instr);
-				r1 = DIF_INSTR_R1(instr);
-
-				new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
-			}
-
-			offset = node->din_mip->ctm_offset / 8; /* bytes */
-
-			for (usetx_ifgl = dt_list_next(&node->din_usetxs);
-			     usetx_ifgl; usetx_ifgl = dt_list_next(usetx_ifgl)) {
-				usetx_node = usetx_ifgl->dil_ifgnode;
-				if (usetx_node->din_relocated == 1)
-					continue;
-
-				instr = usetx_node->din_buf[usetx_node->din_uidx];
-				opcode = DIF_INSTR_OP(instr);
-				if (opcode != DIF_OP_USETX)
-					errx(EXIT_FAILURE,
-					    "opcode (%d) is not usetx", opcode);
-
-				rd = DIF_INSTR_RD(instr);
-
-				if (difo->dtdo_inthash == NULL) {
-					difo->dtdo_inthash =
-					    dt_inttab_create(dtp);
-
-					if (difo->dtdo_inthash == NULL)
-						errx(EXIT_FAILURE, "failed "
-						    "to allocate inttab");
-				}
-
-				if ((index = dt_inttab_insert(
-				    difo->dtdo_inthash, offset, 0)) == -1)
-					errx(EXIT_FAILURE,
-					    "failed to insert %u into inttab",
-					    offset);
-
-				usetx_node->din_buf[usetx_node->din_uidx] =
-				    DIF_INSTR_SETX(index, rd);
-				usetx_node->din_relocated = 1;
-			}
-
-			node->din_buf[node->din_uidx] = new_instr;
-			node->din_relocated = 1;
-			break;
-
-		case DIF_OP_TYPECAST:
-			/*
-			 * For typecast, we simply turn it into a nop. We only
-			 * ever use typecast for type inference and can't
-			 * actually execute it as an instruction. We will
-			 * collapse the nops later.
-			 */
-			node->din_buf[node->din_uidx] = DIF_INSTR_NOP;
-			node->din_relocated = 1;
-			break;
-		}
+		relocate_ifg_entry(ifgl, dtp, actkind, ad, difo, orig_rtype);
 	}
 
 	return (0);
