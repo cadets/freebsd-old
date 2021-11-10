@@ -787,8 +787,8 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
     dtrace_difo_t *dnew)
 {
 	size_t i, j;
-	dif_instr_t ibase, inew;
-	uint8_t opbase, opnew;
+	dif_instr_t ibase, inew, inext;
+	uint8_t opbase, opnew, opnext;
 	dt_verictx_t *ctx = _ctx;
 	dtrace_hdl_t *dtp;
 	dtrace_difv_t *difv, *curdifo_var;
@@ -851,10 +851,17 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 
 		case DIF_OP_ULOAD:
 			opnew = DIF_INSTR_OP(inew);
+			if (i + 1 < difo->dtdo_len)
+				inext = difo->dtdo_buf[i + 1];
+
+			opnext = DIF_INSTR_OP(inext);
 			if (opnew != DIF_OP_LDSB && opnew != DIF_OP_LDSH &&
 			    opnew != DIF_OP_LDSW && opnew != DIF_OP_LDX  &&
 			    opnew != DIF_OP_LDUB && opnew != DIF_OP_LDUH &&
 			    opnew != DIF_OP_LDUW) {
+				if (opnext == DIF_OP_RET && opnew == DIF_OP_NOP)
+					break;
+
 				fprintf(stderr,
 				    "uload was not set to a ld* "
 				    "instruction (!= %u)\n",
@@ -865,10 +872,17 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 
 		case DIF_OP_UULOAD:
 			opnew = DIF_INSTR_OP(inew);
+			if (i + 1 < difo->dtdo_len)
+				inext = difo->dtdo_buf[i + 1];
+
+			opnext = DIF_INSTR_OP(inext);
 			if (opnew != DIF_OP_ULDSB && opnew != DIF_OP_ULDSH &&
 			    opnew != DIF_OP_ULDSW && opnew != DIF_OP_ULDX  &&
 			    opnew != DIF_OP_ULDUB && opnew != DIF_OP_ULDUH &&
 			    opnew != DIF_OP_ULDUW) {
+				if (opnext == DIF_OP_RET && opnew == DIF_OP_NOP)
+					break;
+
 				fprintf(stderr,
 				    "uuload was not set to a uld* "
 				    "instruction (!= %u)\n",

@@ -303,6 +303,47 @@ relocate_push(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 }
 
 static void
+ret_cleanup(dt_ifg_node_t *node, dtrace_diftype_t *rtype)
+{
+	dt_ifg_list_t *r1l;
+	dif_instr_t instr = 0;
+	uint8_t opcode = 0;
+	dt_ifg_node_t *n;
+
+	/*
+	 * We only need to clean up things if we return by reference
+	 * currently.
+	 */
+	if ((rtype->dtdt_flags & DIF_TF_BYREF) == 0 &&
+	    (rtype->dtdt_flags & DIF_TF_BYUREF) == 0)
+		return;
+
+	for (r1l = dt_list_next(&node->din_r1defs); r1l;
+	    r1l = dt_list_next(r1l)) {
+		n = r1l->dil_ifgnode;
+
+		instr = n->din_buf[n->din_uidx];
+		opcode = DIF_INSTR_OP(instr);
+
+		switch (opcode) {
+		case DIF_OP_ULOAD:
+		case DIF_OP_UULOAD:
+			break;
+
+		case DIF_OP_LDUB:
+		case DIF_OP_LDSB:
+		case DIF_OP_LDUH:
+		case DIF_OP_LDSH:
+		case DIF_OP_LDUW:
+		case DIF_OP_LDSW:
+		case DIF_OP_LDX:
+			n->din_buf[n->din_uidx] = DIF_INSTR_NOP;
+			break;
+		}
+	}
+}
+
+static void
 relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
     dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
 {
@@ -385,6 +426,8 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 			if (ctf_kind == CTF_K_ARRAY) {
 				rtype->dtdt_flags |= DIF_TF_BYREF;
 			}
+
+			ret_cleanup(node, rtype);
 
 			rtype->dtdt_size = dt_typefile_typesize(
 			    node->din_tf, node->din_ctfid);
