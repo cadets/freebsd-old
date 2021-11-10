@@ -356,6 +356,13 @@ againmkdir:
 
 	dir->processfn = fn;
 	dir->dir = fdopendir(dir->dirfd);
+	if (dir->dir == NULL) {
+		(void)close(dir->dirfd);
+		free(dir->dirpath);
+		free(dir);
+
+		dir = NULL;
+	}
 
 	return (dir);
 }

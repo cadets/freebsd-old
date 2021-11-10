@@ -229,8 +229,22 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
 	}
 
 	s->outbounddir = dtd_mkdir(DTRACED_OUTBOUNDDIR, &process_outbound);
+	if (s->outbounddir == NULL) {
+		dump_errmsg("Failed creating outbound directory: %m");
+		return (-1);
+	}
+
 	s->inbounddir = dtd_mkdir(DTRACED_INBOUNDDIR, &process_inbound);
+	if (s->inbounddir == NULL) {
+		dump_errmsg("Failed creating inbound directory: %m");
+		return (-1);
+	}
+
 	s->basedir = dtd_mkdir(DTRACED_BASEDIR, &process_base);
+	if (s->basedir == NULL) {
+		dump_errmsg("Failed creating base directory: %m");
+		return (-1);
+	}
 
 	s->outbounddir->state = s;
 	s->inbounddir->state = s;
