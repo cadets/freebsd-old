@@ -228,13 +228,12 @@ relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 	node->din_buf[node->din_uidx] = new_instr;
 	node->din_relocated = 1;
 }
-
 static void
 relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad,
     dtrace_diftype_t *orig_rtype)
 {
-	uint8_t opcode, new_op;
+	uint8_t opcode;
 	dt_ifg_list_t *usetx_ifgl;
 	dt_ifg_node_t *usetx_node;
 	dtrace_diftype_t *rtype;
@@ -242,7 +241,6 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 	size_t size, kind;
 	ctf_id_t ctfid;
 	int index;
-	int ctf_kind;
 	dtrace_difo_t *difo;
 	dif_instr_t instr;
 	uint8_t rd, r1;
@@ -250,114 +248,6 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 	instr = node->din_buf[node->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 	difo = node->din_difo;
-
-	/*
-	 * In case of a RET, we first patch up the DIFO with the
-	 * correct return type and size.
-	 */
-	if (opcode == DIF_OP_RET) {
-		rtype = &difo->dtdo_rtype;
-
-		rtype->dtdt_kind = node->din_type;
-		if (node->din_type == DIF_TYPE_CTF)
-			rtype->dtdt_ckind = node->din_ctfid;
-		else if (node->din_type == DIF_TYPE_STRING)
-			rtype->dtdt_ckind = DT_STR_TYPE(dtp);
-		else if (node->din_type == DIF_TYPE_BOTTOM)
-			/*
-			 * If we have a bottom type, we really
-			 * don't care which CTF type the host
-			 * wants here. It can be patched in
-			 * later on demand.
-			 */
-			rtype->dtdt_ckind = CTF_BOTTOM_TYPE;
-		else
-			errx(EXIT_FAILURE,
-			    "unexpected node->din_type "
-			    "(%x) at location %zu",
-			    node->din_type, node->din_uidx);
-
-		assert(actkind != DTRACEACT_NONE);
-		if (actkind != DTRACEACT_DIFEXPR)
-			assert(ad != NULL);
-
-		switch (actkind) {
-		case DTRACEACT_EXIT:
-			*rtype = dt_int_rtype;
-			rtype->dtdt_size = sizeof(int);
-			break;
-
-		case DTRACEACT_PRINTA:
-		case DTRACEACT_PRINTF:
-		case DTRACEACT_PRINTM:
-		case DTRACEACT_TRACEMEM:
-		case DTRACEACT_TRACEMEM_DYNSIZE:
-			break;
-
-		case DTRACEAGG_QUANTIZE:
-		case DTRACEAGG_LQUANTIZE:
-		case DTRACEAGG_LLQUANTIZE:
-			break;
-
-		case DTRACEACT_DIFEXPR:
-			if (ad && ad->dtad_return == 0) {
-				*rtype = dt_void_rtype;
-				break;
-			}
-
-			/*
-			 * Fall through to the default case.
-			 */
-		default:
-			if (node->din_mip == NULL &&
-			    rtype->dtdt_kind == DIF_TYPE_CTF) {
-				ctf_kind = dt_typefile_typekind(
-				    node->din_tf, node->din_ctfid);
-
-				/*
-				 * XXX(dstolfa, important): Is
-				 * this a sensible thing to be
-				 * doing for all guests? We
-				 * claim to know on the host
-				 * whether or not we need to
-				 * dereference something -- but
-				 * is that actually true? Need
-				 * to think about this a bit
-				 * more. On the guest, we lack
-				 * the information about what
-				 * takes a dereferenced value
-				 * in, but on the host we lack
-				 * type information.
-				 */
-				rtype->dtdt_flags = orig_rtype->dtdt_flags;
-
-				if (ctf_kind == CTF_K_ARRAY) {
-					rtype->dtdt_flags |= DIF_TF_BYREF;
-				}
-
-				rtype->dtdt_size = dt_typefile_typesize(
-				    node->din_tf, node->din_ctfid);
-			} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
-				/*
-				 * We don't care what the size
-				 * is, we just need to set the
-				 * correct flags.
-				 */
-				rtype->dtdt_flags = orig_rtype->dtdt_flags;
-			else
-				rtype->dtdt_flags |= DIF_TF_BYREF;
-
-			break;
-		}
-		/*
-		 * Safety guard
-		 */
-		if (node->din_type == DIF_TYPE_STRING) {
-			rtype->dtdt_flags |= DIF_TF_BYREF;
-			rtype->dtdt_ckind = CTF_ERR;
-			return;
-		}
-	}
 
 	/*
 	 * If this instruction does not come from a usetx,
@@ -405,44 +295,145 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 }
 
 static void
+relocate_push(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
+{
+
+	relocate_retpush(dtp, node, actkind, ad, orig_rtype);
+}
+
+static void
+relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
+    dtrace_actdesc_t *ad, dtrace_diftype_t *orig_rtype)
+{
+	dtrace_diftype_t *rtype;
+	dtrace_difo_t *difo;
+	int ctf_kind;
+
+	/*
+	 * In case of a RET, we first patch up the DIFO with the correct return
+	 * type and size.
+	 */
+	difo = node->din_difo;
+	rtype = &difo->dtdo_rtype;
+
+	rtype->dtdt_kind = node->din_type;
+	if (node->din_type == DIF_TYPE_CTF)
+		rtype->dtdt_ckind = node->din_ctfid;
+	else if (node->din_type == DIF_TYPE_STRING)
+		rtype->dtdt_ckind = DT_STR_TYPE(dtp);
+	else if (node->din_type == DIF_TYPE_BOTTOM)
+		/*
+		 * If we have a bottom type, we really
+		 * don't care which CTF type the host
+		 * wants here. It can be patched in
+		 * later on demand.
+		 */
+		rtype->dtdt_ckind = CTF_BOTTOM_TYPE;
+	else
+		errx(EXIT_FAILURE,
+		    "unexpected node->din_type (%x) at location %zu",
+		    node->din_type, node->din_uidx);
+
+	assert(actkind != DTRACEACT_NONE);
+	if (actkind != DTRACEACT_DIFEXPR)
+		assert(ad != NULL);
+
+	switch (actkind) {
+	case DTRACEACT_EXIT:
+		*rtype = dt_int_rtype;
+		rtype->dtdt_size = sizeof(int);
+		break;
+
+	case DTRACEACT_PRINTA:
+	case DTRACEACT_PRINTF:
+	case DTRACEACT_PRINTM:
+	case DTRACEACT_TRACEMEM:
+	case DTRACEACT_TRACEMEM_DYNSIZE:
+		break;
+
+	case DTRACEAGG_QUANTIZE:
+	case DTRACEAGG_LQUANTIZE:
+	case DTRACEAGG_LLQUANTIZE:
+		break;
+
+	case DTRACEACT_DIFEXPR:
+		if (ad && ad->dtad_return == 0) {
+			*rtype = dt_void_rtype;
+			break;
+		}
+
+		/*
+		 * Fall through to the default case.
+		 */
+	default:
+		if (node->din_mip == NULL && rtype->dtdt_kind == DIF_TYPE_CTF) {
+			ctf_kind = dt_typefile_typekind(
+			    node->din_tf, node->din_ctfid);
+
+			/*
+			 * XXX(dstolfa, important): Is this a sensible thing to
+			 * be doing for all guests? We claim to know on the host
+			 * whether or not we need to dereference something --
+			 * but is that actually true? Need to think about this a
+			 * bit more. On the guest, we lack the information about
+			 * what takes a dereferenced value in, but on the host
+			 * we lack type information.
+			 */
+			rtype->dtdt_flags = orig_rtype->dtdt_flags;
+
+			if (ctf_kind == CTF_K_ARRAY) {
+				rtype->dtdt_flags |= DIF_TF_BYREF;
+			}
+
+			rtype->dtdt_size = dt_typefile_typesize(
+			    node->din_tf, node->din_ctfid);
+		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
+			/*
+			 * We don't care what the size is, we just need to set
+			 * the correct flags.
+			 */
+			rtype->dtdt_flags = orig_rtype->dtdt_flags;
+		else
+			rtype->dtdt_flags |= DIF_TF_BYREF;
+
+		break;
+	}
+	/*
+	 * Safety guard
+	 */
+	if (node->din_type == DIF_TYPE_STRING) {
+		rtype->dtdt_flags |= DIF_TF_BYREF;
+		rtype->dtdt_ckind = CTF_ERR;
+		return;
+	}
+
+	relocate_retpush(dtp, node, actkind, ad, orig_rtype);
+}
+
+static void
 relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
     dtrace_diftype_t *orig_rtype)
 {
-	dt_ifg_node_t *node, *usetx_node;
-	dif_instr_t instr, new_instr;
-	dt_ifg_list_t *usetx_ifgl;
-	uint8_t opcode, new_op;
-	size_t size, kind;
-	ctf_id_t ctfid;
-	uint8_t rd, r1;
-	uint16_t offset;
-	ctf_encoding_t encoding;
-	dtrace_diftype_t *rtype;
-	int index;
-	int ctf_kind;
+	dt_ifg_node_t *node;
+	dif_instr_t instr;
+	uint8_t opcode;
 
 	node = ifgl->dil_ifgnode;
 	if (node->din_difo != difo)
 		return;
-
-	rtype = NULL;
-	size = 0;
-	kind = 0;
-	ctfid = 0;
-	new_instr = 0;
-	new_op = 0;
-	index = 0;
-	ctf_kind = 0;
-	memset(&encoding, 0, sizeof(ctf_encoding_t));
 
 	instr = node->din_buf[node->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
 	switch (opcode) {
 	case DIF_OP_RET:
+		relocate_ret(dtp, node, actkind, ad, orig_rtype);
+		break;
+
 	case DIF_OP_PUSHTR:
-		relocate_retpush(dtp, node, actkind, ad, orig_rtype);
+		relocate_push(dtp, node, actkind, ad, orig_rtype);
 		break;
 
 	case DIF_OP_ULOAD:
