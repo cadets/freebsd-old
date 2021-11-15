@@ -673,6 +673,7 @@ dt_action_printflike(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp,
 		dt_cg(yypcb, anp);
 		ap->dtad_difo = dt_as(yypcb);
 		ap->dtad_kind = kind;
+		ap->dtad_return = 1;
 	}
 }
 

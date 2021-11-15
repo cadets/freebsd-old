@@ -387,7 +387,6 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 		break;
 
 	case DTRACEACT_PRINTA:
-	case DTRACEACT_PRINTF:
 	case DTRACEACT_PRINTM:
 	case DTRACEACT_TRACEMEM:
 	case DTRACEACT_TRACEMEM_DYNSIZE:
@@ -398,6 +397,7 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	case DTRACEAGG_LLQUANTIZE:
 		break;
 
+	case DTRACEACT_PRINTF:
 	case DTRACEACT_DIFEXPR:
 		if (ad && ad->dtad_return == 0) {
 			*rtype = dt_void_rtype;
@@ -431,14 +431,15 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 
 			rtype->dtdt_size = dt_typefile_typesize(
 			    node->din_tf, node->din_ctfid);
-		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM)
+		} else if (rtype->dtdt_kind == DIF_TYPE_BOTTOM) {
 			/*
 			 * We don't care what the size is, we just need to set
 			 * the correct flags.
 			 */
 			rtype->dtdt_flags = orig_rtype->dtdt_flags;
-		else
+		} else {
 			rtype->dtdt_flags |= DIF_TF_BYREF;
+		}
 
 		break;
 	}
