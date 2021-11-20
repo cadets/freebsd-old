@@ -760,6 +760,7 @@ dt_node_type_assign(dt_node_t *dnp, ctf_file_t *fp, ctf_id_t type,
 		    type == DT_DYN_TYPE(yypcb->pcb_hdl))
 			dnp->dn_flags |= DT_NF_REF;
 	}
+
 	if (user)
 		dnp->dn_flags |= DT_NF_USERLAND;
 

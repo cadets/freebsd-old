@@ -613,7 +613,6 @@ dt_action_printflike(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp,
 	yylineno = dnp->dn_line;
 	str = dnp->dn_args->dn_string;
 
-
 	/*
 	 * If this is an freopen(), we use an empty string to denote that
 	 * stdout should be restored.  For other printf()-like actions, an

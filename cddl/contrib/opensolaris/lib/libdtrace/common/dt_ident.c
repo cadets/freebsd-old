@@ -968,12 +968,48 @@ dt_ident_morph(dt_ident_t *idp, ushort_t kind,
 	idp->di_data = NULL;
 }
 
+int
+dt_ident_builtin(dt_node_t *dnp)
+{
+	char *s;
+
+	if (dnp == NULL)
+		return (0);
+
+	if (dnp->dn_string == NULL)
+		return (0);
+
+	s = dnp->dn_string;
+	return (strcmp(s, "arg0") == 0 || strcmp(s, "arg1") == 0 ||
+	    strcmp(s, "arg2") == 0 || strcmp(s, "arg3") == 0 ||
+	    strcmp(s, "arg4") == 0 || strcmp(s, "arg5") == 0 ||
+	    strcmp(s, "arg6") == 0 || strcmp(s, "arg7") == 0 ||
+	    strcmp(s, "arg8") == 0 || strcmp(s, "arg9") == 0 ||
+	    strcmp(s, "args") == 0 || strcmp(s, "regs") == 0 ||
+	    strcmp(s, "uregs") == 0 || strcmp(s, "curthread") == 0 ||
+	    strcmp(s, "timestamp") == 0 || strcmp(s, "vtimestamp") == 0 ||
+	    strcmp(s, "ipl") == 0 || strcmp(s, "epid") == 0 ||
+	    strcmp(s, "id") == 0 || strcmp(s, "stackdepth") == 0 ||
+	    strcmp(s, "caller") == 0 || strcmp(s, "probeprov") == 0 ||
+	    strcmp(s, "probemod") == 0 || strcmp(s, "probefunc") == 0 ||
+	    strcmp(s, "probename") == 0 || strcmp(s, "pid") == 0 ||
+	    strcmp(s, "tid") == 0 || strcmp(s, "execname") == 0 ||
+	    strcmp(s, "zonename") == 0 || strcmp(s, "walltimestamp") == 0 ||
+	    strcmp(s, "ustackdepth") == 0 || strcmp(s, "ucaller") == 0 ||
+	    strcmp(s, "ppid") == 0 || strcmp(s, "uid") == 0 ||
+	    strcmp(s, "gid") == 0 || strcmp(s, "errno") == 0 ||
+	    strcmp(s, "jid") == 0 || strcmp(s, "jailname") == 0 ||
+	    strcmp(s, "vmname") == 0 || dnp->dn_kind == DT_NODE_FUNC ||
+	    dnp->dn_kind == DT_NODE_DFUNC);
+}
+
 dtrace_attribute_t
 dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 {
 	dtrace_attribute_t attr;
 	dt_node_t *args, *argp;
 	int argc = 0;
+	dtrace_hdl_t *dtp = dnp->dn_dtp;
 
 	attr = dt_node_list_cook(pargp, DT_IDFLG_REF);
 	args = pargp ? *pargp : NULL;
@@ -981,7 +1017,7 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 	for (argp = args; argp != NULL; argp = argp->dn_list)
 		argc++;
 
-	if (dt_resolve(dnp->dn_target, 0) == 0)
+	if (dt_ident_builtin(dnp))
 		idp->di_ops->di_cook(dnp, idp, argc, args);
 
 	if (idp->di_flags & DT_IDFLG_USER)
