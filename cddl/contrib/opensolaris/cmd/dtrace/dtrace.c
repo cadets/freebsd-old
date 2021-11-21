@@ -1652,6 +1652,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	if (g_unsafe) {
 		return;
 	} else if (!g_exec) {
+		dtrace_dump_actions(dcp->dc_prog);
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		if (g_elf) {
 			tmpfd = mkstemp(template);
@@ -1680,7 +1681,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 *  (5) dtraced writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
-
+		dtrace_dump_actions(dcp->dc_prog);
 		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
 			fatal("failed to init pgplistmtx");
 
@@ -2056,6 +2057,7 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
 		dfatal("failed to parse the ELF file %s", dcp->dc_arg);
+	dtrace_dump_actions(dcp->dc_prog);
 
 	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);
