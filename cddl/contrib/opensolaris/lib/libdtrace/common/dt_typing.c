@@ -2110,9 +2110,10 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING ||
 		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
-		if (type == -1)
+		if (type == -1) {
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed to infer a type for %zu", node->din_uidx);
+			    "failed to infer a type for %zu\n", node->din_uidx);
+		}
 
 		if (type == DIF_TYPE_CTF) {
 			assert(node->din_tf != NULL);
