@@ -1645,8 +1645,8 @@ dt_infer_type(dt_ifg_node_t *n)
 			/*
 			 * Get the non-pointer type. This should NEVER fail.
 			 */
-			type =
-			    dt_typefile_reference(dn1->din_tf, dn1->din_ctfid);
+			type = dt_typefile_reference(
+			    dn1->din_tf, dn1->din_ctfid);
 
 			if (dt_typefile_membinfo(
 			    dn1->din_tf, type, dn1->din_sym, mip) == 0)

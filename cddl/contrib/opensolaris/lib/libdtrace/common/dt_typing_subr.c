@@ -84,9 +84,10 @@ dt_arg_cmpwith(dt_ifg_node_t *arg, dt_typefile_t **tfs, size_t ntfs,
 
 	passed_arg_ctfid = arg->din_ctfid;
 	passed_arg_kind = dt_type_strip_typedef(arg->din_tf, &passed_arg_ctfid);
-	assert(passed_arg_kind != CTF_K_TYPEDEF);
 
-	if (strcmp(type, "void *") == 0 || strcmp(type, "uintptr_t") == 0) {
+	assert(passed_arg_kind != CTF_K_TYPEDEF);
+	if ((strcmp(type, "void *") == 0 || strcmp(type, "uintptr_t") == 0) &&
+	    strcmp(buf, "void *") && strcmp(buf, "uintptr_t")) {
 		/*
 		 * Since this is a void * / uintptr_t, any pointer will do, as D
 		 * allows us to implicitly cast any pointer to void * /

@@ -901,6 +901,34 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 			}
 			break;
 
+		case DIF_OP_PUSHTV: {
+			uint8_t ors, orv, otype, nrs, nrv, ntype;
+
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew != DIF_OP_PUSHTV) {
+				fprintf(stderr, "pushtv was changed (!= %u)\n",
+				    opnew);
+				return (1);
+			}
+
+			ors = DIF_INSTR_RS(ibase);
+			orv = DIF_INSTR_R2(ibase);
+			otype = DIF_INSTR_TYPE(ibase);
+
+			nrs = DIF_INSTR_RS(inew);
+			nrv = DIF_INSTR_R2(inew);
+			ntype = DIF_INSTR_TYPE(inew);
+
+			if (ors != nrs || orv != nrv || ntype != DIF_TYPE_CTF) {
+				fprintf(stderr,
+				    "pushtv %u, %u, %u not allowed "
+				    "from pushtv %u, %u, %u\n",
+				    otype, orv, ors, ntype, nrv, nrs);
+				return (1);
+			}
+			break;
+		}
+
 		default:
 			if (ibase != inew) {
 				opnew = DIF_INSTR_OP(inew);

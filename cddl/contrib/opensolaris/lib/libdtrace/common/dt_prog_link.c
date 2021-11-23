@@ -480,6 +480,22 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
 		relocate_push(dtp, node, actkind, ad, orig_rtype);
 		break;
 
+	case DIF_OP_PUSHTV: {
+		/*
+		 * Patch up the type we're pushing on the stack.
+		 */
+		dif_instr_t newinstr;
+		uint8_t rs, rv;
+
+		rs = DIF_INSTR_RS(instr);
+		rv = DIF_INSTR_R2(instr);
+
+		newinstr = DIF_INSTR_PUSHTS(DIF_OP_PUSHTV,
+		    node->din_type, rv, rs);
+		node->din_buf[node->din_uidx] = newinstr;
+		break;
+	}
+
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
 		relocate_uload(dtp, node);
