@@ -868,6 +868,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				    opnew);
 				return (1);
 			}
+
 			break;
 
 		case DIF_OP_UULOAD:
@@ -889,6 +890,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				    opnew);
 				return (1);
 			}
+
 			break;
 
 		case DIF_OP_TYPECAST:
@@ -899,6 +901,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				    opnew);
 				return (1);
 			}
+
 			break;
 
 		case DIF_OP_PUSHTV: {
@@ -926,6 +929,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				    otype, orv, ors, ntype, nrv, nrs);
 				return (1);
 			}
+
 			break;
 		}
 
@@ -940,6 +944,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				    ibase, inew, opbase, opnew);
 				return (1);
 			}
+
 			break;
 		}
 	}
