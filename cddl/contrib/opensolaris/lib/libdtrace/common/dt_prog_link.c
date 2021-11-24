@@ -456,7 +456,56 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 }
 
 static void
-relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
+patch_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
+{
+	dt_ifg_list_t *sd1l, *sd2l;
+	dt_ifg_node_t *sd1, *sd2;
+	dif_instr_t instr1, instr2;
+	uint8_t op1, op2;
+
+	for (sd1l = dt_list_next(setx_defs1), sd2l = dt_list_next(setx_defs2);
+	     sd1l && sd2l;
+	     sd1l = dt_list_next(sd1l), sd2l = dt_list_next(sd2l)) {
+		sd1 = sd1l->dil_ifgnode;
+		sd2 = sd2l->dil_ifgnode;
+
+		sd1->din_buf[sd1->din_uidx] = DIF_INSTR_NOP;
+		sd2->din_buf[sd2->din_uidx] = DIF_INSTR_NOP;
+	}
+}
+
+static int
+check_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
+{
+	dt_ifg_list_t *sd1l, *sd2l;
+	dt_ifg_node_t *sd1, *sd2;
+	dif_instr_t instr1, instr2;
+	uint8_t op1, op2;
+
+	for (sd1l = dt_list_next(setx_defs1), sd2l = dt_list_next(setx_defs2);
+	     sd1l && sd2l;
+	     sd1l = dt_list_next(sd1l), sd2l = dt_list_next(sd2l)) {
+		sd1 = sd1l->dil_ifgnode;
+		sd2 = sd2l->dil_ifgnode;
+
+		instr1 = sd1->din_buf[sd1->din_uidx];
+		instr2 = sd2->din_buf[sd2->din_uidx];
+
+		op1 = DIF_INSTR_OP(instr1);
+		op2 = DIF_INSTR_OP(instr2);
+
+		/*
+		 * This is really the only thing we need to check here.
+		 */
+		if (op1 != DIF_OP_SETX || instr1 != instr2)
+			return (0);
+	}
+
+	return (1);
+}
+
+static void
+relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
     dtrace_diftype_t *orig_rtype)
 {
@@ -501,7 +550,17 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
 		relocate_uload(dtp, node);
 		break;
 
-	case DIF_OP_TYPECAST:
+	case DIF_OP_TYPECAST: {
+		dif_instr_t idef1, idef2;
+		uint8_t opdef1, opdef2;
+		dt_ifg_node_t *ndef1, *ndef2;
+		dt_ifg_list_t *rd1, *rd2;
+		uint8_t r11, r12, r21, r22, currd, rd;
+		dt_list_t *setx_defs1, *setx_defs2, *defs;
+		char symname[4096] = { 0 };
+		uint16_t sym;
+		size_t l;
+
 		/*
 		 * For typecast, we simply turn it into a nop. We only
 		 * ever use typecast for type inference and can't
@@ -509,8 +568,112 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
 		 * collapse the nops later.
 		 */
 		node->din_buf[node->din_uidx] = DIF_INSTR_NOP;
+
+		if (node->din_uidx < 2)
+			goto end;
+
+		sym = DIF_INSTR_SYMBOL(instr);
+		currd = DIF_INSTR_RD(instr);
+
+		if (sym >= difo->dtdo_symlen)
+			dt_set_progerr(dtp, pgp,
+			    "%s(): sym (%u) >= symlen (%zu)\n", __func__, sym,
+			    difo->dtdo_symlen);
+
+		l = strlcpy(symname, difo->dtdo_symtab + sym, sizeof(symname));
+		if (l >= sizeof(symname))
+			dt_set_progerr(dtp, pgp,
+			    "%s(): length (%zu) >= %zu when copying type name",
+			    __func__, l, sizeof(symname));
+
+		if (strcmp(symname, "uintptr_t") != 0)
+			goto end;
+
+		/*
+		 * Now we need to check if we have a sll followed by a sra as
+		 * the previous two instructions. This can happen in the case
+		 * sign extension is needed -- however we don't actually want to
+		 * do this for an uintptr_t.
+		 */
+		fprintf(stderr, "r1defs = %p\n", dt_list_next(&node->din_r1defs));
+		for (rd1 = dt_list_next(&node->din_r1defs); rd1;
+		     rd1 = dt_list_next(rd1)) {
+			ndef1 = rd1->dil_ifgnode;
+			idef1 = ndef1->din_buf[ndef1->din_uidx];
+			opdef1 = DIF_INSTR_OP(idef1);
+
+			fprintf(stderr, "Looking at node %zu\n", ndef1->din_uidx);
+
+			if (opdef1 != DIF_OP_SRA)
+				continue;
+
+			r11 = DIF_INSTR_R1(idef1);
+			r21 = DIF_INSTR_R2(idef1);
+
+			/*
+			 * Figure out which register we need to look up the
+			 * definitions for.
+			 */
+			defs = NULL;
+			setx_defs1 = NULL;
+
+			if (r11 == currd) {
+				defs = &ndef1->din_r1defs;
+				setx_defs1 = &ndef1->din_r2defs;
+			}
+
+			if (r21 == currd) {
+				/*
+				 * Assert that we don't have a sra %r1, %r1, %r1
+				 * as that would be extremely weird.
+				 */
+				assert(defs == NULL);
+				assert(setx_defs1 == NULL);
+				defs = &ndef1->din_r2defs;
+				setx_defs1 = &ndef1->din_r1defs;
+			}
+
+			if (defs == NULL)
+				continue;
+
+			for (rd2 = dt_list_next(defs); rd2;
+			     rd2 = dt_list_next(rd2)) {
+				ndef2 = rd2->dil_ifgnode;
+				idef2 = ndef2->din_buf[ndef2->din_uidx];
+				opdef2 = DIF_INSTR_OP(idef2);
+
+				if (opdef2 != DIF_OP_SLL)
+					continue;
+
+				r12 = DIF_INSTR_R1(idef2);
+				r22 = DIF_INSTR_R2(idef2);
+
+				rd = DIF_INSTR_RD(idef2);
+
+				setx_defs2 = NULL;
+				if (r12 == rd)
+					setx_defs2 = &ndef2->din_r2defs;
+
+				if (r22 == rd)
+					setx_defs2 = &ndef2->din_r1defs;
+
+				if (setx_defs2 == NULL)
+					continue;
+
+				if (!check_setxs(setx_defs1, setx_defs2))
+					continue;
+
+				ndef2->din_buf[ndef2->din_uidx] = DIF_INSTR_NOP;
+				ndef1->din_buf[ndef1->din_uidx] = DIF_INSTR_NOP;
+
+				patch_setxs(setx_defs1, setx_defs2);
+			}
+		}
+
+end:
 		node->din_relocated = 1;
 		break;
+	}
 
 	default:
 		break;
@@ -518,8 +681,9 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp,
 }
 
 static int
-dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
-    dtrace_actdesc_t *ad, dtrace_difo_t *difo, dtrace_diftype_t *orig_rtype)
+dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
+    dtrace_actkind_t actkind, dtrace_actdesc_t *ad, dtrace_difo_t *difo,
+    dtrace_diftype_t *orig_rtype)
 {
 	dt_ifg_list_t *ifgl;
 	int i, index;
@@ -543,7 +707,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_actkind_t actkind,
 
 	for (ifgl = dt_list_next(&node_list); ifgl != NULL;
 	    ifgl = dt_list_next(ifgl)) {
-		relocate_ifg_entry(ifgl, dtp, actkind, ad, difo, orig_rtype);
+		relocate_ifg_entry(ifgl, dtp, pgp, actkind, ad, difo, orig_rtype);
 	}
 
 	return (0);
@@ -791,7 +955,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	dt_prog_infer_usetxs(difo);
 
 	actkind = ad == NULL ? DTRACEACT_DIFEXPR : ad->dtad_kind;
-	rval = dt_prog_relocate(dtp, actkind, ad, difo, &saved_rtype);
+	rval = dt_prog_relocate(dtp, pgp, actkind, ad, difo, &saved_rtype);
 	if (rval != 0)
 		return (rval);
 
