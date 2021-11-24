@@ -933,6 +933,29 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 			break;
 		}
 
+		case DIF_OP_SLL:
+		case DIF_OP_SRA:
+		case DIF_OP_SETX:
+			/*
+			 * These might come from a sign extension based on a
+			 * typecast. Currently, we just check if they'd perhaps
+			 * been turned into nops.
+			 *
+			 * FIXME(dstolfa, security): We should really make sure
+			 * that this is only turned into a nop when it makes
+			 * sense for it to be turned into a nop, which means
+			 * that the verifier needs to be a whole lot more
+			 * complex than it is right now -- or unnecessarily
+			 * limiting.
+			 */
+			opnew = DIF_INSTR_OP(inew);
+			if (opnew == DIF_OP_NOP)
+				break;
+
+			/*
+			 * If we didn't turn it into a nop instruction, simply
+			 * fall through to the default case.
+			 */
 		default:
 			if (ibase != inew) {
 				opnew = DIF_INSTR_OP(inew);
