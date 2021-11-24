@@ -246,6 +246,7 @@ dt_usite_contains_reg(dt_ifg_node_t *n, dt_ifg_node_t *curnode, uint8_t rd,
 	case DIF_OP_RLDX:
 	case DIF_OP_PUSHTR:
 	case DIF_OP_PUSHTV:
+	case DIF_OP_TYPECAST:
 		rs = DIF_INSTR_RS(instr);
 		if (check && rd == rs)
 			*r1 = 1;
