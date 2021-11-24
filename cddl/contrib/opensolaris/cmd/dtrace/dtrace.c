@@ -1561,6 +1561,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		    pgp->dp_vmid, gpgp_resp->dp_vmid);
 	}
 
+	dtrace_dump_actions(pgp);
+
 	if (pgp->dp_vmid != 0) {
 		/*
 		 * If no probes were enabled for this program, we don't need to
