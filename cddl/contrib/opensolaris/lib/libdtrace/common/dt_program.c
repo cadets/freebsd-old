@@ -1175,6 +1175,14 @@ dt_prog_generate_ident(dtrace_prog_t *pgp)
 	arc4random_buf(pgp->dp_ident, DT_PROG_IDENTLEN);
 }
 
+static void
+fill_instructions(dtrace_difo_t *difo)
+{
+	difo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
+	difo->dtdo_buf[1] = DIF_INSTR_RET(0);
+	difo->dtdo_len = 2;
+}
+
 static dtrace_prog_t *
 dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
@@ -1229,10 +1237,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		difo->dtdo_buf = malloc(sizeof(dif_instr_t) * 2);
 		assert(difo->dtdo_buf != NULL);
 
-		difo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
-		difo->dtdo_buf[1] = DIF_INSTR_RET(0);
-		difo->dtdo_len = 2;
-
+		fill_instructions(difo);
 		newact->dtad_kind = DTRACEACT_DIFEXPR;
 
 		if (dtrace_stmt_add(dtp, newpgp, newstmtdesc))
