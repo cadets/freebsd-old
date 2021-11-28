@@ -4297,8 +4297,10 @@ dtrace_json(const void *vmhdl, uint64_t size,
 	char *dd = dest;
 	uintptr_t cur;
 
+	json = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)json);
+
 	for (cur = json; cur < json + size; cur++) {
-		char cc = dtrace_load8(vmhdl, cur);
+		char cc = dtrace_load8(NULL, cur);
 		if (cc == '\0')
 			return (NULL);
 
