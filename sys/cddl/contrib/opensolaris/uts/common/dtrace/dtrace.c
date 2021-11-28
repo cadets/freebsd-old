@@ -8226,7 +8226,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax,
     int dtkind, void *vmhdl)
 {
 	volatile uint16_t *flags;
-	uint64_t val = *valp;
+	uint64_t val = (uint64_t)dtrace_addrxlate(vmhdl, (void *)*valp);
 	size_t valoffs = *valoffsp;
 
 	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
@@ -8242,7 +8242,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax,
 
 		for (s = 0; s < size; s++) {
 			if (c != '\0' && dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(vmhdl, val++);
+				c = dtrace_load8(NULL, val++);
 			} else if (c != '\0' && dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
@@ -8260,7 +8260,7 @@ dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax,
 		uint8_t c;
 		while (valoffs < end) {
 			if (dtkind == DIF_TF_BYREF) {
-				c = dtrace_load8(vmhdl, val++);
+				c = dtrace_load8(NULL, val++);
 			} else if (dtkind == DIF_TF_BYUREF) {
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				c = dtrace_fuword8((void *)(uintptr_t)val++);
