@@ -2093,12 +2093,13 @@ dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 			uint64_t j, size = key[i].dttk_size;
 			uintptr_t base = (uintptr_t)key[i].dttk_value;
 			const void *vmhdl = key[i].dttk_vmhdl;
+			base = (uintptr_t)dtrace_addrxlate((void *)base, vmhdl);
 
 			if (!dtrace_canload(base, size, mstate, vstate))
 				break;
 
 			for (j = 0; j < size; j++) {
-				hashval += dtrace_load8(vmhdl, base + j);
+				hashval += dtrace_load8(NULL, base + j);
 				hashval += (hashval << 10);
 				hashval ^= (hashval >> 6);
 			}
