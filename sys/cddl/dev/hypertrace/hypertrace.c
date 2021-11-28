@@ -61,9 +61,9 @@
 
 static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
 
-static lwpid_t    hypertrace_priv_gettid(void *);
-static uint16_t   hypertrace_priv_getns(void *);
-static const char *hypertrace_priv_getname(void *);
+static lwpid_t    hypertrace_priv_gettid(const void *);
+static uint16_t   hypertrace_priv_getns(const void *);
+static const char *hypertrace_priv_getname(const void *);
 static int        hypertrace_priv_rmprobe(uint16_t, hypertrace_id_t);
 static int        hypertrace_priv_is_enabled(uint16_t, hypertrace_id_t);
 static int        hypertrace_priv_create_probes(uint16_t, void *, size_t);
@@ -72,9 +72,9 @@ static void       hypertrace_priv_disable(uint16_t, hypertrace_id_t);
 static void       hypertrace_priv_suspend(uint16_t, hypertrace_id_t);
 static void       hypertrace_priv_resume(uint16_t, hypertrace_id_t);
 
-lwpid_t    (*vmm_gettid)(void *);
-uint16_t   (*vmm_getid)(void *);
-const char *(*vmm_getname)(void *);
+lwpid_t    (*vmm_gettid)(const void *);
+uint16_t   (*vmm_getid)(const void *);
+const char *(*vmm_getname)(const void *);
 
 static d_open_t hypertrace_open;
 static int      hypertrace_unload(void);
@@ -249,7 +249,7 @@ hypertrace_priv_resume(uint16_t vmid, hypertrace_id_t id)
 }
 
 void
-hypertrace_probe(void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_args)
+hypertrace_probe(const void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_args)
 {
 	hypertrace_probe_t *ht_probe;
 	uint16_t vmid;
@@ -268,7 +268,7 @@ hypertrace_probe(void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_args)
  * Get the thread ID of the VM.
  */
 static lwpid_t
-hypertrace_priv_gettid(void *vmhdl)
+hypertrace_priv_gettid(const void *vmhdl)
 {
 
 	return (vmm_gettid == NULL ? 0 : vmm_gettid(vmhdl));
@@ -279,14 +279,14 @@ hypertrace_priv_gettid(void *vmhdl)
  * thread-local storage in the DTrace probe context.
  */
 static uint16_t
-hypertrace_priv_getns(void *vmhdl)
+hypertrace_priv_getns(const void *vmhdl)
 {
 
 	return (vmm_getid == NULL ? 0 : vmm_getid(vmhdl));
 }
 
 static const char *
-hypertrace_priv_getname(void *vmhdl)
+hypertrace_priv_getname(const void *vmhdl)
 {
 
 	return (vmm_getname == NULL ? 0 : vmm_getname(vmhdl));

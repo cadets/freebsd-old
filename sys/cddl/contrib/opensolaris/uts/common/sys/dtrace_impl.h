@@ -806,12 +806,12 @@ typedef struct dtrace_speculation {
 typedef struct dtrace_key {
 	uint64_t dttk_value;			/* data value or data pointer */
 	uint64_t dttk_size;			/* 0 if by-val, >0 if by-ref */
-	void *dttk_vmhdl;			/* VM handle for the data */
+	const void *dttk_vmhdl;			/* VM handle for the data */
 } dtrace_key_t;
 
 typedef struct dtrace_reg {
 	uint64_t dttr_value;			/* data value/pointer */
-	void *dttr_vmhdl;			/* VM handle */
+	const void *dttr_vmhdl;			/* VM handle */
 } dtrace_reg_t;
 
 typedef struct dtrace_tuple {
@@ -824,7 +824,7 @@ typedef struct dtrace_dynvar {
 	uint64_t dtdv_hashval;			/* hash value -- 0 if free */
 	struct dtrace_dynvar *dtdv_next;	/* next on list or hash chain */
 	void *dtdv_data;			/* pointer to data */
-	void *dtdv_vmhdl;			/* VM handle */
+	const void *dtdv_vmhdl;			/* VM handle */
 	dtrace_tuple_t dtdv_tuple;		/* tuple key */
 } dtrace_dynvar_t;
 
@@ -912,7 +912,7 @@ typedef struct dtrace_statvar {
 	uint64_t dtsv_data;			/* data or pointer to it */
 	size_t dtsv_size;			/* size of pointed-to data */
 	int dtsv_refcnt;			/* reference count */
-	void *dtsv_vmhdl;			/* VM handle */
+	const void *dtsv_vmhdl;			/* VM handle */
 	dtrace_difv_t dtsv_var;			/* variable metadata */
 } dtrace_statvar_t;
 
@@ -969,7 +969,7 @@ typedef struct dtrace_mstate {
 	uint32_t dtms_access;			/* memory access rights */
 	dtrace_difo_t *dtms_difo;		/* current dif object */
 	file_t *dtms_getf;			/* cached rval of getf() */
-	void *dtms_vmhdl;			/* current VM handle */
+	const void *dtms_vmhdl;			/* current VM handle */
 	struct hypertrace_args *dtms_htrargs;	/* HyperTrace arguments */
 } dtrace_mstate_t;
 

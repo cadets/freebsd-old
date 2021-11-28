@@ -473,9 +473,9 @@ void vm_copyin(struct vm *vm, int vcpuid, struct vm_copyinfo *copyinfo,
     void *kaddr, size_t len);
 void vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
     struct vm_copyinfo *copyinfo, size_t len);
-extern lwpid_t (*vmm_gettid)(void *vhdl);
-extern uint16_t (*vmm_getid)(void *vhdl);
-extern const char *(*vmm_getname)(void *vhdl);
+extern lwpid_t (*vmm_gettid)(const void *vhdl);
+extern uint16_t (*vmm_getid)(const void *vhdl);
+extern const char *(*vmm_getname)(const void *vhdl);
 
 int vcpu_trace_exceptions(struct vm *vm, int vcpuid);
 #endif	/* KERNEL */

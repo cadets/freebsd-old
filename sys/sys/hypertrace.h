@@ -49,10 +49,10 @@ typedef struct hypertrace_args {
  * do for now. This acts as a public interface to HyperTrace for both FreeBSD
  * and DTrace.
  */
-extern void       hypertrace_probe(void *, hypertrace_id_t, hypertrace_args_t *);
-extern lwpid_t    (*hypertrace_gettid)(void *);
-extern uint16_t   (*hypertrace_getns)(void *);
-extern const char *(*hypertrace_getname)(void *);
+extern void       hypertrace_probe(const void *, hypertrace_id_t, hypertrace_args_t *);
+extern lwpid_t    (*hypertrace_gettid)(const void *);
+extern uint16_t   (*hypertrace_getns)(const void *);
+extern const char *(*hypertrace_getname)(const void *);
 extern int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
 extern int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
 extern int        (*hypertrace_is_enabled)(uint16_t, hypertrace_id_t);

@@ -428,9 +428,9 @@ static int		dtrace_helptrace_wrapped = 0;
 /*
  * HyperTrace hooks.
  */
-lwpid_t    (*hypertrace_gettid)(void *);
-uint16_t   (*hypertrace_getns)(void *);
-const char *(*hypertrace_getname)(void *);
+lwpid_t    (*hypertrace_gettid)(const void *);
+uint16_t   (*hypertrace_getns)(const void *);
+const char *(*hypertrace_getname)(const void *);
 int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
 int        (*hypertrace_is_enabled)(uint16_t, hypertrace_id_t);
 int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
@@ -516,7 +516,7 @@ static kmutex_t dtrace_errlock;
 		uint_t actv = _c->cpu_intr_actv;               \
 		lwpid_t tid;                                   \
 		uint16_t ns;                                   \
-		void *vmhdl = mstate->dtms_vmhdl;              \
+		const void *vmhdl = mstate->dtms_vmhdl;        \
 		for (; actv; actv >>= 1)                       \
 			intr++;                                \
 		ASSERT(intr < (1 << 3));                       \
@@ -594,7 +594,7 @@ dtrace_get_paging(const void *_vmhdl)
 
 #define DTRACE_LOADFUNC(bits)                                                 \
 	/*CSTYLED*/                                                           \
-	uint##bits##_t dtrace_load##bits(void *vmhdl, uintptr_t addr)         \
+	uint##bits##_t dtrace_load##bits(const void *vmhdl, uintptr_t addr)   \
 	{                                                                     \
 		size_t size = bits / NBBY;                                    \
 		/*CSTYLED*/                                                   \
@@ -680,7 +680,7 @@ dtrace_get_paging(const void *_vmhdl)
 	(act)->dta_difo->dtdo_rtype.dtdt_kind == DIF_TYPE_STRING)
 
 /* Function prototype definitions: */
-static size_t dtrace_strlen(void *, const char *, size_t);
+static size_t dtrace_strlen(const void *, const char *, size_t);
 static dtrace_probe_t *dtrace_probe_lookup_id(dtrace_vmid_t, dtrace_id_t);
 static void dtrace_enabling_provide(dtrace_provider_t *);
 static int dtrace_enabling_match(dtrace_enabling_t *, int *);
@@ -698,11 +698,11 @@ static int dtrace_state_option(dtrace_state_t *, dtrace_optid_t,
     dtrace_optval_t);
 static int dtrace_ecb_create_enable(dtrace_probe_t *, void *);
 static void dtrace_helper_provider_destroy(dtrace_helper_provider_t *);
-uint16_t dtrace_load16(void *, uintptr_t);
-uint32_t dtrace_load32(void *, uintptr_t);
-uint64_t dtrace_load64(void *, uintptr_t);
-uint8_t dtrace_load8(void *, uintptr_t);
-uintptr_t dtrace_vmloadmem(void *, uintptr_t, size_t);
+uint16_t dtrace_load16(const void *, uintptr_t);
+uint32_t dtrace_load32(const void *, uintptr_t);
+uint64_t dtrace_load64(const void *, uintptr_t);
+uint8_t dtrace_load8(const void *, uintptr_t);
+uintptr_t dtrace_vmloadmem(const void *, uintptr_t, size_t);
 void dtrace_dynvar_clean(dtrace_dstate_t *);
 dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *, uint_t, dtrace_key_t *,
     size_t, dtrace_dynvar_op_t, dtrace_mstate_t *, dtrace_vstate_t *);
@@ -809,7 +809,7 @@ DTRACE_LOADFUNC(64)
 /* END CSTYLED */
 
 uintptr_t
-dtrace_vmloadmem(void *vmhdl, uintptr_t addr, size_t size)
+dtrace_vmloadmem(const void *vmhdl, uintptr_t addr, size_t size)
 {
 	uintptr_t rval;
 	int err;
@@ -1190,7 +1190,7 @@ dtrace_filterfind(dtrace_machine_filter_t *filt, const char *find)
  * calls in the event that the user has all privileges.
  */
 static int
-dtrace_strcanload(uint64_t addr, size_t sz, void *vmhdl, size_t *remain,
+dtrace_strcanload(uint64_t addr, size_t sz, const void *vmhdl, size_t *remain,
     dtrace_mstate_t *mstate, dtrace_vstate_t *vstate)
 {
 	size_t rsize;
@@ -1234,7 +1234,7 @@ dtrace_strcanload(uint64_t addr, size_t sz, void *vmhdl, size_t *remain,
  * region in which a load may be issued given the user's privilege level.
  */
 static int
-dtrace_vcanload(void *vmhdl, void *src, dtrace_diftype_t *type, size_t *remain,
+dtrace_vcanload(const void *vmhdl, void *src, dtrace_diftype_t *type, size_t *remain,
     dtrace_mstate_t *mstate, dtrace_vstate_t *vstate)
 {
 	size_t sz;
@@ -1287,7 +1287,7 @@ dtrace_vcanload(void *vmhdl, void *src, dtrace_diftype_t *type, size_t *remain,
  * no additional function calls.
  */
 static int64_t
-dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
+dtrace_strtoll(const void *vmhdl, char *input, int base, size_t limit)
 {
 	uintptr_t pos = (uintptr_t)dtrace_addrxlate(vmhdl, input);
 	int64_t val = 0;
@@ -1336,7 +1336,8 @@ dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
  * Compare two strings using safe loads.
  */
 static int
-dtrace_strncmp(void *vh1, void *vh2, char *s1, char *s2, size_t limit)
+dtrace_strncmp(const void *vh1, const void *vh2, char *s1,
+    char *s2, size_t limit)
 {
 	uint8_t c1, c2;
 	volatile uint16_t *flags;
@@ -1371,9 +1372,10 @@ dtrace_strncmp(void *vh1, void *vh2, char *s1, char *s2, size_t limit)
  * len parameter is used to specify a maximum length to ensure completion.
  */
 static size_t
-dtrace_strlen(void *vmhdl, const char *s, size_t lim)
+dtrace_strlen(const void *vmhdl, const char *s, size_t lim)
 {
 	uint_t len;
+	s = dtrace_addrxlate(vmhdl, s);
 
 	for (len = 0; len != lim; len++) {
 		if (dtrace_load8(vmhdl, (uintptr_t)s++) == '\0')
@@ -1442,7 +1444,7 @@ dtrace_addrxlate(const void *vmhdl, const void *addr)
  * standard bcopy, overlapping copies are handled properly.
  */
 static void
-dtrace_bcopy(void *vmhdl, const void *src, void *dst, size_t len)
+dtrace_bcopy(const void *vmhdl, const void *src, void *dst, size_t len)
 {
 	src = dtrace_addrxlate(vmhdl, src);
 
@@ -1473,7 +1475,7 @@ dtrace_bcopy(void *vmhdl, const void *src, void *dst, size_t len)
  * Unlike dtrace_bcopy(), overlapping regions are not handled.
  */
 static void
-dtrace_strcpy(void *vmhdl, const void *src, void *dst, size_t len)
+dtrace_strcpy(const void *vmhdl, const void *src, void *dst, size_t len)
 {
 	src = dtrace_addrxlate(vmhdl, src);
 
@@ -1494,7 +1496,7 @@ dtrace_strcpy(void *vmhdl, const void *src, void *dst, size_t len)
  * specified type; we assume that we can store to directly.
  */
 static void
-dtrace_vcopy(void *vmhdl, void *src, void *dst,
+dtrace_vcopy(const void *vmhdl, void *src, void *dst,
     dtrace_diftype_t *type, size_t limit)
 {
 	ASSERT(type->dtdt_flags & DIF_TF_BYREF);
@@ -1512,7 +1514,7 @@ dtrace_vcopy(void *vmhdl, void *src, void *dst,
  * safe memory that we can access directly because it is managed by DTrace.
  */
 static int
-dtrace_bcmp(void *vmhdl, const void *s1, const void *s2, size_t len)
+dtrace_bcmp(const void *vmhdl, const void *s1, const void *s2, size_t len)
 {
 	volatile uint16_t *flags;
 
@@ -2089,7 +2091,7 @@ dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 			 */
 			uint64_t j, size = key[i].dttk_size;
 			uintptr_t base = (uintptr_t)key[i].dttk_value;
-			void *vmhdl = key[i].dttk_vmhdl;
+			const void *vmhdl = key[i].dttk_vmhdl;
 
 			if (!dtrace_canload(base, size, mstate, vstate))
 				break;
@@ -4277,7 +4279,7 @@ typedef enum dtrace_json_state {
  * no additional function calls.
  */
 static char *
-dtrace_json(void *vmhdl, uint64_t size,
+dtrace_json(const void *vmhdl, uint64_t size,
     uintptr_t json, char *elemlist, int nelems, char *dest)
 {
 	dtrace_json_state_t state = DTRACE_JSON_REST;
@@ -4646,7 +4648,8 @@ dtrace_json(void *vmhdl, uint64_t size,
  */
 static char *
 dtrace_strjoin(dtrace_state_t *state, dtrace_mstate_t *mstate,
-    dtrace_vstate_t *vstate, void *vh1, void *vh2, uintptr_t s1, uintptr_t s2)
+    dtrace_vstate_t *vstate, const void *vh1, const void *vh2, uintptr_t s1,
+    uintptr_t s2)
 {
 	char *d = (char *)mstate->dtms_scratch_ptr;
 	uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
@@ -4769,7 +4772,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		break;
 
 	case DIF_SUBR_MUTEX_OWNER: {
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 
 		if (!dtrace_canload(tupregs[0].dttk_value, sizeof (kmutex_t),
 		    mstate, vstate)) {
@@ -4891,7 +4894,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		break;
 
 	case DIF_SUBR_MUTEX_OWNER: {
-		void *vmhdl;
+		const void *vmhdl;
 		if (!dtrace_canload(tupregs[0].dttk_value,
 			sizeof (struct lock_object), mstate, vstate)) {
 			regs[rd].dttr_value = 0;
@@ -5255,7 +5258,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 
 	case DIF_SUBR_COPYOUTSTR: {
 		uintptr_t kaddr = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uintptr_t uaddr = tupregs[1].dttk_value;
 		uint64_t size = tupregs[2].dttk_value;
 		size_t lim;
@@ -5275,7 +5278,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_STRLEN: {
 		size_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t addr = (uintptr_t)tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		size_t lim;
 
 		if (!dtrace_strcanload(
@@ -5300,7 +5303,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * of the specified character instead of the first.
 		 */
 		uintptr_t addr = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uintptr_t addr_limit;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		size_t lim;
@@ -5343,8 +5346,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 */
 		char *addr = (char *)(uintptr_t)tupregs[0].dttk_value;
 		char *substr = (char *)(uintptr_t)tupregs[1].dttk_value;
-		void *vhaddr = tupregs[0].dttk_vmhdl;
-		void *vhsubstr = tupregs[0].dttk_vmhdl;
+		const void *vhaddr = tupregs[0].dttk_vmhdl;
+		const void *vhsubstr = tupregs[0].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		size_t len = dtrace_strlen(vhaddr, addr, size);
 		size_t sublen = dtrace_strlen(vhsubstr, substr, size);
@@ -5500,8 +5503,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_STRTOK: {
 		uintptr_t addr = tupregs[0].dttk_value;
 		uintptr_t tokaddr = tupregs[1].dttk_value;
-		void *vhaddr = tupregs[0].dttk_vmhdl;
-		void *vhtok = tupregs[1].dttk_vmhdl;
+		const void *vhaddr = tupregs[0].dttk_vmhdl;
+		const void *vhtok = tupregs[1].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t limit, toklimit;
 		size_t clim;
@@ -5624,7 +5627,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 
 	case DIF_SUBR_SUBSTR: {
 		uintptr_t s = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		char *d = (char *)mstate->dtms_scratch_ptr;
 		int64_t index = (int64_t)tupregs[1].dttk_value;
@@ -5681,14 +5684,14 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_JSON: {
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t json = tupregs[0].dttk_value;
-		void *vh1 = tupregs[0].dttk_vmhdl;
+		const void *vh1 = tupregs[0].dttk_vmhdl;
 		size_t jsonlen = dtrace_strlen(vh1, (char *)json, size);
 		uintptr_t elem = tupregs[1].dttk_value;
-		void *vh2 = tupregs[1].dttk_vmhdl;
+		const void *vh2 = tupregs[1].dttk_vmhdl;
 		size_t elemlen = dtrace_strlen(vh2, (char *)elem, size);
 
-		void *vhjson = tupregs[0].dttk_vmhdl;
-		void *vhelem = tupregs[1].dttk_vmhdl;
+		const void *vhjson = tupregs[0].dttk_vmhdl;
+		const void *vhelem = tupregs[1].dttk_vmhdl;
 
 		char *dest = (char *)mstate->dtms_scratch_ptr;
 		char *elemlist = (char *)mstate->dtms_scratch_ptr + jsonlen + 1;
@@ -5750,7 +5753,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_TOUPPER:
 	case DIF_SUBR_TOLOWER: {
 		uintptr_t s = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		char *dest = (char *)mstate->dtms_scratch_ptr, c;
 		size_t len = dtrace_strlen(vmhdl, (char *)s, size);
@@ -5830,7 +5833,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		char *start = (char *)dest, *end = start + size - 1;
 		uintptr_t daddr = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		int64_t minor = (int64_t)tupregs[1].dttk_value;
 		char *s;
 		int i, len, depth = 0;
@@ -6026,7 +6029,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 
 	case DIF_SUBR_STRTOLL: {
 		uintptr_t s = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		size_t lim;
 		int base = 10;
@@ -6139,7 +6142,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		char *dest = (char *)mstate->dtms_scratch_ptr;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t src = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		char dot[] = ".";
 		int i, j, len = dtrace_strlen(vmhdl, (char *)src, size);
 		int lastbase = -1, firstbase = -1, lastdir = -1;
@@ -6295,7 +6298,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		char *dest = (char *)mstate->dtms_scratch_ptr, c;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t src = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		size_t lim;
 		int i = 0, j = 0;
 #ifdef illumos
@@ -6692,7 +6695,7 @@ inetout:
 	case DIF_SUBR_MEMSTR: {
 		char *str = (char *)mstate->dtms_scratch_ptr;
 		uintptr_t mem = tupregs[0].dttk_value;
-		void *vmhdl = tupregs[0].dttk_vmhdl;
+		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		char c = tupregs[1].dttk_value;
 		size_t size = tupregs[2].dttk_value;
 		uint8_t n;
@@ -6745,7 +6748,7 @@ inetout:
  */
 static uint64_t
 dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
-    dtrace_vstate_t *vstate, dtrace_state_t *state, void **retvmhdl)
+    dtrace_vstate_t *vstate, dtrace_state_t *state, const void **retvmhdl)
 {
 	const dif_instr_t *text = difo->dtdo_buf;
 	const uint_t textlen = difo->dtdo_len;
@@ -6769,7 +6772,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 	uint8_t ttop = 0;
 	dif_instr_t instr;
 	uint_t r1, r2, rd;
-	void *vh1, *vh2;
+	const void *vh1, *vh2;
 
 	/*
 	 * We stash the current DIF object into the machine state: we need it
@@ -7178,8 +7181,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			size_t sz = state->dts_options[DTRACEOPT_STRSIZE];
 			uintptr_t s1 = regs[r1].dttr_value;
 			uintptr_t s2 = regs[r2].dttr_value;
-			void *vh1 = regs[r1].dttr_vmhdl;
-			void *vh2 = regs[r2].dttr_vmhdl;
+			const void *vh1 = regs[r1].dttr_vmhdl;
+			const void *vh2 = regs[r2].dttr_vmhdl;
 			size_t lim1, lim2;
 
 			/*
@@ -8224,7 +8227,7 @@ out:
 static void
 dtrace_store_by_ref(dtrace_mstate_t *mstate, dtrace_difo_t *dp, caddr_t tomax,
     size_t size, size_t *valoffsp, uint64_t *valp, uint64_t end, int intuple,
-    int dtkind, void *vmhdl)
+    int dtkind, const void *vmhdl)
 {
 	volatile uint16_t *flags;
 	uint64_t val = (uint64_t)dtrace_addrxlate(vmhdl, (void *)*valp);
@@ -8327,7 +8330,7 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_vprobe(void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
+dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 {
 	processorid_t cpuid;
 	dtrace_icookie_t cookie;
@@ -8475,7 +8478,7 @@ dtrace_vprobe(void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 		uint64_t tracememsize = 0;
 		int committed = 0, error = 0;
 		caddr_t tomax;
-		void *retvmhdl = mstate.dtms_vmhdl;
+		const void *retvmhdl = mstate.dtms_vmhdl;
 
 		/*
 		 * A little subtlety with the following (seemingly innocuous)
@@ -17412,7 +17415,7 @@ dtrace_helper(int which, dtrace_mstate_t *mstate,
 	dtrace_vstate_t *vstate;
 	dtrace_difo_t *pred;
 	int i, trace = dtrace_helptrace_buffer != NULL;
-	void *retvmhdl = mstate->dtms_vmhdl;
+	const void *retvmhdl = mstate->dtms_vmhdl;
 
 	ASSERT(which >= 0 && which < DTRACE_NHELPER_ACTIONS);
 

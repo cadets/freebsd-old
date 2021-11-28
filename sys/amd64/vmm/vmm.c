@@ -358,9 +358,9 @@ static void vm_free_memmap(struct vm *vm, int ident);
 static bool sysmem_mapping(struct vm *vm, struct mem_map *mm);
 static void vcpu_notify_event_locked(struct vcpu *vcpu, bool lapic_intr);
 
-static lwpid_t vmm_priv_gettid(void *);
-static uint16_t vmm_priv_getid(void *);
-static const char *vmm_priv_getname(void *);
+static lwpid_t vmm_priv_gettid(const void *);
+static uint16_t vmm_priv_getid(const void *);
+static const char *vmm_priv_getname(const void *);
 
 static int
 sysctl_vmm_hypervisor_mode(SYSCTL_HANDLER_ARGS)
@@ -3086,26 +3086,26 @@ vm_copyout(struct vm *vm, int vcpuid, const void *kaddr,
 }
 
 static lwpid_t
-vmm_priv_gettid(void *xvhdl)
+vmm_priv_gettid(const void *xvhdl)
 {
 
-	struct vm_hdl *vhdl = xvhdl;
+	const struct vm_hdl *vhdl = xvhdl;
 	return (vhdl->tid);
 }
 
 static uint16_t
-vmm_priv_getid(void *xvhdl)
+vmm_priv_getid(const void *xvhdl)
 {
 
-	struct vm_hdl *vhdl = xvhdl;
+	const struct vm_hdl *vhdl = xvhdl;
 	return (vhdl->vm->id);
 }
 
 static const char *
-vmm_priv_getname(void *xvhdl)
+vmm_priv_getname(const void *xvhdl)
 {
 
-	struct vm_hdl *vhdl = xvhdl;
+	const struct vm_hdl *vhdl = xvhdl;
 	return (vhdl->vm->name);
 }
 
