@@ -5027,7 +5027,13 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 */
 		if (subr == DIF_SUBR_COPYIN) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-			dtrace_copyin(tupregs[0].dttk_value, dest, size, flags);
+			if (tupregs[0].dttk_vmhdl)
+				dtrace_bcopy(tupregs[0].dttk_vmhdl,
+				    (void *)tupregs[0].dttk_value, (void *)dest,
+				    size);
+			else
+				dtrace_copyin(
+				    tupregs[0].dttk_value, dest, size, flags);
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 			tupregs[0].dttk_vmhdl = NULL;
 		}
@@ -5054,7 +5060,11 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		}
 
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		dtrace_copyin(tupregs[0].dttk_value, dest, size, flags);
+		if (tupregs[0].dttk_vmhdl)
+			dtrace_bcopy(tupregs[0].dttk_vmhdl,
+			    (void *)tupregs[0].dttk_value, (void *)dest, size);
+		else
+			dtrace_copyin(tupregs[0].dttk_value, dest, size, flags);
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 		break;
 	}
@@ -5063,7 +5073,6 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		uintptr_t dest = mstate->dtms_scratch_ptr;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		int err;
-		uint64_t hva;
 
 		if (nargs > 1 && tupregs[1].dttk_value < size)
 			size = tupregs[1].dttk_value + 1;
@@ -5082,33 +5091,12 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 
 		err = 0;
 
-		/*
-		 * FIXME(dstolfa): The guest needs to perform the translation
-		 * for user -> kernel address before calling into us. That way,
-		 * we can ensure that all addresses are kernel addresses and the
-		 * below code will actually be valid.
-		 */
-		if (tupregs[0].dttk_vmhdl)
-			err = dtrace_gla2hva(
-			    dtrace_get_paging(tupregs[0].dttk_vmhdl),
-			    tupregs[0].dttk_value, &hva);
-		else
-			hva = tupregs[0].dttk_value;
-
-		if (err) {
-			/*
-			 * If we errored out during the translation of the guest
-			 * linear address to a host virtual address, set the
-			 * result to 0, similar to what DTrace does with other
-			 * failures.
-			 */
-			regs[rd].dttr_value = 0;
-			regs[rd].dttr_vmhdl = NULL;
-			break;
-		}
-
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-		dtrace_copyinstr(hva, dest, size, flags);
+		if (tupregs[0].dttk_vmhdl)
+			dtrace_bcopy(tupregs[0].dttk_vmhdl,
+			    (void *)tupregs[0].dttk_value, (void *)dest, size);
+		else
+			dtrace_copyinstr(tupregs[0].dttk_value, dest, size, flags);
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 		((char *)dest)[size - 1] = '\0';
@@ -7541,7 +7529,7 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 			}
 
 			tupregs[ttop].dttk_value = regs[rd].dttr_value;
-			tupregs[ttop].dttk_vmhdl = NULL;
+			tupregs[ttop].dttk_vmhdl = regs[rd].dttr_vmhdl;
 			tupregs[ttop++].dttk_size = 0;
 			break;
 

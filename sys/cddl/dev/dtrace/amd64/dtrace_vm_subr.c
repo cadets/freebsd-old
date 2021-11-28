@@ -201,7 +201,7 @@ dtrace_pdpe(pmap_t pmap, vm_offset_t va)
 
 	PGV = dtrace_valid_bit(pmap);
 	pml4e = dtrace_pml4e(pmap, va);
-	if ((*pml4e & PGV) == 0)
+	if (pml4e == NULL || (*pml4e & PGV) == 0)
 		return (NULL);
 	return (dtrace_pml4e_to_pdpe(pml4e, va));
 }
@@ -328,14 +328,18 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 	/* Make sure we have the paging */
 	ASSERT(paging != NULL);
 
-	if (paging->cpl == 3)
+	if (paging->cpl == 3) {
+		*hva = 0;
 		return (EINVAL);
+	}
 
  restart:
 	/* Page table root */
 	ptpphys = paging->cr3;
-	if (dtrace_canonical_check(paging->cpu_mode, gla))
-	    return (EINVAL);
+	if (dtrace_canonical_check(paging->cpu_mode, gla)) {
+		*hva = 0;
+		return (EINVAL);
+	}
 
 	/*
 	 * We only care about flat and 64-bit paging modes. We ignore
@@ -383,6 +387,7 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 		pte >>= ptpshift; pte <<= (ptpshift + 12); pte >>= 12;
 		gpa = pte | (gla & (pgsize - 1));
 	} else {
+		*hva = 0;
 		return (EINVAL);
 	}
 

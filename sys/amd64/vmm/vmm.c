@@ -1911,7 +1911,20 @@ static __inline int64_t
 hc_handle_test(struct vm *vm, int vcpuid,
     uintptr_t *args, struct vm_guest_paging *paging)
 {
+	int copied_int = 0;
+	struct seg_desc ds_desc;
+	int err;
 
+	err = vm_get_seg_desc(vm, vcpuid, VM_REG_GUEST_DS, &ds_desc);
+	KASSERT(err == 0, ("%s: error %d getting DS descriptor",
+	    __func__, err));
+
+	err = hypercall_copy_arg(vm, vcpuid, ds_desc.base, args[0], sizeof(int),
+	    paging, &copied_int);
+	KASSERT(err == 0, ("%s: error %d copying the arguments",
+	    __func__, err));
+
+	printf("got int: %d\n", copied_int);
 	return (HYPERCALL_RET_SUCCESS);
 }
 
