@@ -585,10 +585,10 @@ do {									\
 	(mstate)->dtms_scratch_ptr >= (alloc_sz))
 
 static struct vm_guest_paging *
-dtrace_get_paging(void *_vmhdl)
+dtrace_get_paging(const void *_vmhdl)
 {
 
-	struct vm_hdl *vmhdl = _vmhdl;
+	const struct vm_hdl *vmhdl = _vmhdl;
 	return (vmhdl->paging);
 }
 
@@ -713,6 +713,7 @@ static int dtrace_canload_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
 static int dtrace_canstore_remains(uint64_t, size_t, size_t *,
     dtrace_mstate_t *, dtrace_vstate_t *);
+static void *dtrace_addrxlate(const void *, const void *);
 
 /*
  * DTrace Probe Context Functions
@@ -1288,7 +1289,7 @@ dtrace_vcanload(void *vmhdl, void *src, dtrace_diftype_t *type, size_t *remain,
 static int64_t
 dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
 {
-	uintptr_t pos = (uintptr_t)input;
+	uintptr_t pos = (uintptr_t)dtrace_addrxlate(vmhdl, input);
 	int64_t val = 0;
 	int x;
 	boolean_t neg = B_FALSE;
@@ -1298,7 +1299,7 @@ dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
 	/*
 	 * Consume any whitespace preceding digits.
 	 */
-	while ((c = dtrace_load8(vmhdl, pos)) == ' ' || c == '\t')
+	while ((c = dtrace_load8(NULL, pos)) == ' ' || c == '\t')
 		pos++;
 
 	/*
@@ -1307,7 +1308,7 @@ dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
 	if (c == '-' || c == '+') {
 		if (c == '-')
 			neg = B_TRUE;
-		c = dtrace_load8(vmhdl, ++pos);
+		c = dtrace_load8(NULL, ++pos);
 	}
 
 	/*
@@ -1315,8 +1316,8 @@ dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
 	 * if present.
 	 */
 	if (base == 16 && c == '0' &&
-	    ((cc = dtrace_load8(vmhdl, pos + 1)) == 'x' || cc == 'X') &&
-	    isxdigit(ccc = dtrace_load8(vmhdl, pos + 2))) {
+	    ((cc = dtrace_load8(NULL, pos + 1)) == 'x' || cc == 'X') &&
+	    isxdigit(ccc = dtrace_load8(NULL, pos + 2))) {
 		pos += 2;
 		c = ccc;
 	}
@@ -1325,7 +1326,7 @@ dtrace_strtoll(void *vmhdl, char *input, int base, size_t limit)
 	 * Read in contiguous digits until the first non-digit character.
 	 */
 	for (; pos < end && c != '\0' && lisalnum(c) && (x = DIGIT(c)) < base;
-	    c = dtrace_load8(vmhdl, ++pos))
+	    c = dtrace_load8(NULL, ++pos))
 		val = val * base + x;
 
 	return (neg ? -val : val);
@@ -1412,7 +1413,7 @@ dtrace_istoxic(uintptr_t kaddr, size_t size)
 }
 
 static void *
-dtrace_addrxlate(void *vmhdl, const void *addr)
+dtrace_addrxlate(const void *vmhdl, const void *addr)
 {
 	uint64_t hva;
 	int err;
