@@ -4661,6 +4661,9 @@ dtrace_strjoin(dtrace_state_t *state, dtrace_mstate_t *mstate,
 	size_t lim1, lim2;
 	char c;
 
+	s1 = (uintptr_t)dtrace_addrxlate(vh1, (void *)s1);
+	s2 = (uintptr_t)dtrace_addrxlate(vh2, (void *)s2);
+
 	if (!dtrace_strcanload(s1, size, vh1, &lim1, mstate, vstate) ||
 	    !dtrace_strcanload(s2, size, vh2, &lim2, mstate, vstate))
 		return (NULL);
@@ -4676,7 +4679,7 @@ dtrace_strjoin(dtrace_state_t *state, dtrace_mstate_t *mstate,
 			return (NULL);
 		}
 
-		c = (i >= lim1) ? '\0' : dtrace_load8(vh1, s1++);
+		c = (i >= lim1) ? '\0' : dtrace_load8(NULL, s1++);
 
 		if ((d[i++] = c) == '\0') {
 			i--;
@@ -4690,7 +4693,7 @@ dtrace_strjoin(dtrace_state_t *state, dtrace_mstate_t *mstate,
 			return (NULL);
 		}
 
-		c = (j++ >= lim2) ? '\0' : dtrace_load8(vh2, s2++);
+		c = (j++ >= lim2) ? '\0' : dtrace_load8(NULL, s2++);
 
 		if ((d[i++] = c) == '\0')
 			break;
