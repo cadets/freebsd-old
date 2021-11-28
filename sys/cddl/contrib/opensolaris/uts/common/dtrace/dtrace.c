@@ -1378,7 +1378,7 @@ dtrace_strlen(const void *vmhdl, const char *s, size_t lim)
 	s = dtrace_addrxlate(vmhdl, s);
 
 	for (len = 0; len != lim; len++) {
-		if (dtrace_load8(vmhdl, (uintptr_t)s++) == '\0')
+		if (dtrace_load8(NULL, (uintptr_t)s++) == '\0')
 			break;
 	}
 
