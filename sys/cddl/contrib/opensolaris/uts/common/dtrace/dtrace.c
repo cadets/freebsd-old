@@ -1474,12 +1474,14 @@ dtrace_bcopy(void *vmhdl, const void *src, void *dst, size_t len)
 static void
 dtrace_strcpy(void *vmhdl, const void *src, void *dst, size_t len)
 {
+	src = dtrace_addrxlate(vmhdl, src);
+
 	if (len != 0) {
 		uint8_t *s1 = dst, c;
 		const uint8_t *s2 = src;
 
 		do {
-			*s1++ = c = dtrace_load8(vmhdl, (uintptr_t)s2++);
+			*s1++ = c = dtrace_load8(NULL, (uintptr_t)s2++);
 		} while (--len != 0 && c != '\0');
 	}
 }
