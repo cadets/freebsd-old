@@ -1517,6 +1517,7 @@ static int
 dtrace_bcmp(const void *vmhdl, const void *s1, const void *s2, size_t len)
 {
 	volatile uint16_t *flags;
+	s1 = dtrace_addrxlate(vmhdl, s1);
 
 	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
 
@@ -1531,7 +1532,7 @@ dtrace_bcmp(const void *vmhdl, const void *s1, const void *s2, size_t len)
 		const uint8_t *ps2 = s2;
 
 		do {
-			if (dtrace_load8(vmhdl, (uintptr_t)ps1++) != *ps2++)
+			if (dtrace_load8(NULL, (uintptr_t)ps1++) != *ps2++)
 				return (1);
 		} while (--len != 0 && !(*flags & CPU_DTRACE_FAULT));
 	}
