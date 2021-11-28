@@ -1411,6 +1411,29 @@ dtrace_istoxic(uintptr_t kaddr, size_t size)
 	return (0);
 }
 
+static void *
+dtrace_addrxlate(void *vmhdl, const void *addr)
+{
+	uint64_t hva;
+	int err;
+
+	if (vmhdl)
+		err = dtrace_gla2hva(dtrace_get_paging(vmhdl), (uint64_t)addr, &hva);
+	else {
+		hva = (uint64_t)addr;
+		err = 0;
+	}
+
+	if (err) {
+		volatile uint16_t *flags;
+		flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
+		*flags |= CPU_DTRACE_ERROR;
+		return (NULL);
+	}
+
+	return ((void *)hva);
+}
+
 /*
  * Copy src to dst using safe memory accesses.  The src is assumed to be unsafe
  * memory specified by the DIF program.  The dst is assumed to be safe memory
@@ -1420,20 +1443,22 @@ dtrace_istoxic(uintptr_t kaddr, size_t size)
 static void
 dtrace_bcopy(void *vmhdl, const void *src, void *dst, size_t len)
 {
+	src = dtrace_addrxlate(vmhdl, src);
+
 	if (len != 0) {
 		uint8_t *s1 = dst;
-		const uint8_t *s2 = src;
+		const uint8_t *s2 = (void *)src;
 
 		if (s1 <= s2) {
 			do {
-				*s1++ = dtrace_load8(vmhdl, (uintptr_t)s2++);
+				*s1++ = dtrace_load8(NULL, (uintptr_t)s2++);
 			} while (--len != 0);
 		} else {
 			s2 += len;
 			s1 += len;
 
 			do {
-				*--s1 = dtrace_load8(vmhdl, (uintptr_t)--s2);
+				*--s1 = dtrace_load8(NULL, (uintptr_t)--s2);
 			} while (--len != 0);
 		}
 	}
