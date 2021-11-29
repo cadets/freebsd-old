@@ -1342,6 +1342,9 @@ dtrace_strncmp(const void *vh1, const void *vh2, char *s1,
 	uint8_t c1, c2;
 	volatile uint16_t *flags;
 
+	s1 = dtrace_addrxlate(vh1, s1);
+	s2 = dtrace_addrxlate(vh2, s2);
+
 	if (s1 == s2 || limit == 0)
 		return (0);
 
@@ -1351,13 +1354,13 @@ dtrace_strncmp(const void *vh1, const void *vh2, char *s1,
 		if (s1 == NULL) {
 			c1 = '\0';
 		} else {
-			c1 = dtrace_load8(vh1, (uintptr_t)s1++);
+			c1 = dtrace_load8(NULL, (uintptr_t)s1++);
 		}
 
 		if (s2 == NULL) {
 			c2 = '\0';
 		} else {
-			c2 = dtrace_load8(vh2, (uintptr_t)s2++);
+			c2 = dtrace_load8(NULL, (uintptr_t)s2++);
 		}
 
 		if (c1 != c2)
@@ -2093,7 +2096,7 @@ dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 			uint64_t j, size = key[i].dttk_size;
 			uintptr_t base = (uintptr_t)key[i].dttk_value;
 			const void *vmhdl = key[i].dttk_vmhdl;
-			base = (uintptr_t)dtrace_addrxlate((void *)base, vmhdl);
+			base = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)base);
 
 			if (!dtrace_canload(base, size, mstate, vstate))
 				break;
@@ -4281,8 +4284,8 @@ typedef enum dtrace_json_state {
  * no additional function calls.
  */
 static char *
-dtrace_json(const void *vmhdl, uint64_t size,
-    uintptr_t json, char *elemlist, int nelems, char *dest)
+dtrace_json(uint64_t size, uintptr_t json, char *elemlist,
+    int nelems, char *dest)
 {
 	dtrace_json_state_t state = DTRACE_JSON_REST;
 	int64_t array_elem = INT64_MIN;
@@ -4297,8 +4300,9 @@ dtrace_json(const void *vmhdl, uint64_t size,
 	char *dd = dest;
 	uintptr_t cur;
 
-	json = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)json);
-
+	/*
+	 * Assume json is a host virtual address.
+	 */
 	for (cur = json; cur < json + size; cur++) {
 		char cc = dtrace_load8(NULL, cur);
 		if (cc == '\0')
@@ -4317,7 +4321,7 @@ dtrace_json(const void *vmhdl, uint64_t size,
 			if (cc == '[') {
 				in_array = B_TRUE;
 				array_pos = 0;
-				array_elem = dtrace_strtoll(vmhdl, elem, 10, size);
+				array_elem = dtrace_strtoll(NULL, elem, 10, size);
 				found_key = array_elem == 0 ? B_TRUE : B_FALSE;
 				state = DTRACE_JSON_VALUE;
 				break;
@@ -4365,7 +4369,7 @@ dtrace_json(const void *vmhdl, uint64_t size,
 				*dd = '\0';
 				dd = dest; /* reset string buffer */
 				if (string_is_key) {
-					if (dtrace_strncmp(NULL, vmhdl, dest,
+					if (dtrace_strncmp(NULL, NULL, dest,
 					    elem, size) == 0)
 						found_key = B_TRUE;
 				} else if (found_key) {
@@ -4550,7 +4554,7 @@ dtrace_json(const void *vmhdl, uint64_t size,
 						state = DTRACE_JSON_VALUE;
 						array_pos = 0;
 						array_elem = dtrace_strtoll(
-						    vmhdl, elem, 10, size);
+						    NULL, elem, 10, size);
 						found_key = array_elem == 0 ?
 							  B_TRUE :
 							  B_FALSE;
@@ -5152,6 +5156,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		size_t count = 0;
 		int cont = 0;
 
+		baddr = (uintptr_t)dtrace_addrxlate(tupregs[0].dttk_vmhdl, (void *)baddr);
+
 		while (baddr != 0 && !(*flags & CPU_DTRACE_FAULT)) {
 
 			if (!dtrace_canload(baddr, sizeof (mblk_t), mstate,
@@ -5160,15 +5166,10 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 				break;
 			}
 
-			/*
-			 * FIXME(dstolfa): This should preserve the vmhdl for
-			 * these pointers. I'm not sure exactly how we use them,
-			 * but it should do it right.
-			 */
-			wptr = dtrace_loadptr(tupregs[0].dttk_vmhdl,
+			wptr = dtrace_loadptr(NULL,
 			    baddr + offsetof(mblk_t, b_wptr));
 
-			rptr = dtrace_loadptr(tupregs[0].dttk_vmhdl,
+			rptr = dtrace_loadptr(NULL,
 			    baddr + offsetof(mblk_t, b_rptr));
 
 			if (wptr < rptr) {
@@ -5177,11 +5178,15 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 				break;
 			}
 
-			daddr = dtrace_loadptr(tupregs[0].dttk_vmhdl,
+			daddr = dtrace_loadptr(NULL,
 			    baddr + offsetof(mblk_t, b_datap));
+			daddr = (uintptr_t)dtrace_addrxlate(
+			    tupregs[0].dttk_vmhdl, (void *)daddr);
 
-			baddr = dtrace_loadptr(tupregs[0].dttk_vmhdl,
+			baddr = dtrace_loadptr(NULL,
 			    baddr + offsetof(mblk_t, b_cont));
+			baddr = (uintptr_t)dtrace_addrxlate(
+			    tupregs[0].dttk_vmhdl, (void *)baddr);
 
 			/*
 			 * We want to prevent against denial-of-service here,
@@ -5194,7 +5199,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 			}
 
 			if (subr == DIF_SUBR_MSGDSIZE) {
-				if (dtrace_load8(tupregs[0].dttk_vmhdl,
+				if (dtrace_load8(NULL,
 				    daddr +
 				    offsetof(dblk_t, db_type)) != M_DATA)
 					continue;
@@ -5316,6 +5321,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		size_t lim;
 		char c, target = (char)tupregs[1].dttk_value;
 
+		addr = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)addr);
+
 		if (!dtrace_strcanload(
 		    addr, size, vmhdl, &lim, mstate, vstate)) {
 			regs[rd].dttr_value = 0;
@@ -5325,9 +5332,14 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		addr_limit = addr + lim;
 
 		for (regs[rd].dttr_value = 0; addr < addr_limit; addr++) {
-			if ((c = dtrace_load8(vmhdl, addr)) == target) {
+			if ((c = dtrace_load8(NULL, addr)) == target) {
+				/*
+				 * NOTE: We store vmhdl as NULL here because
+				 * we've translated the address already to a
+				 * host virtual address.
+				 */
 				regs[rd].dttr_value = addr;
-				regs[rd].dttr_vmhdl = vmhdl;
+				regs[rd].dttr_vmhdl = NULL;
 
 				if (subr == DIF_SUBR_STRCHR)
 					break;
@@ -5529,6 +5541,9 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 			regs[rd].dttr_vmhdl = NULL;
 			break;
 		}
+
+		addr = (uintptr_t)dtrace_addrxlate(vhaddr, (void *)addr);
+		tokaddr = (uintptr_t)dtrace_addrxlate(vhtok, (void *)tokaddr);
 		toklimit = tokaddr + clim;
 
 		if (!DTRACE_INSCRATCH(mstate, size)) {
@@ -5575,7 +5590,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 			tokmap[i] = 0;
 
 		for (; tokaddr < toklimit; tokaddr++) {
-			if ((c = dtrace_load8(vhtok, tokaddr)) == '\0')
+			if ((c = dtrace_load8(NULL, tokaddr)) == '\0')
 				break;
 
 			ASSERT((c >> 3) < sizeof (tokmap));
@@ -5587,7 +5602,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 			 * We're looking for a character that is _not_
 			 * contained in the token string.
 			 */
-			if ((c = dtrace_load8(vhaddr, addr)) == '\0')
+			if ((c = dtrace_load8(NULL, addr)) == '\0')
 				break;
 
 			if (!(tokmap[c >> 3] & (1 << (c & 0x7))))
@@ -5612,7 +5627,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * From here on, we're copying into the destination string.
 		 */
 		for (i = 0; addr < limit && i < size - 1; addr++) {
-			if ((c = dtrace_load8(vhaddr, addr)) == '\0')
+			if ((c = dtrace_load8(NULL, addr)) == '\0')
 				break;
 
 			if (tokmap[c >> 3] & (1 << (c & 0x7)))
@@ -5639,8 +5654,11 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		char *d = (char *)mstate->dtms_scratch_ptr;
 		int64_t index = (int64_t)tupregs[1].dttk_value;
 		int64_t remaining = (int64_t)tupregs[2].dttk_value;
-		size_t len = dtrace_strlen(vmhdl, (char *)s, size);
+		size_t len;
 		int64_t i;
+
+		s = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)s);
+		len = dtrace_strlen(NULL, (char *)s, size); // no vmhdl needed
 
 		if (!dtrace_canload(s, len + 1, mstate, vstate)) {
 			regs[rd].dttr_value = 0;
@@ -5676,7 +5694,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		}
 
 		for (i = 0; i < remaining; i++) {
-			if ((d[i] = dtrace_load8(vmhdl, s + index + i)) == '\0')
+			if ((d[i] = dtrace_load8(NULL, s + index + i)) == '\0')
 				break;
 		}
 
@@ -5691,14 +5709,16 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 	case DIF_SUBR_JSON: {
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t json = tupregs[0].dttk_value;
-		const void *vh1 = tupregs[0].dttk_vmhdl;
-		size_t jsonlen = dtrace_strlen(vh1, (char *)json, size);
+		size_t jsonlen;
 		uintptr_t elem = tupregs[1].dttk_value;
-		const void *vh2 = tupregs[1].dttk_vmhdl;
-		size_t elemlen = dtrace_strlen(vh2, (char *)elem, size);
+		size_t elemlen;
 
 		const void *vhjson = tupregs[0].dttk_vmhdl;
 		const void *vhelem = tupregs[1].dttk_vmhdl;
+		elem = (uintptr_t)dtrace_addrxlate(vhelem, (void *)elem);
+		json = (uintptr_t)dtrace_addrxlate(vhjson, (void *)json);
+		elemlen = dtrace_strlen(NULL, (char *)elem, size);
+		jsonlen = dtrace_strlen(NULL, (char *)json, size);
 
 		char *dest = (char *)mstate->dtms_scratch_ptr;
 		char *elemlist = (char *)mstate->dtms_scratch_ptr + jsonlen + 1;
@@ -5725,7 +5745,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * of strings.
 		 */
 		for (cur = elem; cur < elem + elemlen; cur++) {
-			char cc = dtrace_load8(vhelem, cur);
+			char cc = dtrace_load8(NULL, cur);
 
 			if (cur == elem && cc == '[') {
 				/*
@@ -5749,7 +5769,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		*ee++ = '\0';
 
 		regs[rd].dttr_value = (uintptr_t)dtrace_json(
-		    vhjson, size, json, elemlist, nelems, dest);
+		    size, json, elemlist, nelems, dest);
 		regs[rd].dttr_vmhdl = NULL;
 
 		if (regs[rd].dttr_value != 0)
@@ -5763,9 +5783,12 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		uint64_t size = state->dts_options[DTRACEOPT_STRSIZE];
 		char *dest = (char *)mstate->dtms_scratch_ptr, c;
-		size_t len = dtrace_strlen(vmhdl, (char *)s, size);
+		size_t len;
 		char lower, upper, convert;
 		int64_t i;
+
+		s = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)s);
+		len = dtrace_strlen(NULL, (char *)s, size);
 
 		if (subr == DIF_SUBR_TOUPPER) {
 			lower = 'a';
@@ -5791,7 +5814,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		}
 
 		for (i = 0; i < size - 1; i++) {
-			if ((c = dtrace_load8(vmhdl, s + i)) == '\0')
+			if ((c = dtrace_load8(NULL, s + i)) == '\0')
 				break;
 
 			if (c >= lower && c <= upper)
@@ -6151,9 +6174,12 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		uintptr_t src = tupregs[0].dttk_value;
 		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		char dot[] = ".";
-		int i, j, len = dtrace_strlen(vmhdl, (char *)src, size);
+		int i, j, len;
 		int lastbase = -1, firstbase = -1, lastdir = -1;
 		int start, end;
+
+		src = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)src);
+		len = dtrace_strlen(NULL, (char *)src, size);
 
 		if (!dtrace_canload(src, len + 1, mstate, vstate)) {
 			regs[rd].dttr_value = 0;
@@ -6183,7 +6209,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * character is the last character in the basename.
 		 */
 		for (i = len - 1; i >= 0; i--) {
-			if (dtrace_load8(vmhdl, src + i) != '/')
+			if (dtrace_load8(NULL, src + i) != '/')
 				break;
 		}
 
@@ -6197,7 +6223,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * character in the basename.
 		 */
 		for (; i >= 0; i--) {
-			if (dtrace_load8(vmhdl, src + i) == '/')
+			if (dtrace_load8(NULL, src + i) == '/')
 				break;
 		}
 
@@ -6209,7 +6235,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * character is the last character in the dirname.
 		 */
 		for (; i >= 0; i--) {
-			if (dtrace_load8(vmhdl, src + i) != '/')
+			if (dtrace_load8(NULL, src + i) != '/')
 				break;
 		}
 
@@ -6272,7 +6298,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 
 
 		for (i = start, j = 0; i <= end && j < size - 1; i++, j++)
-			dest[j] = dtrace_load8(vmhdl, src + i);
+			dest[j] = dtrace_load8(NULL, src + i);
 
 		dest[j] = '\0';
 		regs[rd].dttr_value = (uintptr_t)dest;
@@ -6285,6 +6311,9 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		uintptr_t fd = tupregs[0].dttk_value;
 		struct filedesc *fdp;
 		file_t *fp;
+		/*
+		 * TODO(dstolfa): Implement this for guests.
+		 */
 
 		if (!dtrace_priv_proc(state)) {
 			regs[rd].dttr_value = 0;
@@ -6308,6 +6337,8 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		const void *vmhdl = tupregs[0].dttk_vmhdl;
 		size_t lim;
 		int i = 0, j = 0;
+
+		src = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)src);
 #ifdef illumos
 		zone_t *z;
 #endif
@@ -6330,7 +6361,7 @@ dtrace_dif_subr(uint_t subr, uint_t rd, dtrace_reg_t *regs,
 		 * Move forward, loading each character.
 		 */
 		do {
-			c = (i >= lim) ? '\0' : dtrace_load8(vmhdl, src + i++);
+			c = (i >= lim) ? '\0' : dtrace_load8(NULL, src + i++);
 next:
 			if (j + 5 >= size)	/* 5 = strlen("/..c\0") */
 				break;
@@ -6340,7 +6371,7 @@ next:
 				continue;
 			}
 
-			c = (i >= lim) ? '\0' : dtrace_load8(vmhdl, src + i++);
+			c = (i >= lim) ? '\0' : dtrace_load8(NULL, src + i++);
 
 			if (c == '/') {
 				/*
@@ -6361,7 +6392,7 @@ next:
 				continue;
 			}
 
-			c = (i >= lim) ? '\0' : dtrace_load8(vmhdl, src + i++);
+			c = (i >= lim) ? '\0' : dtrace_load8(NULL, src + i++);
 
 			if (c == '/') {
 				/*
@@ -6384,7 +6415,7 @@ next:
 				continue;
 			}
 
-			c = (i >= lim) ? '\0' : dtrace_load8(vmhdl, src + i++);
+			c = (i >= lim) ? '\0' : dtrace_load8(NULL, src + i++);
 
 			if (c != '/' && c != '\0') {
 				/*
@@ -6708,6 +6739,8 @@ inetout:
 		uint8_t n;
 		int i;
 
+		mem = (uintptr_t)dtrace_addrxlate(vmhdl, (void *)mem);
+
 		regs[rd].dttr_value = 0;
 		regs[rd].dttr_vmhdl = NULL;
 
@@ -6728,7 +6761,7 @@ inetout:
 		}
 
 		for (i = 0; i < size - 1; i++) {
-			n = dtrace_load8(vmhdl, mem++);
+			n = dtrace_load8(NULL, mem++);
 			str[i] = (n == 0) ? c : n;
 		}
 		str[size - 1] = 0;
