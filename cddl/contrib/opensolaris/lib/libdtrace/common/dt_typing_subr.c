@@ -859,7 +859,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int64_t", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_FST | SUBTYPE_EQUAL);
+		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		/*
 		 * Check if the second (optional) argument is present
