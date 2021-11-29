@@ -1096,7 +1096,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint16_t", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_FST | SUBTYPE_EQUAL);
+		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
 		if (n->din_ctfid == CTF_ERR)
