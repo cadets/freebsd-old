@@ -1371,7 +1371,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "char", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_FST | SUBTYPE_EQUAL);
+		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		/*
 		 * We expect a "size_t" as a third argument.
@@ -1388,7 +1388,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "size_t", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_FST | SUBTYPE_EQUAL);
+		    SUBTYPE_SND | SUBTYPE_EQUAL);
 
 		n->din_type = DIF_TYPE_STRING;
 		break;
