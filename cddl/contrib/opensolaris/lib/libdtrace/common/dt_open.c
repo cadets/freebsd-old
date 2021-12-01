@@ -462,6 +462,9 @@ static const dt_ident_t _dtrace_globals[] = {
 { "stackdepth", DT_IDENT_SCALAR, 0, DIF_VAR_STACKDEPTH,
 	DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint32_t" },
+{ "immstack", DT_IDENT_ACTFUNC, 0, DT_ACT_IMMSTACK,
+	DT_ATTR_STABCMN, DT_VERS_1_13,
+	&dt_idops_func, "immstack(...)" },
 { "stddev", DT_IDENT_AGGFUNC, 0, DTRACEAGG_STDDEV, DT_ATTR_STABCMN,
 	DT_VERS_1_6, &dt_idops_func, "void(@)" },
 { "stop", DT_IDENT_ACTFUNC, 0, DT_ACT_STOP, DT_ATTR_STABCMN, DT_VERS_1_0,
@@ -1623,6 +1626,9 @@ alloc:
 
 	dtp->dt_type_stack = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
 	    "stack", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
+
+	dtp->dt_type_immstack = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
+	    "immstack", ctf_lookup_by_name(dmp->dm_ctfp, "void"));
 
 	dtp->dt_type_symaddr = ctf_add_typedef(dmp->dm_ctfp, CTF_ADD_ROOT,
 	    "_symaddr", ctf_lookup_by_name(dmp->dm_ctfp, "void"));

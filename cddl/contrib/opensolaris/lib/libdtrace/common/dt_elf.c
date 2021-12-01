@@ -208,6 +208,8 @@ dt_elf_opt_t dtelf_rtopts[] = {
 	{ "strsize", 0, NULL, DTRACEOPT_STRSIZE },
 	{ "ustackframes", 0, NULL, DTRACEOPT_USTACKFRAMES },
 	{ "temporal", 0, NULL, DTRACEOPT_TEMPORAL },
+	{ "immstackframes", 0, NULL, DTRACEOPT_IMMSTACKFRAMES },
+	{ "immstackstrsize", 0, NULL, DTRACEOPT_IMMSTACKSTRSIZE },
 	{ NULL, 0, NULL, 0 }
 };
 

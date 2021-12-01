@@ -289,6 +289,7 @@ struct dtrace_hdl {
 	ctf_id_t dt_type_str;	/* cached CTF identifier for string type */
 	ctf_id_t dt_type_dyn;	/* cached CTF identifier for <DYN> type */
 	ctf_id_t dt_type_stack;	/* cached CTF identifier for stack type */
+	ctf_id_t dt_type_immstack; /* cached CTF identifier for immstack type */
 	ctf_id_t dt_type_symaddr; /* cached CTF identifier for _symaddr type */
 	ctf_id_t dt_type_usymaddr; /* cached CTF ident. for _usymaddr type */
 	size_t dt_maxprobe;	/* max enabled probe ID */
@@ -509,6 +510,7 @@ struct dtrace_hdl {
 #define	DT_ACT_SETOPT		DT_ACT(28)	/* setopt() action */
 #define	DT_ACT_PRINT		DT_ACT(29)	/* print() action */
 #define	DT_ACT_PRINTM		DT_ACT(30)	/* printm() action */
+#define	DT_ACT_IMMSTACK		DT_ACT(31)	/* immstack() action */
 
 /*
  * Sentinel to tell freopen() to restore the saved stdout.  This must not

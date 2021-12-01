@@ -818,25 +818,31 @@ dt_action_tracemem(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 }
 
 static void
-dt_action_stack_args(dtrace_hdl_t *dtp, dtrace_actdesc_t *ap, dt_node_t *arg0)
+dt_action_stack_args(dtrace_hdl_t *dtp, dtrace_actdesc_t *ap,
+    uint_t stack_kind, dt_node_t *arg0)
 {
-	ap->dtad_kind = DTRACEACT_STACK;
+	uint_t stackopt = stack_kind == DT_ACT_STACK ?
+	    DTRACEOPT_STACKFRAMES : DTRACEOPT_IMMSTACKFRAMES;
+	ap->dtad_kind = stack_kind == DT_ACT_STACK ?
+	    DTRACEACT_STACK : DTRACEACT_IMMSTACK;
 
-	if (dtp->dt_options[DTRACEOPT_STACKFRAMES] != DTRACEOPT_UNSET) {
-		ap->dtad_arg = dtp->dt_options[DTRACEOPT_STACKFRAMES];
+	if (dtp->dt_options[stackopt] != DTRACEOPT_UNSET) {
+		ap->dtad_arg = dtp->dt_options[stackopt];
 	} else {
 		ap->dtad_arg = 0;
 	}
 
 	if (arg0 != NULL) {
 		if (arg0->dn_list != NULL) {
-			dnerror(arg0, D_STACK_PROTO, "stack( ) prototype "
-			    "mismatch: too many arguments\n");
+			dnerror(arg0, D_STACK_PROTO, "%s( ) prototype "
+			    "mismatch: too many arguments\n",
+			    stack_kind == DT_ACT_STACK ? "stack" : "immstack");
 		}
 
 		if (dt_node_is_posconst(arg0) == 0) {
-			dnerror(arg0, D_STACK_SIZE, "stack( ) size must be a "
-			    "non-zero positive integral constant expression\n");
+			dnerror(arg0, D_STACK_SIZE, "%s( ) size must be a "
+			    "non-zero positive integral constant expression\n",
+			    stack_kind == DT_ACT_STACK ? "stack" : "immstack");
 		}
 
 		ap->dtad_arg = arg0->dn_value;
@@ -847,7 +853,14 @@ static void
 dt_action_stack(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 {
 	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
-	dt_action_stack_args(dtp, ap, dnp->dn_args);
+	dt_action_stack_args(dtp, ap, DT_ACT_STACK, dnp->dn_args);
+}
+
+static void
+dt_action_immstack(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
+{
+	dtrace_actdesc_t *ap = dt_stmt_action(dtp, sdp);
+	dt_action_stack_args(dtp, ap, DT_ACT_IMMSTACK, dnp->dn_args);
 }
 
 static void
@@ -1170,6 +1183,9 @@ dt_compile_fun(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	case DT_ACT_STACK:
 		dt_action_stack(dtp, dnp->dn_expr, sdp);
 		break;
+	case DT_ACT_IMMSTACK:
+		dt_action_immstack(dtp, dnp->dn_expr, sdp);
+		break;
 	case DT_ACT_STOP:
 		dt_action_stop(dtp, dnp->dn_expr, sdp);
 		break;
@@ -1257,8 +1273,10 @@ dt_compile_agg(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 		n++;
 
 		if (anp->dn_kind == DT_NODE_FUNC) {
-			if (anp->dn_ident->di_id == DT_ACT_STACK) {
-				dt_action_stack_args(dtp, ap, anp->dn_args);
+			if (anp->dn_ident->di_id == DT_ACT_STACK ||
+			    anp->dn_ident->di_id == DT_ACT_IMMSTACK) {
+				uint_t sk = anp->dn_ident->di_id;
+				dt_action_stack_args(dtp, ap, sk, anp->dn_args);
 				continue;
 			}
 

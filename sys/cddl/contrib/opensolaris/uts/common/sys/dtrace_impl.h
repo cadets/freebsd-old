@@ -1177,6 +1177,10 @@ struct dtrace_state {
 	int dts_nspeculations;			/* number of speculations */
 	int dts_naggregations;			/* number of aggregations */
 	dtrace_aggregation_t **dts_aggregations; /* aggregation array */
+	int dts_immstacksize;			/* immediate stack size */
+	int dts_immstackstrsize;		/* string size of an immstack */
+	int dts_immstackframes;			/* number of immstack frames */
+	char **dts_immstack;			/* immediate stack buffer */
 #ifdef illumos
 	vmem_t *dts_aggid_arena;		/* arena for aggregation IDs */
 #else
@@ -1336,7 +1340,7 @@ extern void dtrace_copyout(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 extern void dtrace_copyoutstr(uintptr_t, uintptr_t, size_t,
     volatile uint16_t *);
 extern void dtrace_getpcstack(pc_t *, int, int, uint32_t *);
-extern void dtrace_getpcimmstack(pc_t *, int, int, uint32_t *);
+extern void dtrace_getpcimmstack(char *, int, int, int, uint32_t *);
 
 extern ulong_t dtrace_getreg(struct trapframe *, uint_t);
 extern int dtrace_getstackdepth(int);

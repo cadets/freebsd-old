@@ -221,6 +221,8 @@ dtrace_optval_t dtrace_stackframes_default = 20;
 dtrace_optval_t dtrace_ustackframes_default = 20;
 dtrace_optval_t dtrace_jstackframes_default = 50;
 dtrace_optval_t dtrace_jstackstrsize_default = 512;
+dtrace_optval_t dtrace_immstackstrsize_default = 32;
+dtrace_optval_t dtrace_immstackframes_default = 20;
 int		dtrace_msgdsize_max = 128;
 hrtime_t	dtrace_chill_max = MSEC2NSEC(500);		/* 500 ms */
 hrtime_t	dtrace_chill_interval = NANOSEC;		/* 1000 ms */
@@ -8516,6 +8518,7 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 		dtrace_vstate_t *vstate = &state->dts_vstate;
 		dtrace_provider_t *prov;
 		uint64_t tracememsize = 0;
+		dtrace_optval_t *opt = state->dts_options;
 		int committed = 0, error = 0;
 		caddr_t tomax;
 		const void *retvmhdl = mstate.dtms_vmhdl;
@@ -8778,18 +8781,36 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				    (uint32_t *)arg0);
 				continue;
 
-			case DTRACEACT_IMMSTACK:
+			case DTRACEACT_IMMSTACK: {
+				int isstrsize, immstackframes, div;
+
 				if (!dtrace_priv_kernel(state))
 					continue;
-#ifdef XXX
-				dtrace_getpcimmstack(
-				    (pc_t *)(mstate->dtms_stackstr),
-				    mstate->dtms_stacksize / sizeof(pc_t),
-				    probe->dtpr_aframes,
-				    DTRACE_ANCHORED(probe) ? NULL :
-				    (uint32_t *)arg0);
-#endif
+
+				immstackframes = state->dts_immstackframes;
+
+				if (vm_guest != VM_GUEST_NO) {
+					isstrsize = state->dts_immstackstrsize;
+					dtrace_getpcimmstack(
+					    state->dts_immstack[cpuid],
+					    immstackframes, isstrsize,
+					    probe->dtpr_aframes,
+					    DTRACE_ANCHORED(probe) ?
+					    NULL : (uint32_t *)arg0);
+				} else {
+					div = size / immstackframes;
+					isstrsize = state->dts_immstackstrsize >
+					    div ?
+					    div : state->dts_immstackstrsize;
+
+					dtrace_getpcimmstack(tomax + valoffs,
+					    immstackframes, isstrsize,
+					    probe->dtpr_aframes,
+					    DTRACE_ANCHORED(probe) ?
+					    NULL : (uint32_t *)arg0);
+				}
 				continue;
+			}
 
 			case DTRACEACT_JSTACK:
 			case DTRACEACT_USTACK:
@@ -13093,6 +13114,16 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			size = nframes * sizeof (pc_t);
 			break;
 
+		case DTRACEACT_IMMSTACK:
+			if ((nframes = arg) == 0) {
+				nframes = opt[DTRACEOPT_IMMSTACKFRAMES];
+				ASSERT(nframes > 0);
+				arg = nframes;
+			}
+
+			size = nframes * opt[DTRACEOPT_IMMSTACKSTRSIZE];
+			break;
+
 		case DTRACEACT_JSTACK:
 			if ((strsize = DTRACE_USTACK_STRSIZE(arg)) == 0)
 				strsize = opt[DTRACEOPT_JSTACKSTRSIZE];
@@ -16282,6 +16313,7 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	dtrace_optval_t *opt;
 	int bufsize = NCPU * sizeof (dtrace_buffer_t), i;
 	int cpu_it;
+	int immstacksize = NCPU * sizeof(char *);
 	char mtxstr[512] = { 0 };
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -16342,6 +16374,12 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	state->dts_aggbuffer = kmem_zalloc(bufsize, KM_SLEEP);
 
 	/*
+	 * We allocate NCPU immediate stacks to hold our strings if we need to
+	 * create an immediate stack trace.
+	 */
+	state->dts_immstack = kmem_zalloc(immstacksize, KM_SLEEP);
+
+	/*
          * Allocate and initialise the per-process per-CPU random state.
 	 * SI_SUB_RANDOM < SI_SUB_DTRACE_ANON therefore entropy device is
          * assumed to be seeded at this point (if from Fortuna seed file).
@@ -16386,6 +16424,8 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	opt[DTRACEOPT_STATUSRATE] = dtrace_statusrate_default;
 	opt[DTRACEOPT_JSTACKFRAMES] = dtrace_jstackframes_default;
 	opt[DTRACEOPT_JSTACKSTRSIZE] = dtrace_jstackstrsize_default;
+	opt[DTRACEOPT_IMMSTACKSTRSIZE] = dtrace_immstackstrsize_default;
+	opt[DTRACEOPT_IMMSTACKFRAMES] = dtrace_immstackframes_default;
 
 	state->dts_activity = DTRACE_ACTIVITY_INACTIVE;
 
@@ -16615,6 +16655,31 @@ dtrace_state_buffers(dtrace_state_t *state)
 	return (0);
 }
 
+static int
+dtrace_state_immstack(dtrace_state_t *state)
+{
+	dtrace_optval_t *opt;
+	int i, stacksize;
+
+	opt = state->dts_options;
+	stacksize = opt[DTRACEOPT_IMMSTACKFRAMES] *
+	    opt[DTRACEOPT_IMMSTACKSTRSIZE];
+
+	CPU_FOREACH(i) {
+		if (state->dts_immstack[i] != NULL)
+			continue;
+
+		state->dts_immstack[i] = kmem_zalloc(stacksize, KM_NOSLEEP);
+		if (state->dts_immstack[i] == NULL)
+			return (ENOMEM);
+	}
+
+	state->dts_immstacksize = stacksize;
+	state->dts_immstackframes = opt[DTRACEOPT_IMMSTACKFRAMES];
+	state->dts_immstackstrsize = opt[DTRACEOPT_IMMSTACKSTRSIZE];
+	return (0);
+}
+
 static void
 dtrace_state_prereserve(dtrace_state_t *state)
 {
@@ -16799,6 +16864,9 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	}
 
 	if ((rval = dtrace_state_buffers(state)) != 0)
+		goto err;
+
+	if ((rval = dtrace_state_immstack(state)) != 0)
 		goto err;
 
 	if ((sz = opt[DTRACEOPT_DYNVARSIZE]) == DTRACEOPT_UNSET)
@@ -17091,6 +17159,7 @@ dtrace_state_option(dtrace_state_t *state, dtrace_optid_t option,
 	case DTRACEOPT_AGGSIZE:
 	case DTRACEOPT_SPECSIZE:
 	case DTRACEOPT_STRSIZE:
+	case DTRACEOPT_IMMSTACKSTRSIZE:
 		if (val < 0)
 			return (EINVAL);
 

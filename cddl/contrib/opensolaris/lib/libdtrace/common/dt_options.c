@@ -1064,6 +1064,8 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "ustackframes", dt_opt_runtime, DTRACEOPT_USTACKFRAMES },
 	{ "temporal", dt_opt_runtime, DTRACEOPT_TEMPORAL },
 	{ "hypertrace", dt_opt_runtime, DTRACEOPT_HYPERTRACE },
+	{ "immstackframes", dt_opt_runtime, DTRACEOPT_IMMSTACKFRAMES },
+	{ "immstackstrsize", dt_opt_runtime, DTRACEOPT_IMMSTACKSTRSIZE },
 	{ NULL, NULL, 0 }
 };
 

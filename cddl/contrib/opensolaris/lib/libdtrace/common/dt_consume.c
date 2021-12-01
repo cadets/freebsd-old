@@ -1249,6 +1249,50 @@ raw:
 }
 
 int
+dt_print_immstack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
+    caddr_t addr, int depth, int size)
+{
+	int stacksize, strsize, nframes, indent, i;
+	char *stack_entry;
+
+	if (dt_printf(dtp, fp, "\n") < 0)
+		return (-1);
+
+	if (format == NULL)
+		format = "%s";
+
+	if (dtp->dt_options[DTRACEOPT_STACKINDENT] != DTRACEOPT_UNSET)
+		indent = (int)dtp->dt_options[DTRACEOPT_STACKINDENT];
+	else
+		indent = _dtrace_stkindent;
+
+	strsize = dtp->dt_options[DTRACEOPT_IMMSTACKSTRSIZE];
+	nframes = dtp->dt_options[DTRACEOPT_IMMSTACKFRAMES];
+	if (strsize * nframes > size)
+		stacksize = dtp->dt_options[DTRACEOPT_IMMSTACKSTRSIZE];
+	else
+		stacksize = size / nframes;
+
+	for (i = 0; i < depth * stacksize; i += stacksize) {
+		stack_entry = (char *)(addr + i);
+		if (*stack_entry == 0)
+			break;
+
+		if (dt_printf(dtp, fp, "%*s", indent, "") < 0)
+			return (-1);
+
+		if (dt_printf(dtp, fp, format, stack_entry) < 0)
+			return (-1);
+
+		if (dt_printf(dtp, fp, "\n") < 0)
+			return (-1);
+
+	}
+
+	return (0);
+}
+
+int
 dt_print_stack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
     caddr_t addr, int depth, int size)
 {
@@ -1887,6 +1931,10 @@ dt_print_datum(dtrace_hdl_t *dtp, FILE *fp, dtrace_recdesc_t *rec,
 		return (dt_print_stack(dtp, fp, NULL, addr,
 		    rec->dtrd_arg, rec->dtrd_size / rec->dtrd_arg));
 
+	case DTRACEACT_IMMSTACK:
+		return (dt_print_immstack(dtp, fp, NULL, addr,
+		    rec->dtrd_arg, rec->dtrd_size));
+
 	case DTRACEACT_USTACK:
 	case DTRACEACT_JSTACK:
 		return (dt_print_ustack(dtp, fp, NULL, addr, rec->dtrd_arg));
@@ -2308,6 +2356,15 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 
 				if (dt_print_stack(dtp, fp, NULL, addr, depth,
 				    rec->dtrd_size / depth) < 0)
+					return (-1);
+				goto nextrec;
+			}
+
+			if (act == DTRACEACT_IMMSTACK) {
+				int depth = rec->dtrd_arg;
+
+				if (dt_print_immstack(dtp, fp, NULL, addr,
+				    depth, rec->dtrd_size) < 0)
 					return (-1);
 				goto nextrec;
 			}
