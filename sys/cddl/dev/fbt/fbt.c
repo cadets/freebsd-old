@@ -133,9 +133,15 @@ fbt_excluded(const char *name)
 	 *
 	 * NB: kdb_enter() can be excluded, but its call to printf() can't be.
 	 * This is generally OK since we're not yet in debugging context.
+	 *
+	 * We also exclude 'X_db_' and 'linker_ddb_' as DTrace will perform
+	 * stack symbol resolution in the case of HyperTrace, so we don't want
+	 * to recurse by accident.
 	 */
 	if (strncmp(name, "db_", 3) == 0 ||
-	    strncmp(name, "kdb_", 4) == 0)
+	    strncmp(name, "kdb_", 4) == 0 ||
+	    strncmp(name, "X_db_", 5) == 0 ||
+	    strncmp(name, "linker_ddb_", 11) == 0)
 		return (1);
 
 	/*
