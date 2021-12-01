@@ -94,6 +94,7 @@ bool		db_eqname(const char *, const char *, int);
 void		db_printsym(db_expr_t, db_strategy_t);
 					/* print closest symbol to a value */
 
+bool		db_line_at_pc(c_db_sym_t, char **, int *, db_expr_t);
 bool		db_sym_numargs(c_db_sym_t, int *, char **);
 
 bool		X_db_line_at_pc(db_symtab_t *symtab, c_db_sym_t cursym,

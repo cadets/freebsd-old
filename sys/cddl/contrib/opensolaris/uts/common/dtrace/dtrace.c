@@ -8778,6 +8778,19 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				    (uint32_t *)arg0);
 				continue;
 
+			case DTRACEACT_IMMSTACK:
+				if (!dtrace_priv_kernel(state))
+					continue;
+#ifdef XXX
+				dtrace_getpcimmstack(
+				    (pc_t *)(mstate->dtms_stackstr),
+				    mstate->dtms_stacksize / sizeof(pc_t),
+				    probe->dtpr_aframes,
+				    DTRACE_ANCHORED(probe) ? NULL :
+				    (uint32_t *)arg0);
+#endif
+				continue;
+
 			case DTRACEACT_JSTACK:
 			case DTRACEACT_USTACK:
 				if (!dtrace_priv_proc(state))

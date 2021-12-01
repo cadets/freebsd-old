@@ -63,7 +63,6 @@ static db_symtab_t	*db_last_symtab; /* where last symbol was found */
 static c_db_sym_t	db_lookup( const char *symstr);
 static char		*db_qualify(c_db_sym_t sym, char *symtabname);
 static bool		db_symbol_is_ambiguous(c_db_sym_t sym);
-static bool		db_line_at_pc(c_db_sym_t, char **, int *, db_expr_t);
 
 static int db_cpu = -1;
 
@@ -470,7 +469,7 @@ db_printsym(db_expr_t off, db_strategy_t strategy)
 	}
 }
 
-static bool
+bool
 db_line_at_pc(c_db_sym_t sym, char **filename, int *linenum, db_expr_t pc)
 {
 	return (X_db_line_at_pc(db_last_symtab, sym, filename, linenum, pc));

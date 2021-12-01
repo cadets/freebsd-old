@@ -39,6 +39,9 @@
 #include <machine/stack.h>
 #include <x86/ifunc.h>
 
+#include <ddb/ddb.h>
+#include <ddb/db_sym.h>
+
 #include <vm/vm.h>
 #include <vm/vm_param.h>
 #include <vm/pmap.h>
@@ -52,9 +55,24 @@ uint64_t dtrace_fuword64_nocheck(void *);
 
 int	dtrace_ustackdepth_max = 2048;
 
-void
-dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
-    uint32_t *intrpc)
+typedef void (*stack_entry_fn_t)(pc_t *, int *, pc_t);
+
+static void
+populate_stack_str(pc_t *pcstack, int *depth, pc_t pc)
+{
+
+}
+
+static void
+populate_stack_addr(pc_t *pcstack, int *depth, pc_t pc)
+{
+
+	pcstack[(*depth)++] = pc;
+}
+
+static void
+dtrace_getpcstack_generic(pc_t *pcstack, int pcstack_limit, int aframes,
+    uint32_t *intrpc, stack_entry_fn_t populate_stack)
 {
 	struct thread *td;
 	int depth = 0;
@@ -62,9 +80,12 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 	struct amd64_frame *frame;
 	vm_offset_t callpc;
 	pc_t caller = (pc_t) solaris_cpu[curcpu].cpu_dtrace_caller;
+	c_db_sym_t cursym;
+	const char *name;
+	db_expr_t off;
 
 	if (intrpc != 0)
-		pcstack[depth++] = (pc_t) intrpc;
+		populate_stack(pcstack, &depth, (pc_t)intrpc);
 
 	aframes++;
 
@@ -72,6 +93,7 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 
 	frame = (struct amd64_frame *)rbp;
 	td = curthread;
+
 	while (depth < pcstack_limit) {
 		if (!kstack_contains(curthread, (vm_offset_t)frame,
 		    sizeof(*frame)))
@@ -85,10 +107,10 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 		if (aframes > 0) {
 			aframes--;
 			if ((aframes == 0) && (caller != 0)) {
-				pcstack[depth++] = caller;
+				populate_stack(pcstack, &depth, caller);
 			}
 		} else {
-			pcstack[depth++] = callpc;
+			populate_stack(pcstack, &depth, callpc);
 		}
 
 		if ((vm_offset_t)frame->f_frame <= (vm_offset_t)frame)
@@ -97,8 +119,26 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 	}
 
 	for (; depth < pcstack_limit; depth++) {
-		pcstack[depth] = 0;
+		populate_stack(pcstack, &depth, 0);
 	}
+}
+
+void
+dtrace_getpcimmstack(pc_t *pcstack, int pcstack_limit, int aframes,
+    uint32_t *intrpc)
+{
+
+	dtrace_getpcstack_generic(pcstack, pcstack_limit, aframes, intrpc,
+	    populate_stack_str);
+}
+
+void
+dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
+    uint32_t *intrpc)
+{
+
+	dtrace_getpcstack_generic(pcstack, pcstack_limit, aframes, intrpc,
+	    populate_stack_addr);
 }
 
 static int
