@@ -1183,6 +1183,11 @@ fill_instructions(dtrace_difo_t *difo)
 	difo->dtdo_len = 2;
 }
 
+typedef struct {
+	dt_list_t list;
+	dtrace_probedesc_t *pdesc;
+} dt_ppd_t;
+
 static dtrace_prog_t *
 dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
@@ -1193,6 +1198,9 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_actdesc_t *newact;
 	dtrace_difo_t *difo;
 	dtrace_probedesc_t newpdesc = { 0 };
+	dt_list_t ppds = { 0 };
+	dt_ppd_t *ppd;
+	int process;
 
 	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
@@ -1205,6 +1213,29 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 		newpdesc = curecb->dted_probe;
 		newpdesc.dtpd_vmid = 0;
+
+		process = 1;
+		for (ppd = dt_list_next(&ppds); ppd; ppd = dt_list_next(ppd)) {
+			if (memcmp(ppd->pdesc, &newpdesc,
+			    sizeof(dtrace_probedesc_t)) == 0) {
+				process = 0;
+				break;
+			}
+		}
+
+		if (process == 0)
+			continue;
+
+		ppd = malloc(sizeof(dt_ppd_t));
+		if (ppd == NULL)
+			abort();
+
+		ppd->pdesc = malloc(sizeof(dtrace_probedesc_t));
+		if (ppd->pdesc == NULL)
+			abort();
+
+		memcpy(ppd->pdesc, &newpdesc, sizeof(dtrace_probedesc_t));
+		dt_list_append(&ppds, ppd);
 
 		newecb = dt_ecbdesc_create(dtp, &newpdesc);
 		if (newecb == NULL)
@@ -1249,6 +1280,11 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 	newpgp->dp_rflags = pgp->dp_rflags;
 
+	while (ppd = dt_list_next(&ppds)) {
+		dt_list_delete(&ppds, ppd);
+		free(ppd->pdesc);
+		free(ppd);
+	}
 	return (newpgp);
 }
 
