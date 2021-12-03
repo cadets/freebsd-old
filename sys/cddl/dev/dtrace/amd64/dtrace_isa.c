@@ -23,6 +23,26 @@
  */
 /*
  * Copyright 2005 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2021, Domagoj Stolfa. All rights reserved.
+ *
+ * This software were developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory (Department of Computer Science and
+ * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+ * DARPA SSITH research programme.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from Arm Limited.
+ *
+ * This software was developed by the University of Cambridge Computer
+ * Laboratory (Department of Computer Science and Technology) with support
+ * from the Kenneth Hayter Scholarship Fund.
+
  * Use is subject to license terms.
  */
 #include <sys/cdefs.h>
@@ -67,12 +87,22 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	c_db_sym_t sym;
 	db_expr_t off;
 	int i;
+	uintptr_t addr;
 
 	sym = db_search_symbol(pc, DB_STGY_PROC, &off);
 	db_symbol_values(sym, &symname, NULL);
 
 	stack_start = stack + *depth;
-	stack_end = stack + *depth + size;
+	stack_end = stack + *depth + size - 8; /* -8 to fit a uintptr_t */
+
+	/* assert that our addresses are 8-byte aligned */
+	ASSERT((((uintptr_t)stack) & ALIGNBYTES) == 0);
+	ASSERT((((uintptr_t)stack_start) & ALIGNBYTES) == 0);
+	ASSERT((((uintptr_t)stack_end) & ALIGNBYTES) == 0);
+
+	if (stack_end <= stack_start) {
+		return;
+	}
 
 	if (pc == 0 || symname == NULL || off >= (db_addr_t)dtrace_db_maxoff) {
 		if (pc == 0 || size < sizeof("unknown")) {
@@ -97,6 +127,13 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 		*(c - 1) = 0;
 	else
 		*c = 0;
+
+	/*
+	 * Ensure we are 8-byte aligned.
+	 */
+	addr = ALIGN(c);
+	ASSERT(addr >= (uintptr_t)c);
+	*((uint64_t *)addr) = off; /* store the offset after our string */
 
 	*depth += size;
 }

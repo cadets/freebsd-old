@@ -40,6 +40,8 @@ typedef struct hypertrace_args {
 	u_int htr_execargs_len;                  /* (v) guest execargs */
 	char *htr_jailname;                      /* (v) guest jailname */
 	int htr_jid;                             /* guest jid */
+	char *htr_immstack;                      /* guest immstack */
+	int htr_immstacksize;                    /* guest immstack size */
 } hypertrace_args_t;
 
 /*

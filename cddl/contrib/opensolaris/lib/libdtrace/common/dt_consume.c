@@ -28,6 +28,8 @@
  * Copyright (c) 2012 by Delphix. All rights reserved.
  */
 
+#include <machine/param.h>
+
 #include <stdlib.h>
 #include <strings.h>
 #include <errno.h>
@@ -1254,6 +1256,9 @@ dt_print_immstack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 {
 	int stacksize, strsize, nframes, indent, i;
 	char *stack_entry;
+	size_t stack_entry_len;
+	uint64_t off;
+	uintptr_t addr_off;
 
 	if (dt_printf(dtp, fp, "\n") < 0)
 		return (-1);
@@ -1273,15 +1278,23 @@ dt_print_immstack(dtrace_hdl_t *dtp, FILE *fp, const char *format,
 	else
 		stacksize = size / nframes;
 
+	addr = (caddr_t)ALIGN(addr);
+
 	for (i = 0; i < depth * stacksize; i += stacksize) {
 		stack_entry = (char *)(addr + i);
 		if (*stack_entry == 0)
 			break;
 
+		stack_entry_len = strlen(stack_entry);
+		addr_off = ALIGN(stack_entry + stack_entry_len + 1);
+		off = *((uint64_t *)addr_off);
 		if (dt_printf(dtp, fp, "%*s", indent, "") < 0)
 			return (-1);
 
 		if (dt_printf(dtp, fp, format, stack_entry) < 0)
+			return (-1);
+
+		if (dt_printf(dtp, fp, "+0x%llx", off) < 0)
 			return (-1);
 
 		if (dt_printf(dtp, fp, "\n") < 0)

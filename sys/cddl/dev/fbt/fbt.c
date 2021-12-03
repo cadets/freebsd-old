@@ -136,12 +136,16 @@ fbt_excluded(const char *name)
 	 *
 	 * We also exclude 'X_db_' and 'linker_ddb_' as DTrace will perform
 	 * stack symbol resolution in the case of HyperTrace, so we don't want
-	 * to recurse by accident.
+	 * to recurse by accident. The rest of the exclusions are being called
+	 * by 'X_db_*' functions.
 	 */
 	if (strncmp(name, "db_", 3) == 0 ||
 	    strncmp(name, "kdb_", 4) == 0 ||
 	    strncmp(name, "X_db_", 5) == 0 ||
-	    strncmp(name, "linker_ddb_", 11) == 0)
+	    strncmp(name, "linker_ddb_", 11) == 0 ||
+	    strncmp(name, "linker_debug_", 13) == 0 ||
+	    strcmp(name, "link_elf_symbol_values") == 0 ||
+	    strcmp(name, "link_elf_search_symbol") == 0)
 		return (1);
 
 	/*

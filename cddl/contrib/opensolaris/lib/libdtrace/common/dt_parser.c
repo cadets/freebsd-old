@@ -1026,6 +1026,13 @@ dt_node_is_stack(const dt_node_t *dnp)
 }
 
 int
+dt_node_is_immstack(const dt_node_t *dnp)
+{
+	return (dnp->dn_ctfp == DT_IMMSTACK_CTFP(yypcb->pcb_hdl) &&
+	    dnp->dn_type == DT_IMMSTACK_TYPE(yypcb->pcb_hdl));
+}
+
+int
 dt_node_is_symaddr(const dt_node_t *dnp)
 {
 	return (dnp->dn_ctfp == DT_SYMADDR_CTFP(yypcb->pcb_hdl) &&
@@ -1093,6 +1100,9 @@ dt_node_is_void(const dt_node_t *dnp)
 		return (0); /* <DYN> is an alias for void but not the same */
 
 	if (dt_node_is_stack(dnp))
+		return (0);
+
+	if (dt_node_is_immstack(dnp))
 		return (0);
 
 	if (dt_node_is_symaddr(dnp) || dt_node_is_usymaddr(dnp))

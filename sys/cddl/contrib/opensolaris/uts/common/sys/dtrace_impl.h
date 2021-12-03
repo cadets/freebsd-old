@@ -1178,9 +1178,11 @@ struct dtrace_state {
 	int dts_naggregations;			/* number of aggregations */
 	dtrace_aggregation_t **dts_aggregations; /* aggregation array */
 	int dts_immstacksize;			/* immediate stack size */
+	int dts_realimmstacksize;		/* immediate stack size (with metadata) */
 	int dts_immstackstrsize;		/* string size of an immstack */
 	int dts_immstackframes;			/* number of immstack frames */
 	char **dts_immstack;			/* immediate stack buffer */
+	char **dts_realimmstack;		/* immediate stack buffer (with metadata) */
 #ifdef illumos
 	vmem_t *dts_aggid_arena;		/* arena for aggregation IDs */
 #else

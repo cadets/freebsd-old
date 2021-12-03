@@ -561,6 +561,7 @@ typedef struct dtrace_difv {
 #define	DTRACEACT_TRACEMEM		6	/* tracemem() action */
 #define	DTRACEACT_TRACEMEM_DYNSIZE	7	/* dynamic tracemem() size */
 #define	DTRACEACT_PRINTM		8	/* printm() action (BSD) */
+#define	DTRACEACT_PRINTIMMSTACK		9	/* compiler-generated only */
 
 #define	DTRACEACT_PROC			0x0100
 #define	DTRACEACT_USTACK		(DTRACEACT_PROC + 1)

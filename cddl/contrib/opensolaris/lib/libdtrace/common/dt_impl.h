@@ -464,6 +464,9 @@ struct dtrace_hdl {
 #define	DT_STACK_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
 #define	DT_STACK_TYPE(dtp)	((dtp)->dt_type_stack)
 
+#define	DT_IMMSTACK_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
+#define	DT_IMMSTACK_TYPE(dtp)	((dtp)->dt_type_immstack)
+
 #define	DT_SYMADDR_CTFP(dtp)	((dtp)->dt_ddefs->dm_ctfp)
 #define	DT_SYMADDR_TYPE(dtp)	((dtp)->dt_type_symaddr)
 

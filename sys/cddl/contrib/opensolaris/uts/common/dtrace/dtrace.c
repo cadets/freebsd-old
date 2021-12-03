@@ -7881,6 +7881,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					.htr_execargs_len = 0, /* needs check */
 					.htr_jid = jail->pr_id,
 					.htr_jailname = jail->pr_name,
+					.htr_immstack = state->dts_immstack[curcpu],
+					.htr_immstacksize = state->dts_immstacksize,
 				};
 
 				if (curproc != NULL) {
@@ -8781,8 +8783,50 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				    (uint32_t *)arg0);
 				continue;
 
+			case DTRACEACT_PRINTIMMSTACK: {
+				caddr_t atomax;
+				size_t sz_to_copy;
+				char *gimmstack;
+				int gimmstacksize;
+				volatile uint16_t *flags;
+
+				if (!dtrace_priv_kernel(state))
+					continue;
+
+				flags = (volatile uint16_t *)&cpu_core[curcpu]
+					    .cpuc_dtrace_flags;
+
+				if (vm_guest == VM_GUEST_NO) {
+					*flags |= CPU_DTRACE_BADSTACK;
+					continue;
+				}
+
+				gimmstack = mstate.dtms_htrargs->htr_immstack;
+				gimmstacksize = mstate.dtms_htrargs->htr_immstacksize;
+
+				/* We require correct alignment in the address
+				 * we get.
+				 */
+				if (((uintptr_t)gimmstack) & ALIGNBYTES) {
+					*flags |= CPU_DTRACE_BADALIGN;
+					cpu_core[curcpu].cpuc_dtrace_illval =
+					    (uintptr_t)gimmstack;
+					continue;
+				}
+
+				if (size < gimmstacksize) {
+					*flags |= CPU_DTRACE_DROP;
+					continue;
+				}
+
+				atomax = (caddr_t)ALIGN(tomax + valoffs);
+				dtrace_bcopy(mstate.dtms_vmhdl, gimmstack,
+				    atomax, gimmstacksize);
+				continue;
+			}
+
 			case DTRACEACT_IMMSTACK: {
-				int isstrsize, immstackframes, div;
+				int isstrsize, immstackframes;
 
 				if (!dtrace_priv_kernel(state))
 					continue;
@@ -8798,12 +8842,16 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
 				} else {
-					div = size / immstackframes;
-					isstrsize = state->dts_immstackstrsize >
-					    div ?
-					    div : state->dts_immstackstrsize;
+					caddr_t atomax;
 
-					dtrace_getpcimmstack(tomax + valoffs,
+					if (size < state->dts_immstacksize) {
+						*flags |= CPU_DTRACE_DROP;
+						continue;
+					}
+
+					isstrsize = state->dts_immstackstrsize;
+					atomax = (caddr_t)ALIGN(tomax + valoffs);
+					dtrace_getpcimmstack(atomax,
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
@@ -13115,13 +13163,49 @@ dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			break;
 
 		case DTRACEACT_IMMSTACK:
-			if ((nframes = arg) == 0) {
-				nframes = opt[DTRACEOPT_IMMSTACKFRAMES];
-				ASSERT(nframes > 0);
-				arg = nframes;
-			}
+			/*
+			 * If we are on the host, then we actually store to the
+			 * buffer directly. However, on the guest we simply
+			 * store it in the immstack buffer, which we will
+			 * hypercall to the host.
+			 *
+			 * FIXME: This should probably be something more
+			 * configurable with an option, rather than predicating
+			 * on vm_guest.
+			 */
+			if (vm_guest == VM_GUEST_NO) {
+				if ((nframes = arg) == 0) {
+					nframes = opt[DTRACEOPT_IMMSTACKFRAMES];
+					ASSERT(nframes > 0);
+					arg = nframes;
+				}
 
-			size = nframes * opt[DTRACEOPT_IMMSTACKSTRSIZE];
+				size = nframes * opt[DTRACEOPT_IMMSTACKSTRSIZE];
+			} else
+				size = 0;
+			break;
+
+		case DTRACEACT_PRINTIMMSTACK:
+			/*
+			 * If we are on the guest, we don't want to print
+			 * anything. It is simply a no-op. However, on the host
+			 * we want to print the whole stack.
+			 *
+			 * FIXME: The options need to line up on the guest and
+			 * host, otherwise there will be missing data
+			 * potentially.
+			 * FIXME: See above (DTRACEACT_IMMSTACK).
+			 */
+			if (vm_guest == VM_GUEST_NO) {
+				if ((nframes = arg) == 0) {
+					nframes = opt[DTRACEOPT_IMMSTACKFRAMES];
+					ASSERT(nframes > 0);
+					arg = nframes;
+				}
+
+				size = nframes * opt[DTRACEOPT_IMMSTACKSTRSIZE];
+			} else
+				size = 0;
 			break;
 
 		case DTRACEACT_JSTACK:
@@ -16377,7 +16461,8 @@ dtrace_state_create(struct cdev *dev, struct ucred *cred __unused)
 	 * We allocate NCPU immediate stacks to hold our strings if we need to
 	 * create an immediate stack trace.
 	 */
-	state->dts_immstack = kmem_zalloc(immstacksize, KM_SLEEP);
+	state->dts_realimmstack = kmem_zalloc(immstacksize, KM_SLEEP);
+	state->dts_immstack = state->dts_realimmstack;
 
 	/*
          * Allocate and initialise the per-process per-CPU random state.
@@ -16660,6 +16745,7 @@ dtrace_state_immstack(dtrace_state_t *state)
 {
 	dtrace_optval_t *opt;
 	int i, stacksize;
+	char *s;
 
 	opt = state->dts_options;
 	stacksize = opt[DTRACEOPT_IMMSTACKFRAMES] *
@@ -16669,11 +16755,14 @@ dtrace_state_immstack(dtrace_state_t *state)
 		if (state->dts_immstack[i] != NULL)
 			continue;
 
-		state->dts_immstack[i] = kmem_zalloc(stacksize, KM_NOSLEEP);
-		if (state->dts_immstack[i] == NULL)
+		s = kmem_zalloc(stacksize + ALIGNBYTES + 1, KM_NOSLEEP);
+		if (s == NULL)
 			return (ENOMEM);
+		state->dts_realimmstack[i] = s;
+		state->dts_immstack[i] = (char *)ALIGN(s);
 	}
 
+	state->dts_realimmstacksize = stacksize + ALIGNBYTES + 1;
 	state->dts_immstacksize = stacksize;
 	state->dts_immstackframes = opt[DTRACEOPT_IMMSTACKFRAMES];
 	state->dts_immstackstrsize = opt[DTRACEOPT_IMMSTACKSTRSIZE];
