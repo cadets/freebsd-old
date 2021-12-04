@@ -666,8 +666,11 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	el->eact = eact;
 
 	dt_list_append(&dtelf_state->s_actions, el);
-	dt_hashmap_insert(dtelf_state->s_acthash,
-	    ad, sizeof(dtrace_actdesc_t), scn);
+	if (dt_hashmap_insert(dtelf_state->s_acthash,
+	    ad, sizeof(dtrace_actdesc_t), scn, 0)) {
+		fprintf(stderr, "Failed to insert actdesc into hashmap.\n");
+		abort();
+	}
 	return (scn);
 }
 
@@ -812,8 +815,10 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 	(void) elf_flagdata(data, ELF_C_SET, ELF_F_DIRTY);
 
 	if (dt_hashmap_insert(dtelf_state->s_ecbhash, ecb,
-	    sizeof(dtrace_ecbdesc_t), scn))
-		errx(EXIT_FAILURE, "Failed to insert section into hashmap.");
+	    sizeof(dtrace_ecbdesc_t), scn, 0)) {
+		fprintf(stderr, "Failed to insert section into hashmap.\n");
+		abort();
+	}
 
 	return (scn);
 }
@@ -1805,8 +1810,10 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	ecb->dted_uarg = eecb->dtee_uarg;
 
 	if (dt_hashmap_insert(dtelf_state->s_ecbhash, &ecbref,
-	    sizeof(dt_elf_ref_t), ecb))
+	    sizeof(dt_elf_ref_t), ecb, DTH_MANAGED)) {
 		fprintf(stderr, "Failed to insert into hashmap\n");
+		abort();
+	}
 	return (ecb);
 }
 
@@ -1883,7 +1890,6 @@ dt_elf_free_ecb(dtrace_ecbdesc_t *ecb)
 
 	if (ecb->dted_pred.dtpdd_difo != NULL)
 		free(ecb->dted_pred.dtpdd_difo);
-
 	free(ecb);
 }
 
@@ -1942,6 +1948,9 @@ dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
 		/*
 		 * We won't be needing the ECB nor the statement.
 		 */
+		(void)dt_hashmap_delete(dtelf_state->s_ecbhash,
+		    &estmt->dtes_ecbdesc, sizeof(dt_elf_ref_t));
+
 		dt_elf_free_ecb(stmt->dtsd_ecbdesc);
 		free(stmt);
 

@@ -46,6 +46,7 @@
 
 #include <assert.h>
 #include <dt_hashmap.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -203,9 +204,11 @@ dt_hashmap_lookup(dt_hashmap_t *hm, void *e, size_t es)
 }
 
 int
-dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data)
+dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data,
+    uint32_t flags)
 {
 	uint32_t idx;
+	unsigned char *k;
 
 	idx = _hash(e, es) % hm->dthm_size;
 
@@ -221,7 +224,18 @@ dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data)
 	if (hm->dthm_table[idx].key == NULL) {
 		hm->dthm_nitems++;
 		hm->dthm_table[idx].data = data;
-		hm->dthm_table[idx].key = e;
+		if (flags & DTH_MANAGED) {
+			k = malloc(es);
+			if (k == NULL)
+				return (ENOMEM);
+			memcpy(k, e, es);
+			hm->dthm_table[idx].key_ismanaged = 1;
+		} else {
+			k = e;
+			hm->dthm_table[idx].key_ismanaged = 0;
+		}
+
+		hm->dthm_table[idx].key = k;
 		hm->dthm_table[idx].keysize = es;
 	}
 	
@@ -240,7 +254,6 @@ dt_hashmap_delete(dt_hashmap_t *hm, void *e, size_t es)
 		assert(hm->dthm_table[idx].keysize == es);
 		if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
 			break;
-
 		idx++;
 		idx %= hm->dthm_size;
 	}
@@ -251,6 +264,10 @@ dt_hashmap_delete(dt_hashmap_t *hm, void *e, size_t es)
 	data = hm->dthm_table[idx].data;
 	hm->dthm_nitems--;
 	hm->dthm_table[idx].data = NULL;
+
+	if (hm->dthm_table[idx].key_ismanaged)
+		free(hm->dthm_table[idx].key);
+
 	hm->dthm_table[idx].key = NULL;
 	hm->dthm_table[idx].keysize = 0;
 

@@ -40,10 +40,13 @@
 #ifndef _DT_HASHMAP_H_
 #define _DT_HASHMAP_H_
 
+#define DTH_MANAGED (1 << 1)
+
 typedef struct {
 	void *data;
 	void *key;
 	size_t keysize;
+	int key_ismanaged;
 } dt_hashbucket_t;
 
 typedef struct dt_hashmap {
@@ -54,7 +57,7 @@ typedef struct dt_hashmap {
 
 dt_hashmap_t *dt_hashmap_create(size_t);
 void *dt_hashmap_lookup(dt_hashmap_t *, void *, size_t);
-int dt_hashmap_insert(dt_hashmap_t *, void *, size_t, void *);
+int dt_hashmap_insert(dt_hashmap_t *, void *, size_t, void *, uint32_t);
 void *dt_hashmap_delete(dt_hashmap_t *, void *, size_t);
 void dt_hashmap_free(dt_hashmap_t *);
 
