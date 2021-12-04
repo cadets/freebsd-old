@@ -156,6 +156,15 @@ dump_action(dtrace_actdesc_t *ap)
 		dtrace_print_stack(num_frames, "JSTACK");
 		break;
 
+	case DTRACEACT_IMMSTACK:
+		num_frames = ap->dtad_arg;
+		dtrace_print_stack(num_frames, "IMMSTACK");
+		break;
+
+	case DTRACEACT_PRINTIMMSTACK:
+		fprintf(stderr, "PRINTIMMSTACK\n");
+		break;
+
 	/* Aggregations */
 	case DTRACEAGG_COUNT:
 		fprintf(stderr, "COUNT\n");
