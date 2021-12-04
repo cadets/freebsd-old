@@ -8796,7 +8796,7 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				flags = (volatile uint16_t *)&cpu_core[curcpu]
 					    .cpuc_dtrace_flags;
 
-				if (vm_guest == VM_GUEST_NO) {
+				if (vm_guest != VM_GUEST_NO) {
 					*flags |= CPU_DTRACE_BADSTACK;
 					continue;
 				}

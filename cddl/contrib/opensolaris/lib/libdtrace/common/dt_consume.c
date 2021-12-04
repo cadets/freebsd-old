@@ -1945,6 +1945,7 @@ dt_print_datum(dtrace_hdl_t *dtp, FILE *fp, dtrace_recdesc_t *rec,
 		    rec->dtrd_arg, rec->dtrd_size / rec->dtrd_arg));
 
 	case DTRACEACT_IMMSTACK:
+	case DTRACEACT_PRINTIMMSTACK:
 		return (dt_print_immstack(dtp, fp, NULL, addr,
 		    rec->dtrd_arg, rec->dtrd_size));
 
@@ -2373,7 +2374,8 @@ dt_consume_cpu(dtrace_hdl_t *dtp, FILE *fp, int cpu,
 				goto nextrec;
 			}
 
-			if (act == DTRACEACT_IMMSTACK) {
+			if (act == DTRACEACT_IMMSTACK ||
+			    act == DTRACEACT_PRINTIMMSTACK) {
 				int depth = rec->dtrd_arg;
 
 				if (dt_print_immstack(dtp, fp, NULL, addr,

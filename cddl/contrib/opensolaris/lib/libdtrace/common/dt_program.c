@@ -1195,12 +1195,12 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dt_stmt_t *newstmt, *stmt;
 	dtrace_stmtdesc_t *newstmtdesc, *curstmtdesc;
 	dtrace_ecbdesc_t *newecb, *curecb;
-	dtrace_actdesc_t *newact;
+	dtrace_actdesc_t *newact, *curact;
 	dtrace_difo_t *difo;
 	dtrace_probedesc_t newpdesc = { 0 };
 	dt_list_t ppds = { 0 };
 	dt_ppd_t *ppd;
-	int process;
+	int process, has_immstack;
 
 	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
@@ -1239,28 +1239,35 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 		newecb = dt_ecbdesc_create(dtp, &newpdesc);
 		if (newecb == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new dtrace_ecbdesc_t: %s\n",
-			    strerror(errno));
+			abort();
 
 		newstmtdesc = dtrace_stmt_create(dtp, newecb);
 		if (newstmtdesc == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new dtrace_stmtdesc_t: %s\n",
-			    strerror(errno));
+			abort();
+
+		has_immstack = 0;
+		for (curact = curstmtdesc->dtsd_action;
+		     curact != curstmtdesc->dtsd_action_last->dtad_next;
+		     curact = curact->dtad_next) {
+			if (curact->dtad_kind == DTRACEACT_IMMSTACK) {
+				has_immstack = 1;
+				newact = dtrace_stmt_action(dtp, newstmtdesc);
+				if (newact == NULL)
+					abort();
+				curact->dtad_kind = DTRACEACT_PRINTIMMSTACK;
+				newact->dtad_kind = DTRACEACT_IMMSTACK;
+				newact->dtad_return = 0;
+			}
+		}
 
 		newact = dtrace_stmt_action(dtp, newstmtdesc);
 		if (newact == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new dtrace_actdesc_t: %s\n",
-			    strerror(errno));
+			abort();
 
 		newact->dtad_difo = malloc(sizeof(dtrace_difo_t));
 		difo = newact->dtad_difo;
 		if (difo == NULL)
-			errx(EXIT_FAILURE,
-			    "failed to allocate a new DIFO: %s\n",
-			    strerror(errno));
+			abort();
 
 		memset(difo, 0, sizeof(dtrace_difo_t));
 
