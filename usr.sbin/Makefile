@@ -22,6 +22,7 @@ SUBDIR=	adduser \
 	devctl \
 	devinfo \
 	diskinfo \
+	dtracetsc \
 	dumpcis \
 	etcupdate \
 	extattr \

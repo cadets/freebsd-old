@@ -290,6 +290,12 @@ static int		dtrace_getf;		/* number of unpriv getf()s */
 static void		*dtrace_softstate;	/* softstate pointer */
 #endif
 
+static uint64_t _dtrace_stack_sum[256];
+static uint64_t _dtrace_stack_avgcnt[256];
+
+static uint64_t _dtrace_immstack_sum[256];
+static uint64_t _dtrace_immstack_avgcnt[256];
+
 static dtrace_hash_t	*dtrace_bymod[HYPERTRACE_MAX_VMS];
 						/* probes hashed by module */
 static dtrace_hash_t	*dtrace_byfunc[HYPERTRACE_MAX_VMS];
@@ -8808,15 +8814,22 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 					dtrace_action_panic(ecb);
 				continue;
 
-			case DTRACEACT_STACK:
+			case DTRACEACT_STACK: {
+				uint64_t start_time, end_time;
 				if (!dtrace_priv_kernel(state))
 					continue;
 
+				start_time = dtrace_gethrtime();
 				dtrace_getpcstack((pc_t *)(tomax + valoffs),
 				    size / sizeof (pc_t), probe->dtpr_aframes,
 				    DTRACE_ANCHORED(probe) ? NULL :
 				    (uint32_t *)arg0);
+				end_time = dtrace_gethrtime();
+
+				_dtrace_stack_sum[cpuid] += (end_time - start_time);
+				_dtrace_stack_avgcnt[cpuid]++;
 				continue;
+			}
 
 			case DTRACEACT_PRINTIMMSTACK: {
 				caddr_t atomax;
@@ -8863,6 +8876,7 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 			case DTRACEACT_IMMSTACK: {
 				volatile uint16_t *flags;
 				int isstrsize, immstackframes;
+				uint64_t start_time, end_time;
 
 				if (!dtrace_priv_kernel(state))
 					continue;
@@ -8890,11 +8904,17 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 					isstrsize = state->dts_immstackstrsize;
 					atomax = (caddr_t)ALIGN(tomax + valoffs);
+
+					start_time = dtrace_gethrtime();
 					dtrace_getpcimmstack(atomax,
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
+					end_time = dtrace_gethrtime();
+
+					_dtrace_immstack_sum[cpuid] += (end_time - start_time);
+					_dtrace_immstack_avgcnt[cpuid]++;
 				}
 				continue;
 			}

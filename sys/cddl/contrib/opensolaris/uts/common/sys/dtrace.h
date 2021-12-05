@@ -1084,6 +1084,11 @@ typedef struct dtrace_actdesc {
 	int dtad_patched;			/* did we patch this? */
 } dtrace_actdesc_t;
 
+typedef struct {
+	uint64_t sum;
+	uint64_t cnt;
+} dtrace_tscdata_t;
+
 typedef struct dtrace_ecbdesc {
 	dtrace_actdesc_t *dted_action;		/* action description(s) */
 	dtrace_preddesc_t dted_pred;		/* predicate description */

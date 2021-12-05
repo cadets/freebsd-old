@@ -73,6 +73,54 @@ sysctl_dtrace_providers(SYSCTL_HANDLER_ARGS)
 	return (error);
 }
 
+static int
+sysctl_dtrace_stacktsc(SYSCTL_HANDLER_ARGS)
+{
+	size_t i;
+	uint64_t fullsum, fullcnt;
+	dtrace_tscdata_t val = { 0 };
+	int error;
+
+	fullsum = fullcnt = 0;
+	for (i = 0; i < NCPU; i++) {
+		fullsum += _dtrace_stack_sum[i];
+		fullcnt += _dtrace_stack_avgcnt[i];
+
+		_dtrace_stack_sum[i] = 0;
+		_dtrace_stack_avgcnt[i] = 0;
+	}
+
+	val.sum = fullsum;
+	val.cnt = fullcnt;
+
+	error = sysctl_handle_opaque(oidp, &val, sizeof(val), req);
+	return (error);
+}
+
+static int
+sysctl_dtrace_immstacktsc(SYSCTL_HANDLER_ARGS)
+{
+	size_t i;
+	uint64_t fullsum, fullcnt;
+	dtrace_tscdata_t val = { 0 };
+	int error;
+
+	fullsum = fullcnt = 0;
+	for (i = 0; i < NCPU; i++) {
+		fullsum += _dtrace_immstack_sum[i];
+		fullcnt += _dtrace_immstack_avgcnt[i];
+
+		_dtrace_immstack_sum[i] = 0;
+		_dtrace_immstack_avgcnt[i] = 0;
+	}
+
+	val.sum = fullsum;
+	val.cnt = fullcnt;
+
+	error = sysctl_handle_opaque(oidp, &val, sizeof(val), req);
+	return (error);
+}
+
 SYSCTL_NODE(_debug, OID_AUTO, dtrace, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "DTrace debug parameters");
 
@@ -102,3 +150,11 @@ SYSCTL_QUAD(_kern_dtrace, OID_AUTO, helper_actions_max, CTLFLAG_RW,
 
 SYSCTL_INT(_security_bsd, OID_AUTO, allow_destructive_dtrace, CTLFLAG_RDTUN,
     &dtrace_allow_destructive, 1, "Allow destructive mode DTrace scripts");
+
+SYSCTL_PROC(_kern_dtrace, OID_AUTO, stacktsc,
+    CTLTYPE_STRING | CTLFLAG_MPSAFE | CTLFLAG_RD, 0, 0, sysctl_dtrace_stacktsc,
+    "A", "current stack measurements");
+
+SYSCTL_PROC(_kern_dtrace, OID_AUTO, immstacktsc,
+    CTLTYPE_STRING | CTLFLAG_MPSAFE | CTLFLAG_RD, 0, 0,
+    sysctl_dtrace_immstacktsc, "A", "current immstack measurements");
