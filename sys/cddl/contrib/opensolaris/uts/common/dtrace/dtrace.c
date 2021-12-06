@@ -17365,6 +17365,11 @@ dtrace_state_destroy(dtrace_state_t *state)
 	dtrace_buffer_free(state->dts_buffer);
 	dtrace_buffer_free(state->dts_aggbuffer);
 
+	for (i = 0; i < NCPU; i++)
+		kmem_free(state->dts_realimmstack[i], state->dts_realimmstacksize);
+
+	kmem_free(state->dts_realimmstack, NCPU * sizeof(char *));
+
 	for (i = 0; i < nspec; i++)
 		dtrace_buffer_free(spec[i].dtsp_buffer);
 
