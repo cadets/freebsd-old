@@ -317,6 +317,7 @@ static struct callout	virt_state_callout;
 static struct mtx	dtrace_unr_mtx;
 static eventhandler_tag	dtrace_kld_load_tag;
 static eventhandler_tag	dtrace_kld_unload_try_tag;
+static eventhandler_tag	dtrace_kld_unload_tag;
 #endif
 
 /*
@@ -18524,6 +18525,15 @@ dtrace_immstackhashfn(pc_t pc)
 	return (hashval);
 }
 
+static void
+dtrace_immstack_invalidate_cache()
+{
+
+	memset(dtrace_immstackhash, 0,
+	    sizeof(dtrace_immstackhash_t) * dtrace_immstackhash_size);
+	dtrace_sync(); /* make sure all cores see it */
+}
+
 static const char *
 dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 {
@@ -18763,7 +18773,6 @@ dtrace_module_unloaded(modctl_t *ctl, int *error)
 		return;
 	}
 #endif
-
 	dtrace_probes = dtrace_vprobes[HYPERTRACE_HOSTID];
 
 	if (dtrace_bymod[HYPERTRACE_HOSTID] == NULL) {
@@ -18880,6 +18889,17 @@ dtrace_kld_unload_try(void *arg __unused, linker_file_t lf, int *error)
 		/* We already have an error, so don't do anything. */
 		return;
 	dtrace_module_unloaded(lf, error);
+}
+
+static void
+dtrace_kld_unload(void *arg __unused, const char *filename __unused,
+    caddr_t address __unused, size_t size __unused)
+{
+
+	/*
+	 * Invalidate the immediate stack cache.
+	 */
+	dtrace_immstack_invalidate_cache();
 }
 #endif
 
