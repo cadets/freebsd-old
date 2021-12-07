@@ -90,6 +90,8 @@ dtrace_unload()
 	delete_unrhdr(dtrace_arena);
 	mtx_destroy(&dtrace_unr_mtx);
 
+	kmem_free(dtrace_immstackhash,
+	    dtrace_immstackhash_size * sizeof(dtrace_immstackhash_t));
 	kmem_cache_destroy(dtrace_state_cache);
 
 	if (dtrace_toxrange != NULL) {

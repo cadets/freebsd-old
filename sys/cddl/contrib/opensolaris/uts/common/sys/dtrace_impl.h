@@ -65,8 +65,10 @@ typedef	u_long			greg_t;
 /*
  * DTrace Implementation Constants and Typedefs
  */
-#define	DTRACE_MAXPROPLEN		128
-#define	DTRACE_DYNVAR_CHUNKSIZE		256
+#define	DTRACE_MAXPROPLEN			128
+#define	DTRACE_DYNVAR_CHUNKSIZE			256
+#define	DTRACE_IMMSTACKHASH_DEFAULT_SIZE	(1 << 20)
+
 /*
  * We only allow a million vprobes per guest.
  */

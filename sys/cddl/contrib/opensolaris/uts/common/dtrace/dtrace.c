@@ -266,6 +266,19 @@ dtrace_probe_t		**dtrace_vprobes[HYPERTRACE_MAX_VMS];
 int			dtrace_nvprobes[HYPERTRACE_MAX_VMS];
 						/* number of vprobes in each vm */
 
+/*
+ * TODO: Move to a more sensible place...?
+ */
+typedef struct {
+	pc_t key;
+	const char *sym;
+	uint64_t off;
+} dtrace_immstackhash_t;
+
+dtrace_immstackhash_t *dtrace_immstackhash;	/* immstack() lookup table */
+static uint32_t dtrace_immstackhash_size;
+static uint32_t dtrace_immstackhash_mask;
+
 static dtrace_provider_t *dtrace_provider;	/* provider list */
 static dtrace_meta_t	*dtrace_meta_pid;	/* user-land meta provider */
 static dtrace_dist_t *dtrace_dist = NULL;	/* dist list */
@@ -18485,6 +18498,80 @@ dtrace_helpers_destroy(proc_t *p)
 
 	--dtrace_helpers;
 	mutex_exit(&dtrace_lock);
+}
+
+static uint64_t
+dtrace_immstackhashfn(pc_t pc)
+{
+	uint64_t hashval = 0;
+
+	hashval += (pc >> 48) & 0xffff;
+	hashval += (hashval << 10);
+	hashval ^= (hashval >> 6);
+
+	hashval += (pc >> 32) & 0xffff;
+	hashval += (hashval << 10);
+	hashval ^= (hashval >> 6);
+
+	hashval += (pc >> 16) & 0xffff;
+	hashval += (hashval << 10);
+	hashval ^= (hashval >> 6);
+
+	hashval += pc & 0xffff;
+	hashval += (hashval << 10);
+	hashval ^= (hashval >> 6);
+
+	return (hashval);
+}
+
+static const char *
+dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
+{
+	uint32_t idx;
+
+	if (pc == 0)
+		return (NULL);
+
+	idx = dtrace_immstackhashfn(pc);
+	idx &= dtrace_immstackhash_mask;
+
+	while (dtrace_immstackhash[idx].key != pc &&
+	    dtrace_immstackhash[idx].sym != NULL) {
+		idx++; /* XXX: Meh. */
+		idx &= dtrace_immstackhash_mask;
+	}
+
+	*off = dtrace_immstackhash[idx].off;
+	return (dtrace_immstackhash[idx].sym);
+}
+
+static void
+dtrace_immstack_cache(pc_t pc, const char *symname, uint64_t off)
+{
+	uint32_t idx;
+	int cnt = 0;
+
+	idx = dtrace_immstackhashfn(pc);
+	idx &= dtrace_immstackhash_mask;
+
+	/*
+	 * FIXME: TODO: 'cnt' is a horrible workaround.
+	 */
+	while (dtrace_immstackhash[idx].sym != NULL && cnt < 1024) {
+		idx++;
+		idx &= dtrace_immstackhash_mask;
+		cnt++;
+	}
+
+	/*
+	 * If we couldn't find a spot for it, simply don't bother caching it.
+	 */
+	if (cnt >= 1024)
+		return;
+
+	dtrace_immstackhash[idx].key = pc;
+	dtrace_immstackhash[idx].sym = symname;
+	dtrace_immstackhash[idx].off = off;
 }
 
 #ifdef illumos

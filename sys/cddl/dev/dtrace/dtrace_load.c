@@ -106,6 +106,11 @@ dtrace_load(void *dummy)
 	mutex_enter(&dtrace_lock);
 	dtrace_curvmid = 0;
 
+	dtrace_immstackhash_size = DTRACE_IMMSTACKHASH_DEFAULT_SIZE;
+	dtrace_immstackhash_mask = dtrace_immstackhash_size - 1;
+	dtrace_immstackhash = kmem_zalloc(
+	    sizeof(dtrace_immstackhash_t) * dtrace_immstackhash_size, KM_SLEEP);
+
 	dtrace_state_cache = kmem_cache_create("dtrace_state_cache",
 	    sizeof (dtrace_dstate_percpu_t) * NCPU, DTRACE_STATE_ALIGN,
 	    NULL, NULL, NULL, NULL, NULL, 0);
