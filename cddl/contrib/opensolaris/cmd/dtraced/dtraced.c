@@ -150,6 +150,7 @@ main(int argc, char **argv)
 	__cleanup(cleanup_pidfile) struct pidfh *pfh = NULL;
 	pid_t otherpid;
 	int ctrlmachine = 1; /* default to control machine (-O) */
+	char *end;
 
 	program_name = argv[0];
 
@@ -239,7 +240,7 @@ main(int argc, char **argv)
 
 		case 't':
 			optlen = strlen(optarg);
-			threadpool_size = strtoul(optarg, optarg + optlen, 10);
+			threadpool_size = strtoul(optarg, &end, 10);
 			if (errno != 0) {
 				dump_errmsg(
 				    "Invalid argument (-t): failed to parse %s "
