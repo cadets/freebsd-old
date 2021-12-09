@@ -52,6 +52,8 @@
 #define DTRACED_LOCSIZE                64ul
 #define DTRACED_PROGIDENTLEN           128ull
 
+#define DTRACED_FDIDENTLEN             128ull
+
 typedef struct dtraced_hdr {
 	uint64_t msg_type;      /* message type (see DTRACED_MSG_*) */
 	struct {
@@ -73,8 +75,9 @@ typedef struct dtraced_hdr {
 } dtraced_hdr_t;
 
 typedef struct dtd_initmsg {
-	int kind;       /* kind (see above) */
-	uint64_t subs;  /* what are we subscribing to? */
+	int kind;                       /* kind (see above) */
+	uint64_t subs;                  /* what are we subscribing to? */
+	char ident[DTRACED_FDIDENTLEN]; /* human-readable string identifier */
 } dtd_initmsg_t;
 
 #define	DTRACED_MSGHDRSIZE             sizeof(dtraced_hdr_t)

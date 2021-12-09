@@ -31,7 +31,9 @@
 
 #include <sys/types.h>
 
-int dthyve_init(void);
+struct vmctx;
+
+int dthyve_init(struct vmctx *);
 int dthyve_configured(void);
 int dthyve_read(void **, size_t *);
 int dthyve_write(void *, size_t);

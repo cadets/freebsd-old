@@ -26,10 +26,13 @@
  * $FreeBSD$
  */
 
+#include <sys/types.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+
+#include <machine/vmm.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <sys/capsicum.h>
@@ -46,6 +49,7 @@
 #include <sysexits.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <vmmapi.h>
 
 #ifndef WITHOUT_CAPSICUM
 #include <capsicum_helpers.h>
@@ -58,7 +62,7 @@ static int wx_sockfd = -1;
 static int dirfd = -1;
 
 static int
-dtraced_sockinit(uint64_t subs)
+dtraced_sockinit(uint64_t subs, struct vmctx *ctx)
 {
 	size_t l;
 	struct sockaddr_un addr;
@@ -101,8 +105,15 @@ dtraced_sockinit(uint64_t subs)
 		return (-1);
 	}
 
+	if (vm_get_name(ctx, initmsg.ident, DTRACED_FDIDENTLEN)) {
+		fprintf(stderr, "Could not get vm name: %s\n", strerror(errno));
+		close(sock);
+		return (-1);
+	}
+
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = subs;
+
 	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "send() initmsg failed with: %s",
 		    strerror(errno));
@@ -117,14 +128,14 @@ dtraced_sockinit(uint64_t subs)
  * Open the vtdtr device in order to set up the state.
  */
 int
-dthyve_init(void)
+dthyve_init(struct vmctx *ctx)
 {
 	rx_sockfd = dtraced_sockinit(
-	    DTD_SUB_ELFWRITE | DTD_SUB_KILL | DTD_SUB_CLEANUP);
+	    DTD_SUB_ELFWRITE | DTD_SUB_KILL | DTD_SUB_CLEANUP, ctx);
 	if (rx_sockfd == -1)
 		fprintf(stderr, "failed to init rx_socktfd\n");
 
-	wx_sockfd = dtraced_sockinit(DTD_SUB_READDATA);
+	wx_sockfd = dtraced_sockinit(DTD_SUB_READDATA, ctx);
 	if (wx_sockfd == -1)
 		fprintf(stderr, "failed to init wx_socktfd\n");
 

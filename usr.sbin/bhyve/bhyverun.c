@@ -1394,7 +1394,7 @@ main(int argc, char *argv[])
 	 * extra flag for now. We can either hack it up in the '-s' flag or we
 	 * can let the PCI parsing code specify a flag somewhere, somehow.
 	 */
-	if (enable_dthyve != 0 && dthyve_init())
+	if (enable_dthyve != 0 && dthyve_init(ctx))
 		fprintf(stderr, "Failed to init dthyve: %s\n", strerror(errno));
 
 #ifdef BHYVE_SNAPSHOT

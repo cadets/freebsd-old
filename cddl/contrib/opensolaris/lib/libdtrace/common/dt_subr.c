@@ -1052,6 +1052,8 @@ open_dtraced(uint64_t subs)
 
 	initmsg.kind = DTRACED_KIND_CONSUMER;
 	initmsg.subs = subs;
+	snprintf(initmsg.ident, DTRACED_FDIDENTLEN, "dtrace-%d", getpid());
+
 	if (send(dtraced_sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "failed to send to dtraced socket: %s\n",
 		    strerror(errno));

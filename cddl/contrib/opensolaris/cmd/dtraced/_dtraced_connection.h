@@ -41,15 +41,19 @@
 #define __DTRACED_CONNECTION_H_
 
 #include <sys/types.h>
+#include "dtraced.h"
 
 #include <dt_list.h>
 
+#define DTRACED_FDIDENTLEN             128ull
+
 typedef struct dtraced_fd {
-	dt_list_t   list;    /* next element */
-	int         fd;      /* the actual filedesc */
-	int         kind;    /* consumer/forwarder */
-	uint64_t    subs;    /* events that efd subscribed to */
-	_Atomic int __count; /* reference count */
+	dt_list_t   list;               /* next element */
+	int         fd;                 /* the actual filedesc */
+	int         kind;               /* consumer/forwarder */
+	uint64_t    subs;               /* events that efd subscribed to */
+	_Atomic int __count;            /* reference count */
+	char ident[DTRACED_FDIDENTLEN]; /* human-readable identifier */
 } dtraced_fd_t;
 
 #endif // __DTRACED_CONNECTION_H_

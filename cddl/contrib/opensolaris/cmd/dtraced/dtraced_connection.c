@@ -180,6 +180,7 @@ accept_new_connection(struct dtd_state *s)
 	dfd->fd = connsockfd;
 	dfd->kind = initmsg.kind;
 	dfd->subs = initmsg.subs;
+	memcpy(dfd->ident, initmsg.ident, DTRACED_FDIDENTLEN);
 
 	if (enable_fd(s->kq_hdl, connsockfd, EVFILT_READ, dfd) < 0) {
 		close(connsockfd);
@@ -195,8 +196,8 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
-	dump_debugmsg("Accepted (%d, %x, 0x%x)", dfd->fd, dfd->kind,
-	    dfd->subs);
+	dump_debugmsg("Accepted (%d, %x, 0x%x, %s)", dfd->fd, dfd->kind,
+	    dfd->subs, dfd->ident);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, dfd);
 	UNLOCK(&s->socklistmtx);
