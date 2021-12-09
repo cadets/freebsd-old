@@ -132,6 +132,24 @@ close_filedescs(void *_s)
 	pthread_exit(_s);
 }
 
+static void
+enqueue_info_message(struct dtd_state *s, dtraced_fd_t *dfd)
+{
+	struct dtd_joblist *job;
+
+	fd_acquire(dfd);
+
+	job = malloc(sizeof(struct dtd_joblist));
+	if (job == NULL)
+		abort();
+
+	job->job = SEND_INFO;
+	job->connsockfd = dfd;
+
+	LOCK(&s->joblistmtx);
+	dt_list_append(&s->joblist, job);
+	UNLOCK(&s->joblistmtx);
+}
 
 static int
 accept_new_connection(struct dtd_state *s)
@@ -201,6 +219,10 @@ accept_new_connection(struct dtd_state *s)
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, dfd);
 	UNLOCK(&s->socklistmtx);
+
+	if (dfd->subs & DTD_SUB_INFO) {
+		enqueue_info_message(s, dfd);
+	}
 
 	return (0);
 }

@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2020 Domagoj Stolfa
  * Copyright (c) 2021 Domagoj Stolfa
  * All rights reserved.
  *
@@ -38,58 +37,59 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _DTRACED_JOB_H_
-#define _DTRACED_JOB_H_
+#include <sys/socket.h>
 
-#include <sys/event.h>
-
-#include <dt_list.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "dtraced.h"
-#include "_dtraced_connection.h"
-#include "dtraced_directory.h"
+#include "dtraced_cleanupjob.h"
+#include "dtraced_connection.h"
+#include "dtraced_errmsg.h"
+#include "dtraced_job.h"
+#include "dtraced_misc.h"
+#include "dtraced_state.h"
 
-typedef struct identlist {
-	dt_list_t list;
-	unsigned char ident[DTRACED_PROGIDENTLEN];
-} identlist_t;
+void
+handle_sendinfo(struct dtd_state *s, struct dtd_joblist *curjob)
+{
+	dtraced_hdr_t hdr = { 0 };
+	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
+	dtraced_fd_t *client;
+	int fd = dfd->fd;
+	size_t info_count = 0;
+	dtraced_infomsg_t *imsgs;
+	size_t i;
 
+	for (client = dt_list_next(&s->sockfds); client;
+	     client = dt_list_next(client))
+		info_count++;
 
-typedef struct dtd_joblist {
-	dt_list_t    list;       /* next element */
-	int          job;        /* job kind */
-	dtraced_fd_t *connsockfd; /* which socket do we send this on? */
-#define NOTIFY_ELFWRITE    1
-#define KILL               2
-#define READ_DATA          3
-#define CLEANUP            4
-#define SEND_INFO          5
-#define JOB_LAST           5
+	imsgs = malloc(info_count * sizeof(dtraced_infomsg_t));
+	if (imsgs == NULL)
+		abort();
 
-	union {
-		struct {
-			size_t    pathlen; /* how long is path? */
-			char      *path;   /* path to file (based on dir) */
-			dtd_dir_t *dir;    /* base directory of path */
-			int       nosha;   /* do we want to checksum? */
-		} notify_elfwrite;
+	memset(imsgs, 0, info_count * sizeof(dtraced_infomsg_t));
 
-		struct {
-			pid_t    pid;   /* pid to kill */
-			uint16_t vmid;  /* vmid to kill the pid on */
-		} kill;
+	i = 0;
+	for (client = dt_list_next(&s->sockfds); client;
+	     client = dt_list_next(client)) {
+		imsgs[i].client_kind = client->kind;
+		memcpy(
+		    imsgs[i++].client_name, client->ident, DTRACED_FDIDENTLEN);
+	}
 
-		struct {
-		} read;
+	hdr.msg_type = DTRACED_MSG_INFO;
+	hdr.info.count = info_count;
 
-		struct {
-			char **entries;   /* each entry to cleanup */
-			size_t n_entries; /* number of entries */
-		} cleanup;
-	} j;
-} dtd_joblist_t;
+	if (send(fd, &hdr, DTRACED_MSGHDRSIZE, 0) < 0) {
+		dump_errmsg("Failed to write header to %d : %m", fd);
+		return;
+	}
 
-int  dispatch_event(struct dtd_state *, struct kevent *);
-void *process_joblist(void *);
-
-#endif // _DTRACED_JOB_H_
+	if (send(fd, imsgs, info_count * sizeof(dtraced_infomsg_t), 0) < 0) {
+		dump_errmsg("Failed to write imsgs to %d: %m", fd);
+		return;
+	}
+}

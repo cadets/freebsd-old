@@ -18,7 +18,9 @@ SRCS=		dtraced.c \
 		dtraced_lock.c \
 		dtraced_misc.c \
 		dtraced_readjob.c \
+		dtraced_sendinfojob.c \
 		dtraced_state.c
+
 
 MAN=		dtraced.8
 

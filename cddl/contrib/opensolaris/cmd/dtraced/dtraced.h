@@ -48,6 +48,7 @@
 #define DTD_SUB_ELFWRITE               (1 << 1)
 #define DTD_SUB_KILL                   (1 << 2)
 #define DTD_SUB_CLEANUP                (1 << 3)
+#define DTD_SUB_INFO                   (1 << 4)
 
 #define DTRACED_LOCSIZE                64ul
 #define DTRACED_PROGIDENTLEN           128ull
@@ -72,6 +73,10 @@ typedef struct dtraced_hdr {
 	struct {
 		size_t num_entries; /* number of entries to clean up */
 	} cleanup;
+
+	struct {
+		size_t count; /* length of the buffer to follow */
+	} info;
 } dtraced_hdr_t;
 
 typedef struct dtd_initmsg {
@@ -79,6 +84,11 @@ typedef struct dtd_initmsg {
 	uint64_t subs;                  /* what are we subscribing to? */
 	char ident[DTRACED_FDIDENTLEN]; /* human-readable string identifier */
 } dtd_initmsg_t;
+
+typedef struct dtraced_infomsg {
+	int client_kind;
+	char client_name[DTRACED_FDIDENTLEN];
+} dtraced_infomsg_t;
 
 #define	DTRACED_MSGHDRSIZE             sizeof(dtraced_hdr_t)
 
@@ -88,7 +98,8 @@ typedef struct dtd_initmsg {
 #define DTRACED_MSG_ELF                1
 #define DTRACED_MSG_KILL               2
 #define DTRACED_MSG_CLEANUP            3
-#define DTRACED_MSG_LAST               3
+#define DTRACED_MSG_INFO               4
+#define DTRACED_MSG_LAST               4
 
 #define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
 #define	DTRACED_MSG_LOC(m)             ((m).elf.location)

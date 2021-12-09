@@ -105,6 +105,7 @@ typedef struct dt_probelist {
 #define	DMODE_LINK	3	/* compile program for linking with ELF (-G) */
 #define	DMODE_LIST	4	/* compile program and list probes (-l) */
 #define	DMODE_HEADER	5	/* compile program for headergen (-h) */
+#define	DMODE_LISTVMS	6	/* ask dtraced about instrumentable vms (-M) */
 
 #define	PGPL_ALLOC	0x01	/* allocate a new entry */
 #define	PGPL_SRCIDENT	0x02	/* use srcident */
@@ -116,7 +117,7 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:n:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
 static char *g_script;
 static dt_benchmark_t *g_e2ebench;
@@ -2527,6 +2528,37 @@ go(void)
 	}
 }
 
+static void
+print_imsgs(dtraced_infomsg_t *imsgs, size_t nimsgs)
+{
+	size_t i, j, k;
+	dtraced_infomsg_t *imsg;
+	char *processed[1024] = { 0 };
+	int process;
+
+	oprintf("HyperTrace-aware VMs:\n\n");
+	j = 0;
+	for (i = 0; i < nimsgs; i++) {
+		imsg = &imsgs[i];
+
+		process = 1;
+		for (k = 0; k < j; k++)
+			if (strcmp(processed[k], imsg->client_name) == 0)
+				process = 0;
+
+		if (process == 0)
+			continue;
+
+		if (imsg->client_kind == DTRACED_KIND_FORWARDER)
+			oprintf("%s\n", imsg->client_name);
+
+		processed[j++] = strdup(imsg->client_name);
+	}
+
+	for (i = 0; i < j; i++)
+		free(processed[j]);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2663,6 +2695,11 @@ main(int argc, char *argv[])
 				g_guest = 1;
 				break;
 
+			case 'M':
+				g_mode = DMODE_LISTVMS;
+				mode++;
+				break;
+
 			case 'l':
 				g_mode = DMODE_LIST;
 				g_cflags |= DTRACE_C_ZDEFS; /* -l implies -Z */
@@ -2692,6 +2729,74 @@ main(int argc, char *argv[])
 
 	if (g_mode == DMODE_VERS)
 		return (printf("%s: %s\n", g_pname, _dtrace_version) <= 0);
+
+	if (g_mode == DMODE_LISTVMS) {
+		int fd, rval;
+		dtraced_infomsg_t *imsgs;
+		void *curpos;
+		size_t len, count, nbytes;
+		dtraced_hdr_t hdr = { 0 };
+
+		fd = open_dtraced(DTD_SUB_INFO);
+
+		if ((rval = recv(fd, &hdr, DTRACED_MSGHDRSIZE, 0)) <= 0) {
+			fprintf(stderr, "Failed to recv from sub.sock: %s\n",
+			    strerror(errno));
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
+
+		assert(rval == DTRACED_MSGHDRSIZE);
+
+		if (hdr.msg_type != DTRACED_MSG_INFO) {
+			fprintf(stderr,
+			    "dtraced hdr: expected INFO message, got: %x\n",
+			    hdr.msg_type);
+			close(fd);
+			exit(EXIT_FAILURE);
+		}
+
+		count = hdr.info.count;
+		len = count * sizeof(dtraced_infomsg_t);
+
+		imsgs = malloc(len);
+		if (imsgs == NULL)
+			abort();
+
+		memset(imsgs, 0, len);
+
+		nbytes = len;
+		curpos = (void *)imsgs;
+		while ((rval = recv(fd, curpos, nbytes, 0)) != nbytes) {
+			if (rval < 0) {
+				fprintf(stderr, "recv(): failed: %s\n",
+				    strerror(errno));
+				close(fd);
+				free(imsgs);
+				exit(EXIT_FAILURE);
+			}
+
+			assert(rval != 0);
+
+			curpos += rval;
+			nbytes -= rval;
+		}
+
+		assert(nbytes == rval);
+
+		if (rval == 0) {
+			fprintf(stderr, "recv(): 0 bytes from dtraced\n");
+			close(fd);
+			free(imsgs);
+			exit(EXIT_FAILURE);
+		}
+
+		print_imsgs(imsgs, count);
+
+		free(imsgs);
+		close(fd);
+		exit(EXIT_SUCCESS);
+	}
 
 	/*
 	 * If we're in linker mode and the data model hasn't been specified,

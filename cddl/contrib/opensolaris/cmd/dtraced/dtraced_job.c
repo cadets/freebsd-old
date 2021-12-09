@@ -55,6 +55,7 @@
 #include "dtraced_killjob.h"
 #include "dtraced_lock.h"
 #include "dtraced_readjob.h"
+#include "dtraced_sendinfojob.h"
 #include "dtraced_state.h"
 
 /*
@@ -88,7 +89,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		job->connsockfd = dfd;
 
 		LOCK(&s->joblistmtx);
-		dt_list_append(&s->joblist, job);
+		dt_list_prepend(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 
 		dump_debugmsg("Dispatching EVFILT_READ on %d", ev->ident);
@@ -106,6 +107,17 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		 *
 		 * we can signal the condition variable and rely on one of our
 		 * workers to pick up and process the event.
+		 *
+		 * FIXME(dstolfa, IMPORTANT): This doesn't actually work in the
+		 * scenario where we process the *wrong* file descriptor first,
+		 * and we don't have buffer space in send, and the other end of
+		 * the file descriptor never reads, so we are blocking
+		 * indefinitely in our worker. Need to signal to the workers
+		 * somehow which jobs they actually should process, not just
+		 * tell them mindlessly to process all jobs. *Or* we need to
+		 * make the send non-blocking and if there is no space, then
+		 * there is no space and we haven't processed the job, re-queue
+		 * it.
 		 */
 		dump_debugmsg("Dispatching EVFILT_WRITE on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
@@ -132,7 +144,8 @@ process_joblist(void *_s)
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",
 		[KILL]            = "KILL",
 		[READ_DATA]       = "READ_DATA",
-		[CLEANUP]         = "CLEANUP"
+		[CLEANUP]         = "CLEANUP",
+		[SEND_INFO]       = "SEND_INFO"
 	};
 
 	while (atomic_load(&s->shutdown) == 0) {
@@ -184,6 +197,10 @@ process_joblist(void *_s)
 
 		case CLEANUP:
 			handle_cleanup(s, curjob);
+			break;
+
+		case SEND_INFO:
+			handle_sendinfo(s, curjob);
 			break;
 
 		default:
