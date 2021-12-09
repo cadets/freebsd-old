@@ -188,13 +188,6 @@ dthyve_read(void **buf, size_t *len)
 
 	assert(rval == sizeof(size_t));
 
-	if (rval == 0) {
-		fprintf(stderr, "dthyve: received 0 bytes from %d\n", rx_sockfd);
-		close(rx_sockfd);
-		rx_sockfd = -1;
-		return (-1);
-	}
-
 	*buf = malloc(*len);
 	if (*buf == NULL) {
 		fprintf(stderr, "dthyve: failed to allocate buf (len = %zu)\n",
