@@ -195,7 +195,7 @@ accept_new_connection(struct dtd_state *s)
 		return (-1);
 	}
 
-	dump_debugmsg("Accepted (%d, %x, %x)", dfd->fd, dfd->kind,
+	dump_debugmsg("Accepted (%d, %x, 0x%x)", dfd->fd, dfd->kind,
 	    dfd->subs);
 	LOCK(&s->socklistmtx);
 	dt_list_append(&s->sockfds, dfd);

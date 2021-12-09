@@ -1007,6 +1007,7 @@ listen_dtraced(void *arg)
 	void *verictx;
 	dt_snapshot_hdl_t cshdl;
 	dt_benchmark_t *bench;
+	char buf[1024];
 
 	rx_sockfd = 0;
 	elflen = 0;
@@ -1267,18 +1268,19 @@ process_prog:
 			dt_bench_hdl_attach(bench, cshdl, VPROG_CREATION);
 			guestpgp =
 			    dt_vprog_from(g_dtp, newprog, PGP_KIND_HYPERCALLS);
-			if (guestpgp == NULL)
+			if (guestpgp == NULL) {
 				dabort("failed to create a guest program");
+			}
 
 			guestpgp->dp_exec = DT_PROG_EXEC;
 
 			tmpfd = mkstemp(template);
-			if (tmpfd == -1)
+			if (tmpfd == -1) {
 				dabort("failed to mkstemp()");
+			}
 			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
 
 			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
-
 			if (fsync(tmpfd)) {
 				fprintf(stderr, "failed to sync file: %s\n",
 				    strerror(errno));
@@ -1296,9 +1298,12 @@ process_prog:
 			}
 			__dt_bench_snapshot_time(bench);
 
-			if (dtrace_send_elf(guestpgp, tmpfd, wx_sockfd,
-			    "outbound", 0)) {
-				fprintf(stderr, "failed to dtrace_send_elf()\n");
+			err = dtrace_send_elf_async(guestpgp, tmpfd,
+			    wx_sockfd, "outbound", 0);
+			if (err) {
+				fprintf(stderr,
+				    "failed to dtrace_send_elf(): %s\n",
+				    strerror(err));
 				dt_verictx_teardown(verictx);
 				pthread_mutex_unlock(&g_pgplistmtx);
 				pthread_exit(NULL);
@@ -1307,7 +1312,6 @@ process_prog:
 			__dt_bench_snapshot_time(bench);
 
 			newpgpl->gpgp = guestpgp;
-			close(tmpfd);
 		}
 
 		__dt_bench_stop_time(bench);
@@ -1547,7 +1551,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 	int i, n;
 
 	if (gpgp_resp == NULL && pgp->dp_vmid != 0) {
-		atomic_store(&g_intr, 1);
+		if (atomic_fetch_add(&g_intr, 1))
+			atomic_store(&g_impatient, 1);
 		fprintf(stderr,
 		    "the guest program can only be NULL if program's vmid "
 		    "is 0, but it is %u\n",
@@ -1555,13 +1560,14 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 	}
 
 	if (gpgp_resp && (pgp->dp_vmid != gpgp_resp->dp_vmid)) {
-		atomic_store(&g_intr, 1);
+		if (atomic_fetch_add(&g_intr, 1))
+			atomic_store(&g_impatient, 1);
 		fprintf(stderr,
 		    "mismatch between pgp and gpgp_resp vmids (%u != %u)",
 		    pgp->dp_vmid, gpgp_resp->dp_vmid);
 	}
 
-	dtrace_dump_actions(pgp);
+	//dtrace_dump_actions(pgp);
 
 	if (pgp->dp_vmid != 0) {
 		/*
@@ -1578,7 +1584,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 
 		n = dt_vprobes_create(g_dtp, gpgp_resp);
 		if (n == -1) {
-			atomic_store(&g_intr, 1);
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
 			fprintf(stderr, "failed to create vprobes: %s\n",
 			    strerror(errno));
 		}
@@ -1586,7 +1593,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
-			atomic_store(&g_intr, 1);
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
 			fprintf(stderr, "failed to enable program: %s",
 			    strerror(errno));
 		} else {
@@ -1598,7 +1606,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		pthread_create(&g_worktd, NULL, dtc_work, NULL);
 	} else {
 		if (dt_augment_tracing(g_dtp, pgp)) {
-			atomic_store(&g_intr, 1);
+			if (atomic_fetch_add(&g_intr, 1))
+				atomic_store(&g_impatient, 1);
 			fprintf(stderr, "failed to augment tracing: %s",
 			    strerror(errno));
 		}
@@ -1654,7 +1663,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	if (g_unsafe) {
 		return;
 	} else if (!g_exec) {
-		dtrace_dump_actions(dcp->dc_prog);
+		//dtrace_dump_actions(dcp->dc_prog);
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		if (g_elf) {
 			tmpfd = mkstemp(template);
@@ -1683,7 +1692,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		 *  (5) dtraced writes out the ELF file to this DTrace
 		 *      instance for further processing.
 		 */
-		dtrace_dump_actions(dcp->dc_prog);
+		//dtrace_dump_actions(dcp->dc_prog);
 		if ((err = pthread_mutex_init(&g_pgplistmtx, NULL)) != 0)
 			fatal("failed to init pgplistmtx");
 
@@ -2059,7 +2068,7 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
 		dfatal("failed to parse the ELF file %s", dcp->dc_arg);
-	dtrace_dump_actions(dcp->dc_prog);
+	//dtrace_dump_actions(dcp->dc_prog);
 
 	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);

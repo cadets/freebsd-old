@@ -30,17 +30,18 @@
 #endif
 #include <sys/isa_defs.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 
+#include <ctype.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdatomic.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <strings.h>
 #include <unistd.h>
-#include <stdarg.h>
-#include <stddef.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <ctype.h>
 #ifdef illumos
 #include <alloca.h>
 #else
@@ -1059,6 +1060,122 @@ open_dtraced(uint64_t subs)
 	}
 
 	return (dtraced_sock);
+}
+
+typedef struct {
+	dt_list_t list;
+	dtrace_prog_t *pgp;
+	int fromfd;
+	int tofd;
+	char *location;
+	int send_ident;
+} dtrace_elfqueue_t;
+
+static pthread_mutex_t _elf_async_mtx;
+static pthread_mutex_t _elf_async_cvmtx;
+static pthread_cond_t _elf_async_cv;
+static dt_list_t _elf_async_queue;
+static pthread_t _elf_async_tid;
+static int _elf_async_initialized;
+static atomic_int _elf_async_shutdown;
+
+static void *
+_dtrace_send_elf_async(void *arg __unused)
+{
+	dtrace_elfqueue_t *entry;
+
+	while (atomic_load(&_elf_async_shutdown) == 0) {
+		pthread_mutex_lock(&_elf_async_cvmtx);
+		while (dt_list_next(&_elf_async_queue) == NULL &&
+		    atomic_load(&_elf_async_shutdown) == 0)
+			pthread_cond_wait(&_elf_async_cv, &_elf_async_cvmtx);
+		pthread_mutex_unlock(&_elf_async_cvmtx);
+
+		if (atomic_load(&_elf_async_shutdown))
+			break;
+
+		pthread_mutex_lock(&_elf_async_mtx);
+		entry = dt_list_next(&_elf_async_queue);
+		dt_list_delete(&_elf_async_queue, entry);
+		pthread_mutex_unlock(&_elf_async_mtx);
+
+		assert(entry != NULL);
+		dtrace_send_elf(entry->pgp, entry->fromfd, entry->tofd,
+		    entry->location, entry->send_ident);
+		free(entry->location);
+		close(entry->fromfd);
+		free(entry);
+	}
+
+	return (NULL);
+}
+
+void
+dtrace_async_teardown()
+{
+	dtrace_elfqueue_t *entry;
+
+	/*
+	 * Signal the thread to shut down.
+	 */
+	atomic_store(&_elf_async_shutdown, 1);
+	pthread_mutex_lock(&_elf_async_cvmtx);
+	pthread_cond_signal(&_elf_async_cv);
+	pthread_mutex_unlock(&_elf_async_cvmtx);
+
+	pthread_join(_elf_async_tid, NULL);
+	pthread_mutex_destroy(&_elf_async_mtx);
+	pthread_mutex_destroy(&_elf_async_cvmtx);
+	pthread_cond_destroy(&_elf_async_cv);
+
+	_elf_async_initialized = 0;
+
+	while (entry = dt_list_next(&_elf_async_queue)) {
+		dt_list_delete(&_elf_async_queue, entry);
+		close(entry->fromfd);
+		free(entry->location);
+		free(entry);
+	}
+}
+
+int
+dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
+    const char *location, int send_ident)
+{
+	dtrace_elfqueue_t *entry_to_send;
+
+	if (__predict_false(_elf_async_initialized == 0)) {
+		pthread_mutex_init(&_elf_async_mtx, NULL);
+		pthread_mutex_init(&_elf_async_cvmtx, NULL);
+		pthread_cond_init(&_elf_async_cv, NULL);
+
+		if (pthread_create(&_elf_async_tid, NULL,
+		    &_dtrace_send_elf_async, NULL))
+			return (errno);
+
+		_elf_async_initialized = 1;
+	}
+
+	entry_to_send = malloc(sizeof(dtrace_elfqueue_t));
+	if (entry_to_send == NULL)
+		return (EDT_NOMEM);
+
+	memset(entry_to_send, 0, sizeof(dtrace_elfqueue_t));
+	entry_to_send->pgp = pgp;
+	entry_to_send->fromfd = fromfd;
+	entry_to_send->tofd = tofd;
+	entry_to_send->location = strdup(location);
+	entry_to_send->send_ident = send_ident;
+
+	pthread_mutex_lock(&_elf_async_mtx);
+	dt_list_append(&_elf_async_queue, entry_to_send);
+	pthread_mutex_unlock(&_elf_async_mtx);
+
+	pthread_mutex_lock(&_elf_async_cvmtx);
+	pthread_cond_signal(&_elf_async_cv);
+	pthread_mutex_unlock(&_elf_async_cvmtx);
+
+	return (0);
 }
 
 int

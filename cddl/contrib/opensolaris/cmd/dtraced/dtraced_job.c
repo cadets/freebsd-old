@@ -83,6 +83,7 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 			abort();
 		}
 
+		memset(job, 0, sizeof(struct dtd_joblist));
 		job->job = READ_DATA;
 		job->connsockfd = dfd;
 

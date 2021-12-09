@@ -109,11 +109,6 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 		abort();
 	}
 
-	if (msg == NULL) {
-		dump_errmsg("Failed to allocate ELF contents: %m");
-		return;
-	}
-
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
 	memset(msg, 0, msglen);
 	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
@@ -133,16 +128,14 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 
 	assert(msglen >= DTRACED_MSGHDRSIZE);
 	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-		if (errno != EPIPE)
-			dump_errmsg("Failed to write to %d (%zu): %m", fd,
-			    msglen);
+		dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
+		    path, pathlen);
 		return;
 	}
 
 	if ((r = send(fd, msg, msglen, 0)) < 0) {
-		if (errno != EPIPE)
-			dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
-			    path, pathlen);
+		dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
+		    path, pathlen);
 		return;
 	}
 
