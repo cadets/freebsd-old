@@ -31,11 +31,13 @@
 
 #include <sys/types.h>
 
+#include <dtraced.h>
+
 struct vmctx;
 
 int dthyve_init(struct vmctx *);
 int dthyve_configured(void);
-int dthyve_read(void **, size_t *);
+int dthyve_read(void **, dtraced_hdr_t *);
 int dthyve_write(void *, size_t);
 void dthyve_destroy(void);
 int dthyve_newelf(char *);

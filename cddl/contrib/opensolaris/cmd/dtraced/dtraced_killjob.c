@@ -62,7 +62,6 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 	int fd;
 	pid_t pid;
 	uint16_t vmid;
-	size_t msglen;
 	ssize_t r;
 	dtraced_hdr_t header;
 	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;
@@ -79,12 +78,6 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 	 * If we end up with pid <= 1, something went wrong.
 	 */
 	assert(pid > 1);
-	msglen = DTRACED_MSGHDRSIZE;
-	msg = malloc(msglen);
-	if (msg == NULL) {
-		dump_errmsg("Failed to allocate a kill message: %m");
-		abort();
-	}
 
 	/*
 	 * For now the header only includes the message kind, so
@@ -95,17 +88,7 @@ handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
 	DTRACED_MSG_KILLPID(header) = pid;
 	DTRACED_MSG_KILLVMID(header) = vmid;
 
-	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
-
-	assert(msglen >= DTRACED_MSGHDRSIZE);
-	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
-		if (errno != EPIPE)
-			dump_errmsg("Failed to write to %d (%zu): %m", fd,
-			    msglen);
-		return;
-	}
-
-	if ((r = send(fd, msg, msglen, 0)) < 0) {
+	if ((r = send(fd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
 		if (errno == EPIPE)
 			dump_errmsg("Failed to write to %d: %m", fd);
 		return;

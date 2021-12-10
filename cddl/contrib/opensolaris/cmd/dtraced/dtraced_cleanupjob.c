@@ -67,25 +67,16 @@ handle_cleanup(struct dtd_state *s, struct dtd_joblist *curjob)
 	dump_debugmsg("    CLEANUP to %d", fd);
 	assert(fd != -1);
 
-	hdrlen = DTRACED_MSGHDRSIZE;
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
 	DTRACED_MSG_NUMENTRIES(header) = curjob->j.cleanup.n_entries;
 
-	assert(hdrlen >= DTRACED_MSGHDRSIZE);
-	if (send(fd, &hdrlen, sizeof(hdrlen), 0) < 0) {
-		if (errno != EPIPE)
-			dump_errmsg("Failed to write to %d (%zu): %m",
-			    fd, hdrlen);
-		return;
-	}
-
-	if ((r = send(fd, &header, hdrlen, 0)) < 0) {
+	if ((r = send(fd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
 		if (errno != EPIPE)
 			dump_errmsg("Failed to write to %d: %m", fd);
 		return;
 	}
 
-	_send = 1;
+	_send = 0;
 	for (i = 0; i < n_entries; i++) {
 		buflen = _send ? strlen(entries[i]) + 1 : 0;
 

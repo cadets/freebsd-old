@@ -33,7 +33,7 @@
 #include <stdint.h>
 
 #define DTRACED_MAJOR                  0
-#define DTRACED_MINOR                  2
+#define DTRACED_MINOR                  3
 #define DTRACED_PATCH                  0
 #define DTRACED_EXTRA_IDENTIFIER       "BETA"
 
@@ -58,11 +58,12 @@
 typedef struct dtraced_hdr {
 	uint64_t msg_type;      /* message type (see DTRACED_MSG_*) */
 	struct {
-		char location[DTRACED_LOCSIZE];   /* elf location */
-		char ident[DTRACED_PROGIDENTLEN]; /* program identifier */
+		size_t len;                       /* elf length */
 		int ident_present;                /* identifier present? */
 		int filter_by_vmid;               /* should we filter? */
 		uint16_t vmid;                    /* which VM? (if filtered) */
+		char location[DTRACED_LOCSIZE];	  /* elf location */
+		char ident[DTRACED_PROGIDENTLEN]; /* program identifier */
 	} elf;
 
 	struct {
@@ -101,12 +102,14 @@ typedef struct dtraced_infomsg {
 #define DTRACED_MSG_INFO               4
 #define DTRACED_MSG_LAST               4
 
-#define	DTRACED_MSG_TYPE(m)            ((m).msg_type)
-#define	DTRACED_MSG_LOC(m)             ((m).elf.location)
-#define	DTRACED_MSG_IDENT(m)           ((m).elf.ident)
-#define	DTRACED_MSG_IDENT_PRESENT(m)   ((m).elf.ident_present)
+#define DTRACED_MSG_TYPE(m)            ((m).msg_type)
+#define DTRACED_MSG_LOC(m)             ((m).elf.location)
+#define DTRACED_MSG_IDENT(m)           ((m).elf.ident)
+#define DTRACED_MSG_IDENT_PRESENT(m)   ((m).elf.ident_present)
+#define DTRACED_MSG_LEN(m)             ((m).elf.len)
 #define DTRACED_MSG_KILLPID(m)         ((m).kill.pid)
 #define DTRACED_MSG_KILLVMID(m)        ((m).kill.vmid)
 #define DTRACED_MSG_NUMENTRIES(m)      ((m).cleanup.num_entries)
+
 
 #endif // __DTRACED_H_

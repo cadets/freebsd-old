@@ -361,7 +361,7 @@ write_dttransport(void *_s)
 		pthread_exit(NULL);
 
 	while (atomic_load(&s->shutdown) == 0) {
-		if ((rval = recv(sockfd, &len, sizeof(size_t), 0)) < 0) {
+		if ((rval = recv(sockfd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
 			if (errno == EINTR)
 				pthread_exit(s);
 
@@ -369,6 +369,14 @@ write_dttransport(void *_s)
 			continue;
 		}
 
+		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+			dump_errmsg("Received unknown message type: %lu",
+			    DTRACED_MSG_TYPE(header));
+			atomic_store(&s->shutdown, 1);
+			pthread_exit(NULL);
+		}
+
+		len = DTRACED_MSG_LEN(header);
 		msg = malloc(len);
 		if (msg == NULL) {
 			dump_errmsg("Failed to allocate a new message: %m");
@@ -392,21 +400,10 @@ write_dttransport(void *_s)
 			msg_ptr += r;
 		}
 
-		memcpy(&header, msg, DTRACED_MSGHDRSIZE);
-		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
-			dump_errmsg("Received unknown message type: %lu",
-			    DTRACED_MSG_TYPE(header));
-			atomic_store(&s->shutdown, 1);
-			pthread_exit(NULL);
-		}
-
-		assert(DTRACED_MSG_TYPE(header) == DTRACED_MSG_ELF);
 
 		msg_ptr = (uintptr_t)msg;
-		msg += DTRACED_MSGHDRSIZE;
-
-		totallen -= DTRACED_MSGHDRSIZE;
 		len = totallen;
+
 		while (len != 0) {
 			memset(&e, 0, sizeof(e));
 			lentoread = len > DTT_MAXDATALEN ? DTT_MAXDATALEN : len;
@@ -434,8 +431,7 @@ write_dttransport(void *_s)
 
 			assert(len >= 0 && len < totallen);
 			assert((uintptr_t)msg >= msg_ptr);
-			assert((uintptr_t)msg <=
-			    (msg_ptr + totallen + DTRACED_MSGHDRSIZE));
+			assert((uintptr_t)msg <= (msg_ptr + totallen));
 		}
 		assert(len == 0);
 

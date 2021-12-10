@@ -1042,7 +1042,7 @@ listen_dtraced(void *arg)
 		 * it actually is and fill in the necessary filters.
 		 */
 		if (!done && !atomic_load(&g_intr) &&
-		    ((r = recv(rx_sockfd, &elflen, sizeof(elflen), 0)) < 0) &&
+		    ((r = recv(rx_sockfd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) &&
 		    errno != EINTR) {
 			dabort("failed to read elf length");
 		}
@@ -1053,17 +1053,26 @@ listen_dtraced(void *arg)
 			break;
 		}
 
-		if (r != sizeof(elflen)) {
+		if (r != DTRACED_MSGHDRSIZE) {
 			dabort("received %zu bytes, expected %zu\n", r,
 			    sizeof(elflen));
 		}
 
+		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
+			/*
+			 * We shouldn't be receiving a kill command, so let's
+			 * just report it and ignore it...
+			 */
+			fprintf(stderr,
+			    "received unknown message (%lu), ignoring...\n",
+			    DTRACED_MSG_TYPE(header));
+			continue;
+		}
+
+		elflen = DTRACED_MSG_LEN(header);
+
 		if (elflen <= 0)
 			dabort("elflen is <= 0");
-
-		if (elflen <= DTRACED_MSGHDRSIZE)
-			dabort("elflen (%zu) needs to be > %zu", elflen,
-			    DTRACED_MSGHDRSIZE);
 
 		elf = malloc(elflen);
 		if (elf == NULL)
@@ -1094,22 +1103,6 @@ listen_dtraced(void *arg)
 		 * 8-byte aligned
 		 */
 		assert(((uintptr_t)elf & 7) == 0);
-		memcpy(&header, elf, DTRACED_MSGHDRSIZE);
-		elf += DTRACED_MSGHDRSIZE;
-		elflen -= DTRACED_MSGHDRSIZE;
-
-		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
-			/*
-			 * We shouldn't be receiving a kill command, so let's
-			 * just report it and ignore it...
-			 */
-			fprintf(stderr,
-			    "received unknown message (%lu), ignoring...\n",
-			    DTRACED_MSG_TYPE(header));
-			continue;
-		}
-
-		assert(DTRACED_MSG_TYPE(header) == DTRACED_MSG_ELF);
 
 		if (elf[0] == 0x7F && elf[1] == 'E' &&
 		    elf[2] == 'L'  && elf[3] == 'F') {

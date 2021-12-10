@@ -39,7 +39,6 @@
 #endif
 
 #include <assert.h>
-#include <dtraced.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -164,11 +163,11 @@ dthyve_configured(void)
  * read, depending on the configuration of vtdtr.
  */
 int
-dthyve_read(void **buf, size_t *len)
+dthyve_read(void **buf, dtraced_hdr_t *hdr)
 {
 	ssize_t rval;
 	void *curpos;
-	size_t nbytes;
+	size_t nbytes, len;
 
 	if (buf == NULL) {
 		fprintf(stderr, "dthyve: buf is NULL\n");
@@ -178,7 +177,7 @@ dthyve_read(void **buf, size_t *len)
 	if (rx_sockfd == -1)
 		return (-1);
 
-	if ((rval = recv(rx_sockfd, len, sizeof(size_t), 0)) <= 0) {
+	if ((rval = recv(rx_sockfd, hdr, DTRACED_MSGHDRSIZE, 0)) <= 0) {
 		fprintf(stderr, "Failed to recv from sub.sock: %s\n",
 		    strerror(errno));
 		close(rx_sockfd);
@@ -186,39 +185,54 @@ dthyve_read(void **buf, size_t *len)
 		return (-1);
 	}
 
-	assert(rval == sizeof(size_t));
+	assert(rval == DTRACED_MSGHDRSIZE);
 
-	*buf = malloc(*len);
-	if (*buf == NULL) {
-		fprintf(stderr, "dthyve: failed to allocate buf (len = %zu)\n",
-		    *len);
-		return (-1);
-	}
-	
-	memset(*buf, 0, *len);
-
-	curpos = *buf;
-	nbytes = *len;
-	while ((rval = recv(rx_sockfd, curpos, nbytes, 0)) != nbytes) {
-		if (rval < 0) {
-			fprintf(stderr, "recv() failed with: %s\n",
-			    strerror(errno));
+	switch (hdr->msg_type) {
+	case DTRACED_MSG_ELF:
+		len = hdr->elf.len;
+		*buf = malloc(len);
+		if (*buf == NULL) {
+			fprintf(stderr,
+			    "dthyve: failed to allocate buf (len = %zu)\n",
+			    len);
 			return (-1);
 		}
 
-		assert(rval != 0);
+		memset(*buf, 0, len);
 
-		curpos += rval;
-		nbytes -= rval;
-	}
+		curpos = *buf;
+		nbytes = len;
+		while ((rval = recv(rx_sockfd, curpos, nbytes, 0)) != nbytes) {
+			if (rval < 0) {
+				fprintf(stderr, "recv() failed with: %s\n",
+				    strerror(errno));
+				return (-1);
+			}
 
-	assert(nbytes == rval);
+			assert(rval != 0);
 
-	if (rval == 0) {
-		fprintf(stderr, "dthyve: received 0 bytes from %d\n", rx_sockfd);
-		close(rx_sockfd);
-		rx_sockfd = -1;
-		return (-1);
+			curpos += rval;
+			nbytes -= rval;
+		}
+		assert(nbytes == rval);
+
+		if (rval == 0) {
+			fprintf(stderr, "dthyve: received 0 bytes from %d\n",
+			    rx_sockfd);
+			close(rx_sockfd);
+			rx_sockfd = -1;
+			return (-1);
+		}
+
+		return (0);
+
+	case DTRACED_MSG_CLEANUP:
+		*buf = NULL;
+		return (0);
+
+	default:
+		*buf = NULL;
+		return (0);
 	}
 
 	return (0);

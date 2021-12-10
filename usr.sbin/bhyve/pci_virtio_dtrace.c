@@ -777,7 +777,7 @@ pci_vtdtr_events(void *xsc)
 	int fd;
 	struct stat *st;
 	size_t offs;
-	char *buf = NULL, *_buf = NULL;
+	char *buf = NULL;
 	struct pci_vtdtr_control *ctrl;
 	struct pci_vtdtr_ctrl_entry *ctrl_entry;
 	size_t len;
@@ -792,7 +792,7 @@ pci_vtdtr_events(void *xsc)
 	memset(&header, 0, sizeof(header));
 
 	for (;;) {
-		error = dthyve_read((void **)&buf, &len);
+		error = dthyve_read((void **)&buf, &header);
 		if (error) {
 			if (dthyve_configured()) {
 				fprintf(stderr, "Error in dthyve_read(): %s\n",
@@ -807,21 +807,10 @@ pci_vtdtr_events(void *xsc)
 			continue;
 		}
 
-		if (len < DTRACED_MSGHDRSIZE) {
-			fprintf(stderr,
-			    "%s(%d): len < DTRACED_MSGHDRSIZE (%zu < %zu)\n",
-			    __func__, __LINE__, len, DTRACED_MSGHDRSIZE);
-			continue;
-		}
-		memcpy(&header, buf, DTRACED_MSGHDRSIZE);
-		/*
-		 * We don't need the header anymore...
-		 */
-		_buf = buf + DTRACED_MSGHDRSIZE;
-		len -= DTRACED_MSGHDRSIZE;
-
 		ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
-		assert(ctrl_entry != NULL);
+		if (ctrl_entry == NULL)
+			abort();
+
 		memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
 
 		switch (DTRACED_MSG_TYPE(header)) {
@@ -829,7 +818,6 @@ pci_vtdtr_events(void *xsc)
 			curvmid = vm_get_vmid(sc->vsd_vmctx);
 			if (DTRACED_MSG_KILLVMID(header) != curvmid)
 				break;
-
 			ctrl = vtdtr_kill_event(DTRACED_MSG_KILLPID(header));
 			ctrl_entry->ctrl = ctrl;
 
@@ -849,7 +837,8 @@ pci_vtdtr_events(void *xsc)
 			 * so we simply assume it will succeed every time and
 			 * assert it.
 			 */
-			ctrl = vtdtr_elf_event(_buf, len, offs);
+			len = DTRACED_MSG_LEN(header);
+			ctrl = vtdtr_elf_event(buf, len, offs);
 			assert(ctrl != NULL);
 			offs += ctrl->pvc_elflen;
 
@@ -863,7 +852,7 @@ pci_vtdtr_events(void *xsc)
 				/*
 				 * Get the new control element
 				 */
-				ctrl = vtdtr_elf_event(_buf, len, offs);
+				ctrl = vtdtr_elf_event(buf, len, offs);
 				assert(ctrl != NULL);
 				offs += ctrl->pvc_elflen;
 
@@ -888,8 +877,11 @@ pci_vtdtr_events(void *xsc)
 			break;
 
 		case DTRACED_MSG_CLEANUP:
+		/*
+		 * TODO: Implement this.
 			if (vm_get_name(sc->vsd_vmctx, buf, VM_MAX_NAMELEN + 1))
 				abort();
+		*/
 
 			ctrl = vtdtr_cleanup_event();
 			ctrl_entry->ctrl = ctrl;
@@ -908,7 +900,8 @@ pci_vtdtr_events(void *xsc)
 			    DTRACED_MSG_TYPE(header));
 		}
 
-		free(buf);
+		if (buf)
+			free(buf);
 	}
 }
 

@@ -66,7 +66,7 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	__cleanup(closefd_generic) int elffd = -1;
 	__cleanup(freep) char *path = NULL;
 	__cleanup(freep) unsigned char *msg = NULL;
-	unsigned char *contents, *_msg;
+	unsigned char *contents;
 	size_t pathlen, elflen, msglen;
 	dtraced_hdr_t header;
 	dtd_dir_t *dir;
@@ -102,7 +102,6 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 
 	elflen = stat.st_size;
 	msglen = _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
-	msglen += DTRACED_MSGHDRSIZE;
 	msg = malloc(msglen);
 	if (msg == NULL) {
 		dump_errmsg("failed to malloc msg: %m");
@@ -110,24 +109,22 @@ handle_elfwrite(struct dtd_state *s, struct dtd_joblist *curjob)
 	}
 
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
-	memset(msg, 0, msglen);
-	memcpy(msg, &header, DTRACED_MSGHDRSIZE);
+	DTRACED_MSG_LEN(header) = msglen;
 
-	_msg = msg + DTRACED_MSGHDRSIZE;
-	contents = _nosha ? _msg : _msg + SHA256_DIGEST_LENGTH;
+	memset(msg, 0, msglen);
+	contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 
 	if ((r = read(elffd, contents, elflen)) < 0) {
 		dump_errmsg("Failed to read ELF contents: %m");
 		return;
 	}
 
-	if (_nosha == 0 && SHA256(contents, elflen, _msg) == NULL) {
+	if (_nosha == 0 && SHA256(contents, elflen, msg) == NULL) {
 		dump_errmsg("Failed to create a SHA256 of the file");
 		return;
 	}
 
-	assert(msglen >= DTRACED_MSGHDRSIZE);
-	if (send(fd, &msglen, sizeof(msglen), 0) < 0) {
+	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
 		dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
 		    path, pathlen);
 		return;
