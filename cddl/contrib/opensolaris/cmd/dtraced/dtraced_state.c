@@ -180,6 +180,12 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
 	}
 
 	if ((err = mutex_init(
+	    &s->dispatched_jobsmtx, NULL, "joblist", CHECKOWNER_YES)) != 0) {
+		dump_errmsg("Failed to create joblist mutex: %m");
+		return (-1);
+	}
+
+	if ((err = mutex_init(
 	    &s->kill_listmtx, NULL, "kill list", CHECKOWNER_YES)) != 0) {
 		dump_errmsg("Failed to create kill list mutex: %m");
 		return (-1);

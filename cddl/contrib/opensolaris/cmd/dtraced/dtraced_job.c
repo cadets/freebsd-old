@@ -88,9 +88,9 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 		job->job = READ_DATA;
 		job->connsockfd = dfd;
 
-		LOCK(&s->joblistmtx);
-		dt_list_prepend(&s->joblist, job);
-		UNLOCK(&s->joblistmtx);
+		LOCK(&s->dispatched_jobsmtx);
+		dt_list_prepend(&s->dispatched_jobs, job);
+		UNLOCK(&s->dispatched_jobsmtx);
 
 		dump_debugmsg("Dispatching EVFILT_READ on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
@@ -99,25 +99,21 @@ dispatch_event(struct dtd_state *s, struct kevent *ev)
 
 	} else if (ev->filter == EVFILT_WRITE) {
 		/*
-		 * Because we are in a state where we know that:
-		 *  (1) There is a consumer waiting for an event and we can
-		 *      write to
-		 * and
-		 *  (2) We have said event
-		 *
-		 * we can signal the condition variable and rely on one of our
-		 * workers to pick up and process the event.
-		 *
-		 * FIXME(dstolfa, IMPORTANT): This doesn't actually work in the
-		 * scenario where we process the *wrong* file descriptor first,
-		 * and we don't have buffer space in send, and the other end of
-		 * the file descriptor never reads, so we are blocking
-		 * indefinitely in our worker. Need to signal to the workers
-		 * somehow which jobs they actually should process, not just
-		 * tell them mindlessly to process all jobs. *Or* we need to
-		 * make the send non-blocking and if there is no space, then
-		 * there is no space and we haven't processed the job, re-queue
-		 * it.
+		 * Go through the joblist, and if we find a job which has our
+		 * file descriptor as the destination, we put it in the dispatch
+		 * list.
+		 */
+		for (job = dt_list_next(&s->joblist); job;
+		     job = dt_list_next(job)) {
+			dfd = job->connsockfd;
+			if (dfd->fd == ev->ident) {
+				dt_list_delete(&s->joblist, job);
+				dt_list_append(&s->dispatched_jobs, job);
+			}
+		}
+
+		/*
+		 * Signal the workers to pick up our dispatched jobs.
 		 */
 		dump_debugmsg("Dispatching EVFILT_WRITE on %d", ev->ident);
 		LOCK(&s->joblistcvmtx);
@@ -150,32 +146,27 @@ process_joblist(void *_s)
 
 	while (atomic_load(&s->shutdown) == 0) {
 		LOCK(&s->joblistcvmtx);
-		LOCK(&s->joblistmtx);
-		while (dt_list_next(&s->joblist) == NULL &&
+		while (dt_list_next(&s->dispatched_jobs) == NULL &&
 		    atomic_load(&s->shutdown) == 0) {
-			UNLOCK(&s->joblistmtx);
 			WAIT(&s->joblistcv, pmutex_of(&s->joblistcvmtx));
-			LOCK(&s->joblistmtx);
 		}
-		UNLOCK(&s->joblistmtx);
 		UNLOCK(&s->joblistcvmtx);
 		if (atomic_load(&s->shutdown) == 1)
 			break;
 
-
-		LOCK(&s->joblistmtx);
-		curjob = dt_list_next(&s->joblist);
+		LOCK(&s->dispatched_jobsmtx);
+		curjob = dt_list_next(&s->dispatched_jobs);
 		if (curjob == NULL) {
 			/*
 			 * It is possible that another thread already picked
 			 * this job up, in which case we simply loop again.
 			 */
-			UNLOCK(&s->joblistmtx);
+			UNLOCK(&s->dispatched_jobsmtx);
 			continue;
 		}
 
-		dt_list_delete(&s->joblist, curjob);
-		UNLOCK(&s->joblistmtx);
+		dt_list_delete(&s->dispatched_jobs, curjob);
+		UNLOCK(&s->dispatched_jobsmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
 			dump_debugmsg("Job: %s", jobname[curjob->job]);

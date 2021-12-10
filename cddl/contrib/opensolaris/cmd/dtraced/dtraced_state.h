@@ -89,11 +89,13 @@ struct dtd_state {
 	/*
 	 * Thread pool management.
 	 */
-	pthread_t *workers;       /* thread pool for the joblist */
-	mutex_t joblistcvmtx;     /* joblist condvar mutex */
-	pthread_cond_t joblistcv; /* joblist condvar */
-	mutex_t joblistmtx;       /* joblist mutex */
-	dt_list_t joblist;        /* the joblist itself */
+	pthread_t *workers;         /* thread pool for the joblist */
+	mutex_t joblistcvmtx;       /* joblist condvar mutex */
+	pthread_cond_t joblistcv;   /* joblist condvar */
+	mutex_t joblistmtx;         /* joblist mutex */
+	dt_list_t joblist;          /* the joblist itself */
+	mutex_t dispatched_jobsmtx; /* joblist mutex */
+	dt_list_t dispatched_jobs;  /* the joblist itself */
 
 	/*
 	 * Children management.
