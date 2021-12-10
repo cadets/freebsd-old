@@ -43,8 +43,8 @@
 #include "dtraced.h"
 
 struct dtd_state;
-struct dtd_joblist;
+struct dtraced_joblist;
 
-void handle_read_data(struct dtd_state *, struct dtd_joblist *);
+void handle_read_data(struct dtd_state *, struct dtraced_joblist *);
 
 #endif // __DTRACED_READJOB_H_

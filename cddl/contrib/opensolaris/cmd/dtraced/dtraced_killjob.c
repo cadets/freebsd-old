@@ -57,7 +57,7 @@
 #include "dtraced_state.h"
 
 void
-handle_kill(struct dtd_state *s, struct dtd_joblist *curjob)
+handle_kill(struct dtd_state *s, struct dtraced_joblist *curjob)
 {
 	int fd;
 	pid_t pid;
