@@ -72,7 +72,7 @@ char version_str[128];
 /*
  * Awful global variable, but is here because of the signal handler.
  */
-static struct dtd_state state;
+static struct dtraced_state state;
 static const char *program_name;
 static unsigned long threadpool_size = 1;
 

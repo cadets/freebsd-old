@@ -67,7 +67,7 @@
 static size_t dirlen;
 
 static void
-dtt_elf(struct dtd_state *s, dtt_entry_t *e)
+dtt_elf(struct dtraced_state *s, dtt_entry_t *e)
 {
 	static int fd = 0;
 	static char *elf = NULL;
@@ -158,7 +158,7 @@ retry:
 }
 
 static void
-dtt_kill(struct dtd_state *s, dtt_entry_t *e)
+dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 {
 	pidlist_t *kill_entry;
 
@@ -179,7 +179,7 @@ dtt_kill(struct dtd_state *s, dtt_entry_t *e)
 }
 
 static void
-dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
+dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 {
 	struct dtraced_joblist *job;
 	pidlist_t *pe;
@@ -231,7 +231,7 @@ dtt_cleanup(struct dtd_state *s, dtt_entry_t *e)
 }
 
 static int
-setup_connection(struct dtd_state *s)
+setup_connection(struct dtraced_state *s)
 {
 	dtd_initmsg_t initmsg;
 	struct sockaddr_un addr;
@@ -297,7 +297,7 @@ void *
 listen_dttransport(void *_s)
 {
 	int err;
-	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
 	uintptr_t aux1, aux2;
 
@@ -344,7 +344,7 @@ write_dttransport(void *_s)
 {
 	ssize_t rval;
 	__cleanup(closefd_generic) int sockfd = -1;
-	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	dtt_entry_t e;
 	size_t lentoread, len, totallen;
 	uint32_t identifier;

@@ -56,7 +56,7 @@
 #include "dtraced_state.h"
 
 static int
-setup_threads(struct dtd_state *s)
+setup_threads(struct dtraced_state *s)
 {
 	int err;
 	pthread_t *threads;
@@ -143,12 +143,12 @@ setup_threads(struct dtd_state *s)
 }
 
 int
-init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
+init_state(struct dtraced_state *s, int ctrlmachine, int nosha, int n_threads,
     const char **argv)
 {
 	int err;
 
-	memset(s, 0, sizeof(struct dtd_state));
+	memset(s, 0, sizeof(struct dtraced_state));
 	s->argv = argv;
 	s->sockfd = -1;
 	s->ctrlmachine = ctrlmachine;
@@ -291,12 +291,12 @@ init_state(struct dtd_state *s, int ctrlmachine, int nosha, int n_threads,
 }
 
 int
-destroy_state(struct dtd_state *s)
+destroy_state(struct dtraced_state *s)
 {
 	int err;
 	size_t i;
 	struct dtraced_joblist *j, *next;
-	struct dtd_state *retval;
+	struct dtraced_state *retval;
 
 	/*
 	 * Give all the threads a chance to stop, but we don't really care if

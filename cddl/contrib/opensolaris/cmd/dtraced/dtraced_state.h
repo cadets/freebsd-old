@@ -52,7 +52,7 @@
  * dtraced state structure. This contains everything relevant to dtraced's
  * state management, such as files that exist, connected sockets, etc.
  */
-struct dtd_state {
+struct dtraced_state {
 	const char **argv;      /* Needed in case we need to re-exec. */
 	int ctrlmachine;        /* is this a control machine? */
 	int threadpool_size;    /* size of the thread pool (workers) */
@@ -131,7 +131,7 @@ struct dtd_state {
 	mutex_t identlistmtx;        /* mutex protecting the ident list */
 };
 
-int init_state(struct dtd_state *, int, int, int, const char **);
-int destroy_state(struct dtd_state *);
+int init_state(struct dtraced_state *, int, int, int, const char **);
+int destroy_state(struct dtraced_state *);
 
 #endif // _DTRACED_STATE_H_

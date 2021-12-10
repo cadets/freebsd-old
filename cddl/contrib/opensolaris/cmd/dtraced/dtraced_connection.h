@@ -45,7 +45,7 @@
 
 #include "_dtraced_connection.h"
 
-struct dtd_state;
+struct dtraced_state;
 
 static __inline void
 fd_acquire(dtraced_fd_t *dfd)
@@ -63,8 +63,8 @@ fd_release(dtraced_fd_t *dfd)
 
 void *close_filedescs(void *);
 void *process_consumers(void *);
-int  setup_sockfd(struct dtd_state *);
-int  destroy_sockfd(struct dtd_state *);
+int  setup_sockfd(struct dtraced_state *);
+int  destroy_sockfd(struct dtraced_state *);
 int  send_ack(int);
 int  send_nak(int);
 int  enable_fd(int, int, int, void *);

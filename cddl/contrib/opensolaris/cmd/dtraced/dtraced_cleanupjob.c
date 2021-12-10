@@ -52,7 +52,7 @@
 #include "dtraced_state.h"
 
 void
-handle_cleanup(struct dtd_state *s, struct dtraced_joblist *curjob)
+handle_cleanup(struct dtraced_state *s, struct dtraced_joblist *curjob)
 {
 	int fd, _send;
 	dtraced_hdr_t header;

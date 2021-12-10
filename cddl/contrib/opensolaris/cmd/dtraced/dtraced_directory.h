@@ -51,7 +51,7 @@ extern char DTRACED_BASEDIR[MAXPATHLEN];
 
 
 struct dtd_dir;
-struct dtd_state;
+struct dtraced_state;
 
 typedef int (*foreach_fn_t)(struct dirent *, struct dtd_dir *);
 
@@ -64,7 +64,7 @@ typedef struct dtd_dir {
 	size_t efile_len;	 /* number of elements */
 	mutex_t dirmtx;		 /* directory mutex */
 	foreach_fn_t processfn;	 /* function to process the dir */
-	struct dtd_state *state; /* backpointer to state */
+	struct dtraced_state *state; /* backpointer to state */
 } dtd_dir_t;
 
 int         write_data(dtd_dir_t *, unsigned char *, size_t);

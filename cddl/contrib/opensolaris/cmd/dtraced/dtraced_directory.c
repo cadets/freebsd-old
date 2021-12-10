@@ -71,7 +71,7 @@ char DTRACED_BASEDIR[MAXPATHLEN]     = "/var/ddtrace/base/";
 int
 write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 {
-	struct dtd_state *s;
+	struct dtraced_state *s;
 	__cleanup(freep) char *dirpath = NULL;
 	__cleanup(freep) char *newname = NULL;
 	char donename[MAXPATHLEN];
@@ -132,7 +132,7 @@ listen_dir(void *_dir)
 	int err, rval;
 	__cleanup(closefd_generic) int kq = -1;
 	struct kevent ev, ev_data;
-	struct dtd_state *s;
+	struct dtraced_state *s;
 	dtd_dir_t *dir;
 
 	dir = (dtd_dir_t *)_dir;
@@ -195,7 +195,7 @@ static int
 expand_paths(dtd_dir_t *dir)
 {
 	char **newpaths;
-	struct dtd_state *s;
+	struct dtraced_state *s;
 
 	if (dir == NULL) {
 		dump_errmsg("Expand paths called with dir == NULL");
@@ -401,7 +401,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	int err, jfd;
 	dtraced_fd_t *dfd;
 	struct dtraced_joblist *job;
-	struct dtd_state *s;
+	struct dtraced_state *s;
 	int idx;
 	pid_t pid;
 	char fullpath[MAXPATHLEN];
@@ -834,7 +834,7 @@ dtraced_copyfile(const char *src, const char *dst)
 int
 process_base(struct dirent *f, dtd_dir_t *dir)
 {
-	struct dtd_state *s;
+	struct dtraced_state *s;
 	int idx, err;
 	__cleanup(freep) char *newname = NULL;
 	char fullpath[MAXPATHLEN] = { 0 };
@@ -966,7 +966,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 	int err, jfd;
 	dtraced_fd_t *dfd;
 	struct dtraced_joblist *job;
-	struct dtd_state *s;
+	struct dtraced_state *s;
 	int idx, ch;
 	char *newname = NULL;
 

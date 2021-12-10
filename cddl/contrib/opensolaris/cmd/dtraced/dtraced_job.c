@@ -63,7 +63,7 @@
  * the main loop.
  */
 int
-dispatch_event(struct dtd_state *s, struct kevent *ev)
+dispatch_event(struct dtraced_state *s, struct kevent *ev)
 {
 	struct dtraced_joblist *job = NULL; /* in case we free */
 	dtraced_fd_t *dfd;
@@ -133,7 +133,7 @@ process_joblist(void *_s)
 {
 	int i;
 	struct dtraced_joblist *curjob;
-	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	struct dtraced_joblist *job;
 	const char *jobname[] = {
 		[0]               = "NONE",

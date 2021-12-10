@@ -108,7 +108,7 @@ disable_fd(int kq, int fd, int filt)
 void *
 close_filedescs(void *_s)
 {
-	struct dtd_state *s = _s;
+	struct dtraced_state *s = _s;
 	dtraced_fd_t *dfd;
 
 	while (atomic_load(&s->shutdown) == 0) {
@@ -133,7 +133,7 @@ close_filedescs(void *_s)
 }
 
 static void
-enqueue_info_message(struct dtd_state *s, dtraced_fd_t *dfd)
+enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 {
 	struct dtraced_joblist *job;
 
@@ -152,7 +152,7 @@ enqueue_info_message(struct dtd_state *s, dtraced_fd_t *dfd)
 }
 
 static int
-accept_new_connection(struct dtd_state *s)
+accept_new_connection(struct dtraced_state *s)
 {
 	int connsockfd;
 	int on = 1;
@@ -238,7 +238,7 @@ process_consumers(void *_s)
 	int efd;
 	int dispatch;
 	size_t i;
-	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	struct dtraced_joblist *jle;
 
 	struct kevent change_event[4], event[4];
@@ -433,7 +433,7 @@ process_consumers(void *_s)
 }
 
 int
-setup_sockfd(struct dtd_state *s)
+setup_sockfd(struct dtraced_state *s)
 {
 	int err;
 	struct sockaddr_un addr;
@@ -485,7 +485,7 @@ setup_sockfd(struct dtd_state *s)
 }
 
 int
-destroy_sockfd(struct dtd_state *s)
+destroy_sockfd(struct dtraced_state *s)
 {
 	int err;
 

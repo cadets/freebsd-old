@@ -58,7 +58,7 @@
 void *
 manage_children(void *_s)
 {
-	struct dtd_state *s = (struct dtd_state *)_s;
+	struct dtraced_state *s = (struct dtraced_state *)_s;
 	pidlist_t *kill_entry, *pe;
 	int status;
 
@@ -119,7 +119,7 @@ manage_children(void *_s)
 void *
 reap_children(void *_s)
 {
-	struct dtd_state *s = _s;
+	struct dtraced_state *s = _s;
 	int status, rv;
 
 	for (;;) {

@@ -55,7 +55,7 @@
 #include "dtraced_state.h"
 
 static int
-handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
+handle_elfmsg(struct dtraced_state *s, dtraced_hdr_t *h,
     unsigned char *buf, size_t bsize)
 {
 	dtd_dir_t *dir;
@@ -102,7 +102,7 @@ handle_elfmsg(struct dtd_state *s, dtraced_hdr_t *h,
 }
 
 static int
-handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
+handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
 	dtraced_fd_t *dfd = NULL;
 	struct dtraced_joblist *job;
@@ -150,7 +150,7 @@ handle_killmsg(struct dtd_state *s, dtraced_hdr_t *h)
 }
 
 static int
-handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
+handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
 	size_t n_entries, nbytes, len, i, j;
 	ssize_t r;
@@ -255,7 +255,7 @@ handle_cleanupmsg(struct dtd_state *s, dtraced_hdr_t *h)
 }
 
 void
-handle_read_data(struct dtd_state *s, struct dtraced_joblist *curjob)
+handle_read_data(struct dtraced_state *s, struct dtraced_joblist *curjob)
 {
 	int fd, err;
 	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;

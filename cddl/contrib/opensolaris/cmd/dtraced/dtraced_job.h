@@ -89,7 +89,7 @@ typedef struct dtraced_joblist {
 	} j;
 } dtraced_joblist_t;
 
-int  dispatch_event(struct dtd_state *, struct kevent *);
+int  dispatch_event(struct dtraced_state *, struct kevent *);
 void *process_joblist(void *);
 
 #endif // _DTRACED_JOB_H_
