@@ -400,7 +400,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
 	dtraced_fd_t *dfd;
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 	struct dtraced_state *s;
 	int idx;
 	pid_t pid;
@@ -492,13 +492,13 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			}
 
 			jfd = dfd->fd;
-			job = malloc(sizeof(struct dtraced_joblist));
+			job = malloc(sizeof(struct dtraced_job));
 			if (job == NULL) {
 				dump_errmsg("Failed to malloc a new job: %m");
 				abort();
 			}
 
-			memset(job, 0, sizeof(struct dtraced_joblist));
+			memset(job, 0, sizeof(struct dtraced_job));
 			job->job = NOTIFY_ELFWRITE;
 			job->connsockfd = dfd;
 			job->j.notify_elfwrite.path = strdup(f->d_name);
@@ -965,7 +965,7 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 {
 	int err, jfd;
 	dtraced_fd_t *dfd;
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 	struct dtraced_state *s;
 	int idx, ch;
 	char *newname = NULL;
@@ -1014,13 +1014,13 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		}
 
 		jfd = dfd->fd;
-		job = malloc(sizeof(struct dtraced_joblist));
+		job = malloc(sizeof(struct dtraced_job));
 		if (job == NULL) {
 			dump_errmsg("Failed to malloc a new job: %m");
 			abort();
 		}
 
-		memset(job, 0, sizeof(struct dtraced_joblist));
+		memset(job, 0, sizeof(struct dtraced_job));
 
 		job->job = NOTIFY_ELFWRITE;
 		job->connsockfd = dfd;

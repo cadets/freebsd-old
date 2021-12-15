@@ -65,7 +65,7 @@
 int
 dispatch_event(struct dtraced_state *s, struct kevent *ev)
 {
-	struct dtraced_joblist *job = NULL; /* in case we free */
+	struct dtraced_job *job = NULL; /* in case we free */
 	dtraced_fd_t *dfd;
 
 	if (ev->filter == EVFILT_READ) {
@@ -78,13 +78,13 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 * /var/ddtrace/base directory for the directory monitoring
 		 * kqueues to wake up and process it further.
 		 */
-		job = malloc(sizeof(struct dtraced_joblist));
+		job = malloc(sizeof(struct dtraced_job));
 		if (job == NULL) {
 			dump_errmsg("malloc() failed with: %m");
 			abort();
 		}
 
-		memset(job, 0, sizeof(struct dtraced_joblist));
+		memset(job, 0, sizeof(struct dtraced_job));
 		job->job = READ_DATA;
 		job->connsockfd = dfd;
 
@@ -132,9 +132,9 @@ void *
 process_joblist(void *_s)
 {
 	int i;
-	struct dtraced_joblist *curjob;
+	struct dtraced_job *curjob;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 	const char *jobname[] = {
 		[0]               = "NONE",
 		[NOTIFY_ELFWRITE] = "NOTIFY_ELFWRITE",

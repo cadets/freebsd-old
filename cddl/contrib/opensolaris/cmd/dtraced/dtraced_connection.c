@@ -135,11 +135,11 @@ close_filedescs(void *_s)
 static void
 enqueue_info_message(struct dtraced_state *s, dtraced_fd_t *dfd)
 {
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 
 	fd_acquire(dfd);
 
-	job = malloc(sizeof(struct dtraced_joblist));
+	job = malloc(sizeof(struct dtraced_job));
 	if (job == NULL)
 		abort();
 
@@ -239,7 +239,7 @@ process_consumers(void *_s)
 	int dispatch;
 	size_t i;
 	struct dtraced_state *s = (struct dtraced_state *)_s;
-	struct dtraced_joblist *jle;
+	struct dtraced_job *jle;
 
 	struct kevent change_event[4], event[4];
 

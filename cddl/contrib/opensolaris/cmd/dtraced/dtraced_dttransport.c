@@ -181,7 +181,7 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 static void
 dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 {
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 	pidlist_t *pe;
 	size_t i;
 

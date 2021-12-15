@@ -59,7 +59,7 @@
 #include "dtraced_state.h"
 
 void
-handle_elfwrite(struct dtraced_state *s, struct dtraced_joblist *curjob)
+handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	int fd, _nosha;
 	ssize_t r;

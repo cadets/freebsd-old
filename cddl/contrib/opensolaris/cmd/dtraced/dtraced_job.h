@@ -55,7 +55,7 @@ typedef struct identlist {
 } identlist_t;
 
 
-typedef struct dtraced_joblist {
+typedef struct dtraced_job {
 	dt_list_t    list;       /* next element */
 	int          job;        /* job kind */
 	dtraced_fd_t *connsockfd; /* which socket do we send this on? */
@@ -87,7 +87,7 @@ typedef struct dtraced_joblist {
 			size_t n_entries; /* number of entries */
 		} cleanup;
 	} j;
-} dtraced_joblist_t;
+} dtraced_job_t;
 
 int  dispatch_event(struct dtraced_state *, struct kevent *);
 void *process_joblist(void *);

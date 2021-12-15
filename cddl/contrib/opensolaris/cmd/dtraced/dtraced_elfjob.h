@@ -42,8 +42,8 @@
 #define __DTRACED_ELFJOB_H_
 
 struct dtraced_state;
-struct dtraced_joblist;
+struct dtraced_job;
 
-void handle_elfwrite(struct dtraced_state *, struct dtraced_joblist *);
+void handle_elfwrite(struct dtraced_state *, struct dtraced_job *);
 
 #endif // __DTRACED_ELFJOB_H_

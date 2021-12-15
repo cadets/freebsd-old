@@ -105,7 +105,7 @@ static int
 handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 {
 	dtraced_fd_t *dfd = NULL;
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 
 	dump_debugmsg("        KILL (%d)", DTRACED_MSG_KILLPID(*h));
 
@@ -127,13 +127,13 @@ handle_killmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 			continue;
 		}
 
-		job = malloc(sizeof(struct dtraced_joblist));
+		job = malloc(sizeof(struct dtraced_job));
 		if (job == NULL) {
 			dump_errmsg("malloc() failed with: %m");
 			abort();
 		}
 
-		memset(job, 0, sizeof(struct dtraced_joblist));
+		memset(job, 0, sizeof(struct dtraced_job));
 
 		job->job = KILL;
 		job->connsockfd = dfd;
@@ -155,7 +155,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 	size_t n_entries, nbytes, len, i, j;
 	ssize_t r;
 	char *buf, *_buf;
-	struct dtraced_joblist *job;
+	struct dtraced_job *job;
 	dtraced_fd_t *dfd;
 
 	/* XXX: Would be nice if __cleanup() did everything. */
@@ -215,11 +215,11 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 			entries[i] = buf;
 		}
 
-		job = malloc(sizeof(struct dtraced_joblist));
+		job = malloc(sizeof(struct dtraced_job));
 		if (job == NULL)
 			abort();
 
-		memset(job, 0, sizeof(struct dtraced_joblist));
+		memset(job, 0, sizeof(struct dtraced_job));
 
 		/*
 		 * Prepare the job.
@@ -255,7 +255,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 }
 
 void
-handle_read_data(struct dtraced_state *s, struct dtraced_joblist *curjob)
+handle_read_data(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	int fd, err;
 	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;

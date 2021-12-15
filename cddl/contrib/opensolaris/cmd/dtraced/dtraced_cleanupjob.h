@@ -41,8 +41,8 @@
 #define _DTRACED_CLEANUPJOB_H_
 
 struct dtraced_state;
-struct dtraced_joblist;
+struct dtraced_job;
 
-void handle_cleanup(struct dtraced_state *, struct dtraced_joblist *);
+void handle_cleanup(struct dtraced_state *, struct dtraced_job *);
 
 #endif // _DTRACED_CLEANUPJOB_H_
