@@ -2743,7 +2743,7 @@ main(int argc, char *argv[])
 
 		if (hdr.msg_type != DTRACED_MSG_INFO) {
 			fprintf(stderr,
-			    "dtraced hdr: expected INFO message, got: %x\n",
+			    "dtraced hdr: expected INFO message, got: %" PRIx64 "\n",
 			    hdr.msg_type);
 			close(fd);
 			exit(EXIT_FAILURE);

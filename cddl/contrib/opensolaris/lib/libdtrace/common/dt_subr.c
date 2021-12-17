@@ -1222,7 +1222,7 @@ dtrace_send_elf(dtrace_prog_t *pgp, int fromfd, int tofd, const char *location,
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_ELF;
 	l = strlcpy(DTRACED_MSG_LOC(header), location, DTRACED_LOCSIZE);
 	if (l >= DTRACED_LOCSIZE) {
-		fprintf(stderr, "strlcpy() failed (%zu >= %zu)\n", l,
+		fprintf(stderr, "strlcpy() failed (%zu >= %lu)\n", l,
 		    DTRACED_LOCSIZE);
 		free(buf);
 		return (-1);

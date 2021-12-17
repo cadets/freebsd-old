@@ -700,7 +700,7 @@ dt_prog_relocate(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 			if ((index = dt_inttab_insert(difo->dtdo_inthash,
 			    difo->dtdo_inttab[i], 0)) != i)
 				errx(EXIT_FAILURE,
-				    "failed to insert %lu, got %d (!= %d)\n",
+				    "failed to insert %" PRIu64 ", got %d (!= %d)\n",
 				    difo->dtdo_inttab[i], index, i);
 		}
 	}

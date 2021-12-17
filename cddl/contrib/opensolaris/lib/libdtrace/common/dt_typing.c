@@ -387,7 +387,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (sym >= difo->dtdo_symlen) {
 			fprintf(stderr,
 			    "dt_infer_type(%s, %zu): "
-			    "sym (%u) >= symlen (%zu)\n",
+			    "sym (%u) >= symlen (%" PRIu64 ")\n",
 			    insname[opcode], n->din_uidx, sym,
 			    difo->dtdo_symlen);
 			return (-1);
@@ -416,7 +416,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (sym >= difo->dtdo_symlen) {
 			fprintf(stderr,
 			    "dt_infer_type(%s, %zu): "
-			    "sym (%u) >= symlen (%zu)\n",
+			    "sym (%u) >= symlen (%" PRIu64 ")\n",
 			    insname[opcode], n->din_uidx, sym,
 			    difo->dtdo_symlen);
 			return (-1);

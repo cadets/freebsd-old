@@ -52,7 +52,7 @@
 #include "dtraced_state.h"
 
 void
-handle_sendinfo(struct dtraced_state *s, struct dtraced_joblist *curjob)
+handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 {
 	dtraced_hdr_t hdr = { 0 };
 	__cleanup(releasefd) dtraced_fd_t *dfd = curjob->connsockfd;

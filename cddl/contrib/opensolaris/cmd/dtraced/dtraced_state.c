@@ -295,7 +295,7 @@ destroy_state(struct dtraced_state *s)
 {
 	int err;
 	size_t i;
-	struct dtraced_joblist *j, *next;
+	struct dtraced_job *j, *next;
 	struct dtraced_state *retval;
 
 	/*

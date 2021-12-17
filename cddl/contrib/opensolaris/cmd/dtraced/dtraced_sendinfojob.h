@@ -43,8 +43,8 @@
 #include "dtraced.h"
 
 struct dtraced_state;
-struct dtraced_joblist;
+struct dtraced_job;
 
-void handle_sendinfo(struct dtraced_state *, struct dtraced_joblist *);
+void handle_sendinfo(struct dtraced_state *, struct dtraced_job *);
 
 #endif // __DTRACED_SENDINFOJOB_H_

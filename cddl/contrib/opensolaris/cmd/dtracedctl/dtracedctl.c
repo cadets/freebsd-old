@@ -277,7 +277,8 @@ main(int argc, const char **argv)
 
 	program_name = argv[0];
 
-	while ((ch = getopt_long(argc, argv, "", longopts, NULL)) != -1) {
+	while ((ch = getopt_long(argc,
+	    (char *const *)argv, "", longopts, NULL)) != -1) {
 		switch (ch) {
 		case 0:
 			break;

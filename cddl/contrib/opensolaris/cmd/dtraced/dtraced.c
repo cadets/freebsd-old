@@ -135,7 +135,7 @@ print_version(void)
 }
 
 int
-main(int argc, char **argv)
+main(int argc, const char **argv)
 {
 	char elfpath[MAXPATHLEN] = "/var/ddtrace";
 	__cleanup(closefd_generic) int efd = -1;
@@ -171,7 +171,7 @@ main(int argc, char **argv)
 	else
 		dump_debugmsg("Running in overlord mode.");
 
-	while ((ch = getopt(argc, argv, "D:Odhmvt:qZ")) != -1) {
+	while ((ch = getopt(argc, (char *const *)argv, "D:Odhmvt:qZ")) != -1) {
 		switch (ch) {
 		case 'h':
 			print_help();
@@ -330,7 +330,7 @@ againefd:
 	}
 
 	errval = init_state(&state, ctrlmachine, nosha,
-	    threadpool_size, (char **)argv);
+	    threadpool_size, argv);
 	if (errval != 0) {
 		dump_errmsg("Failed to initialize the state");
 		return (EXIT_FAILURE);

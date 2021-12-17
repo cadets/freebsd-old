@@ -227,7 +227,7 @@ dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 	UNLOCK(&s->pidlistmtx);
 
 	/* Re-exec ourselves to ensure full cleanup. */
-	execve(s->argv[0], s->argv, NULL);
+	execve(s->argv[0], (char *const *)s->argv, NULL);
 }
 
 static int

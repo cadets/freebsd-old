@@ -29,6 +29,7 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
+#include <sys/types.h>
 #include <sys/param.h>
 
 #include <stdatomic.h>
@@ -51,9 +52,11 @@ __FBSDID("$FreeBSD$");
 #include <dtraced.h>
 #include <err.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -668,7 +671,6 @@ static struct pci_vtdtr_control *
 vtdtr_elf_event(void *buf, size_t size, size_t offs)
 {
 	struct pci_vtdtr_control *ctrl;
-	ssize_t rval;
 	size_t maxlen;
 	size_t len_to_read;
 	int hasmore;
@@ -774,7 +776,6 @@ pci_vtdtr_events(void *xsc)
 {
 	struct pci_vtdtr_softc *sc;
 	int error;
-	int fd;
 	struct stat *st;
 	size_t offs;
 	char *buf = NULL;
@@ -896,7 +897,7 @@ pci_vtdtr_events(void *xsc)
 			break;
 
 		default:
-			fprintf(stderr, "Unknown message: %llu\n",
+			fprintf(stderr, "Unknown message: %" PRIx64 "\n",
 			    DTRACED_MSG_TYPE(header));
 		}
 
