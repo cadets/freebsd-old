@@ -18546,9 +18546,15 @@ dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 	idx &= dtrace_immstackhash_mask;
 
 	while (dtrace_immstackhash[idx].key != pc &&
-	    dtrace_immstackhash[idx].sym != NULL) {
+	    dtrace_immstackhash[idx].key != 0) {
 		idx++; /* XXX: Meh. */
 		idx &= dtrace_immstackhash_mask;
+	}
+
+	if (dtrace_immstackhash[idx].sym == NULL ||
+	    dtrace_immstackhash[idx].off == 0) {
+		*off = 0;
+		return (NULL);
 	}
 
 	*off = dtrace_immstackhash[idx].off;
@@ -18567,7 +18573,8 @@ dtrace_immstack_cache(pc_t pc, const char *symname, uint64_t off)
 	/*
 	 * FIXME: TODO: 'cnt' is a horrible workaround.
 	 */
-	while (dtrace_immstackhash[idx].sym != NULL && cnt < 1024) {
+	while (dtrace_immstackhash[idx].key != pc &&
+	    dtrace_immstackhash[idx].key != 0 && cnt < 1024) {
 		idx++;
 		idx &= dtrace_immstackhash_mask;
 		cnt++;
@@ -18579,7 +18586,9 @@ dtrace_immstack_cache(pc_t pc, const char *symname, uint64_t off)
 	if (cnt >= 1024)
 		return;
 
-	dtrace_immstackhash[idx].key = pc;
+	if (!dtrace_casptr(&dtrace_immstackhash[idx].key, NULL, (void *)pc))
+		return;
+
 	dtrace_immstackhash[idx].sym = symname;
 	dtrace_immstackhash[idx].off = off;
 }
