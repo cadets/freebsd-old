@@ -57,7 +57,7 @@ enum {
 };
 
 static struct option longopts[] = {
-	{ "cleanup-state",     optional_argument,    NULL,   	CLEANUP_STATE },
+	{ "cleanup-state",     optional_argument,    NULL,      CLEANUP_STATE },
 	{ "help"         ,     no_argument      ,    NULL,      HELP_PAGE     },
 	{ "show-stats"   ,     optional_argument,    NULL,      SHOW_STATS    },
 	{ NULL           ,     0                ,    NULL,      0             }
@@ -319,7 +319,7 @@ main(int argc, const char **argv)
 
 		default:
 			print_help();
-			break;
+			return (EXIT_FAILURE);
 		}
 	}
 
