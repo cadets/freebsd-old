@@ -120,9 +120,11 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 lookup:
 	if (symname != NULL || pc == 0 || off >= (db_addr_t)dtrace_db_maxoff) {
 		needs_caching = 0;
+		_dtrace_immstack_cache_hit[curcpu]++;
 		goto finalize;
 	}
 
+	_dtrace_immstack_cache_miss[curcpu]++;
 	*flags |= CPU_DTRACE_NOFAULT;
 	sym = dtrace_search_symbol(pc, DB_STGY_PROC, &off);
 	if (*flags & CPU_DTRACE_FAULT) {

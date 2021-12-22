@@ -1085,8 +1085,12 @@ typedef struct dtrace_actdesc {
 } dtrace_actdesc_t;
 
 typedef struct {
-	uint64_t sum;
-	uint64_t cnt;
+	uint64_t stack_sum;
+	uint64_t stack_cnt;
+	uint64_t immstack_sum;
+	uint64_t immstack_cnt;
+	uint64_t cache_hits;
+	uint64_t cache_misses;
 } dtrace_tscdata_t;
 
 typedef struct dtrace_ecbdesc {

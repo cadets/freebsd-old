@@ -74,48 +74,42 @@ sysctl_dtrace_providers(SYSCTL_HANDLER_ARGS)
 }
 
 static int
-sysctl_dtrace_stacktsc(SYSCTL_HANDLER_ARGS)
+sysctl_dtrace_stacktscinfo(SYSCTL_HANDLER_ARGS)
 {
 	size_t i;
-	uint64_t fullsum, fullcnt;
+	uint64_t stack_fullsum, stack_fullcnt, immstack_fullsum,
+	    immstack_fullcnt, cache_hits, cache_misses;
 	dtrace_tscdata_t val = { 0 };
 	int error;
 
-	fullsum = fullcnt = 0;
+	stack_fullsum = stack_fullcnt = immstack_fullsum = immstack_fullcnt =
+	    cache_hits = cache_misses = 0;
 	for (i = 0; i < NCPU; i++) {
-		fullsum += _dtrace_stack_sum[i];
-		fullcnt += _dtrace_stack_avgcnt[i];
+		stack_fullsum += _dtrace_stack_sum[i];
+		stack_fullcnt += _dtrace_stack_avgcnt[i];
+
+		immstack_fullsum += _dtrace_immstack_sum[i];
+		immstack_fullcnt += _dtrace_immstack_avgcnt[i];
+
+		cache_hits += _dtrace_immstack_cache_hit[i];
+		cache_misses += _dtrace_immstack_cache_miss[i];
 
 		_dtrace_stack_sum[i] = 0;
 		_dtrace_stack_avgcnt[i] = 0;
-	}
-
-	val.sum = fullsum;
-	val.cnt = fullcnt;
-
-	error = sysctl_handle_opaque(oidp, &val, sizeof(val), req);
-	return (error);
-}
-
-static int
-sysctl_dtrace_immstacktsc(SYSCTL_HANDLER_ARGS)
-{
-	size_t i;
-	uint64_t fullsum, fullcnt;
-	dtrace_tscdata_t val = { 0 };
-	int error;
-
-	fullsum = fullcnt = 0;
-	for (i = 0; i < NCPU; i++) {
-		fullsum += _dtrace_immstack_sum[i];
-		fullcnt += _dtrace_immstack_avgcnt[i];
 
 		_dtrace_immstack_sum[i] = 0;
 		_dtrace_immstack_avgcnt[i] = 0;
+
+		_dtrace_immstack_cache_hit[i] = 0;
+		_dtrace_immstack_cache_miss[i] = 0;
 	}
 
-	val.sum = fullsum;
-	val.cnt = fullcnt;
+	val.stack_sum = stack_fullsum;
+	val.stack_cnt = stack_fullcnt;
+	val.immstack_sum = immstack_fullsum;
+	val.immstack_cnt = immstack_fullcnt;
+	val.cache_hits = cache_hits;
+	val.cache_misses = cache_misses;
 
 	error = sysctl_handle_opaque(oidp, &val, sizeof(val), req);
 	return (error);
@@ -151,10 +145,6 @@ SYSCTL_QUAD(_kern_dtrace, OID_AUTO, helper_actions_max, CTLFLAG_RW,
 SYSCTL_INT(_security_bsd, OID_AUTO, allow_destructive_dtrace, CTLFLAG_RDTUN,
     &dtrace_allow_destructive, 1, "Allow destructive mode DTrace scripts");
 
-SYSCTL_PROC(_kern_dtrace, OID_AUTO, stacktsc,
-    CTLTYPE_STRING | CTLFLAG_MPSAFE | CTLFLAG_RD, 0, 0, sysctl_dtrace_stacktsc,
+SYSCTL_PROC(_kern_dtrace, OID_AUTO, stacktscinfo,
+    CTLTYPE_STRING | CTLFLAG_MPSAFE | CTLFLAG_RD, 0, 0, sysctl_dtrace_stacktscinfo,
     "A", "current stack measurements");
-
-SYSCTL_PROC(_kern_dtrace, OID_AUTO, immstacktsc,
-    CTLTYPE_STRING | CTLFLAG_MPSAFE | CTLFLAG_RD, 0, 0,
-    sysctl_dtrace_immstacktsc, "A", "current immstack measurements");

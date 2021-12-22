@@ -38,12 +38,12 @@ print_help(void)
 int
 main(int argc, char **argv)
 {
-	dtrace_tscdata_t stackval;
-	dtrace_tscdata_t immstackval;
-	double stack, immstack;
+	dtrace_tscdata_t val;
+	double stack, immstack, hit_rate;
 	size_t len;
 	int csv = 0;
 	int ch;
+	uint64_t hits, misses, total;
 
 	program_name = argv[0];
 
@@ -67,28 +67,28 @@ main(int argc, char **argv)
 		}
 	}
 
-	len = sizeof(stackval);
-	if (sysctlbyname("kern.dtrace.stacktsc", &stackval, &len, NULL, 0)) {
+	len = sizeof(val);
+	if (sysctlbyname("kern.dtrace.stacktscinfo", &val, &len, NULL, 0)) {
 		fprintf(stderr, "Failed to get stack values via sysctl: %s.",
 		    strerror(errno));
 		return (EX_OSERR);
 	}
 
-	if (sysctlbyname(
-		"kern.dtrace.immstacktsc", &immstackval, &len, NULL, 0)) {
-		fprintf(stderr, "Failed to get stack values via sysctl: %s.",
-		    strerror(errno));
-		return (EX_OSERR);
-	}
-
-	stack = ((double)stackval.sum) / ((double)stackval.cnt) / 1000000;
-	immstack = ((double)immstackval.sum) / ((double)immstackval.cnt) /
+	stack = ((double)val.stack_sum) / ((double)val.stack_cnt) / 1000000;
+	immstack = ((double)val.immstack_sum) / ((double)val.immstack_cnt) /
 	    1000000;
 
+	hits = val.cache_hits;
+	misses = val.cache_misses;
+
+	total = hits + misses;
+	hit_rate = ((double)hits) / ((double)total);
+
 	if (csv != 0) {
-		printf("%lf, %lf, %lf\n", stack, immstack, 0.0f);
+		printf("%lf, %lf, %lf\n", stack, immstack, hit_rate);
 	} else {
-		printf("Stack: %lf\nImmstack: %lf\n", stack, immstack);
+		printf("Stack: %lf\nImmstack: %lf\nHit rate: %lf\n", stack,
+		    immstack, hit_rate);
 	}
 
 	return (EXIT_SUCCESS);
