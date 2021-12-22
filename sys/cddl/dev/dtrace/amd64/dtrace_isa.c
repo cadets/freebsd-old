@@ -88,6 +88,7 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	db_expr_t off;
 	int i;
 	uintptr_t addr;
+	int needs_caching;
 
 	stack_start = stack + *depth;
 	stack_end = stack + *depth + size - 8; /* -8 to fit a uintptr_t */
@@ -102,11 +103,15 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	}
 
 	symname = dtrace_immstack_get_cached(pc, &off);
+	needs_caching = 1;
+
 	/*
 	 * FIXME: This duplicates a lot of the stuff...
 	 */
-	if (symname != NULL || pc == 0 || off >= (db_addr_t)dtrace_db_maxoff)
+	if (symname != NULL || pc == 0 || off >= (db_addr_t)dtrace_db_maxoff) {
+		needs_caching = 0;
 		goto finalize;
+	}
 
 	sym = db_search_symbol(pc, DB_STGY_PROC, &off);
 	db_symbol_values(sym, &symname, NULL);
@@ -143,7 +148,10 @@ finalize:
 	ASSERT(addr >= (uintptr_t)c);
 	*((uint64_t *)addr) = off; /* store the offset after our string */
 
-	dtrace_immstack_cache(pc, symname, off); /* cache the stack entry */
+	if (needs_caching != 0)
+		/* cache the stack entry */
+		dtrace_immstack_cache(pc, symname, off);
+
 	*depth += size;
 }
 
