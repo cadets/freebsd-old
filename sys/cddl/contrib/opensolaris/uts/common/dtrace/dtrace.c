@@ -8849,12 +8849,14 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 				if (vm_guest != VM_GUEST_NO) {
 					isstrsize = state->dts_immstackstrsize;
+					DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 					dtrace_getpcimmstack(
 					    state->dts_immstack[cpuid],
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
+					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 				} else {
 					caddr_t atomax;
 
@@ -8865,11 +8867,13 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 					isstrsize = state->dts_immstackstrsize;
 					atomax = (caddr_t)ALIGN(tomax + valoffs);
+					DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 					dtrace_getpcimmstack(atomax,
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
+					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 				}
 				continue;
 			}

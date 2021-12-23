@@ -148,9 +148,10 @@ finalize:
 	ASSERT(addr >= (uintptr_t)c);
 	*((uint64_t *)addr) = off; /* store the offset after our string */
 
-	if (needs_caching != 0)
+	if (needs_caching != 0) {
 		/* cache the stack entry */
 		dtrace_immstack_cache(pc, symname, off);
+	}
 
 	*depth += size;
 }
@@ -220,13 +221,9 @@ void
 dtrace_getpcimmstack(char *stack, int stack_limit, int size, int aframes,
     uint32_t *intrpc)
 {
-	volatile uint16_t *flags =
-	    (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
 
-	*flags |= CPU_DTRACE_NOFAULT;
 	dtrace_getpcstack_generic(stack, stack_limit, size, aframes, intrpc,
 	    populate_stack_str);
-	*flags &= ~CPU_DTRACE_NOFAULT;
 }
 
 void
