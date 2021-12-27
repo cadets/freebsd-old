@@ -8360,11 +8360,12 @@ dtrace_probe_enter(uint16_t vmid, dtrace_id_t id)
 	 * resulting in unexpected output. If there is an exception to this
 	 * assertion, a new case should be added.
 	 */
-	if (vmid == 0)
-		ASSERT(curthread->t_dtrace_inprobe == 0 ||
-		    id == dtrace_probeid_error);
-	else
-		ASSERT(curthread->t_dtrace_inprobe == 0);
+	if (vmid == 0) {
+		if (curthread->t_dtrace_inprobe != 0 &&
+		    id != dtrace_probeid_error)
+			panic("Recursing into dtrace_probe().");
+	} else if (curthread->t_dtrace_inprobe != 0)
+		panic("Recursing into dtrace_probe with vmid = %d\n", vmid);
 
 	curthread->t_dtrace_inprobe = 1;
 
@@ -18542,6 +18543,7 @@ static const char *
 dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 {
 	uint32_t idx;
+	int cnt = 0;
 
 	if (pc == 0)
 		return (NULL);
@@ -18550,13 +18552,14 @@ dtrace_immstack_get_cached(pc_t pc, uint64_t *off)
 	idx &= dtrace_immstackhash_mask;
 
 	while (dtrace_immstackhash[idx].key != pc &&
-	    dtrace_immstackhash[idx].key != 0) {
+	    dtrace_immstackhash[idx].key != 0 && cnt < 1024) {
 		idx++; /* XXX: Meh. */
 		idx &= dtrace_immstackhash_mask;
+		cnt++;
 	}
 
 	if (dtrace_immstackhash[idx].sym == NULL ||
-	    dtrace_immstackhash[idx].off == 0) {
+	    dtrace_immstackhash[idx].off == 0 || cnt >= 1024) {
 		*off = 0;
 		return (NULL);
 	}

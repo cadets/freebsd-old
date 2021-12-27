@@ -99,6 +99,7 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	ASSERT((((uintptr_t)stack_end) & ALIGNBYTES) == 0);
 
 	if (stack_end <= stack_start) {
+		*depth += size;
 		return;
 	}
 
