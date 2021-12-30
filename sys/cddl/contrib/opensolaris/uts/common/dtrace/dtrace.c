@@ -8859,8 +8859,10 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 					    NULL : (uint32_t *)arg0);
 					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
-					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT))
+					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
 						DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_FAULT);
+						DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
+					}
 
 				} else {
 					caddr_t atomax;
@@ -8880,8 +8882,10 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 					    NULL : (uint32_t *)arg0);
 					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
-					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT))
+					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
 						DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_FAULT);
+						DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
+					}
 				}
 				continue;
 			}
