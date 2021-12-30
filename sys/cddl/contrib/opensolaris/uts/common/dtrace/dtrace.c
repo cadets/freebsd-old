@@ -1486,6 +1486,25 @@ dtrace_bcopy(const void *vmhdl, const void *src, void *dst, size_t len)
 	}
 }
 
+
+/*
+ * Compare strings.
+ */
+static int
+dtrace_strcmp(const void *vh1, const void *vh2, const char *s1, const char *s2)
+{
+	char c;
+	s1 = dtrace_addrxlate(vh1, s1);
+	s2 = dtrace_addrxlate(vh2, s2);
+
+	while ((c = dtrace_load8(NULL, (uintptr_t)s1++)) ==
+	    dtrace_load8(NULL, (uintptr_t)s2++))
+		if (c == '\0')
+			return (0);
+	return ((const unsigned char)dtrace_load8(NULL, (uintptr_t)s1) -
+	    (const unsigned char)dtrace_load8(NULL, (uintptr_t)(s2 - 1)));
+}
+
 /*
  * Copy src to dst using safe memory accesses, up to either the specified
  * length, or the point that a nul byte is encountered.  The src is assumed to
@@ -8841,29 +8860,25 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 			}
 
 			case DTRACEACT_IMMSTACK: {
+				volatile uint16_t *flags;
 				int isstrsize, immstackframes;
 
 				if (!dtrace_priv_kernel(state))
 					continue;
 
+				flags = (volatile uint16_t *)&cpu_core[curcpu]
+				    .cpuc_dtrace_flags;
+
 				immstackframes = state->dts_immstackframes;
 
 				if (vm_guest != VM_GUEST_NO) {
 					isstrsize = state->dts_immstackstrsize;
-					DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 					dtrace_getpcimmstack(
 					    state->dts_immstack[cpuid],
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
-					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
-						DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_FAULT);
-						DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
-					}
-
 				} else {
 					caddr_t atomax;
 
@@ -8874,18 +8889,11 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 					isstrsize = state->dts_immstackstrsize;
 					atomax = (caddr_t)ALIGN(tomax + valoffs);
-					DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 					dtrace_getpcimmstack(atomax,
 					    immstackframes, isstrsize,
 					    probe->dtpr_aframes,
 					    DTRACE_ANCHORED(probe) ?
 					    NULL : (uint32_t *)arg0);
-					DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-					if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
-						DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_FAULT);
-						DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
-					}
 				}
 				continue;
 			}

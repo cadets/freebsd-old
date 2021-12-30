@@ -39,6 +39,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/pcpu.h>
 #include <sys/smp.h>
 #include <sys/systm.h>
+#include <sys/dtrace_bsd.h>
 
 #include <net/vnet.h>
 
@@ -55,10 +56,10 @@ __FBSDID("$FreeBSD$");
 #define	MAXNOSYMTABS	3	/* mach, ux, emulator */
 #endif
 
-static db_symtab_t	db_symtabs[MAXNOSYMTABS] = {{0,},};
-static int db_nsymtab = 0;
+db_symtab_t	db_symtabs[MAXNOSYMTABS] = {{0,},};
+int db_nsymtab = 0;
 
-static db_symtab_t	*db_last_symtab; /* where last symbol was found */
+db_symtab_t	*db_last_symtab; /* where last symbol was found */
 
 static c_db_sym_t	db_lookup( const char *symstr);
 static char		*db_qualify(c_db_sym_t sym, char *symtabname);
@@ -388,6 +389,7 @@ db_search_symbol(db_addr_t val, db_strategy_t strategy, db_expr_t *offp)
 	newdiff = diff = val;
 	for (i = 0; i < db_nsymtab; i++) {
 	    sym = X_db_search_symbol(&db_symtabs[i], val, strategy, &newdiff);
+
 	    if ((uintmax_t)newdiff < (uintmax_t)diff) {
 		db_last_symtab = &db_symtabs[i];
 		diff = newdiff;

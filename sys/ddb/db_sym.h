@@ -69,6 +69,17 @@ typedef int		db_strategy_t;	/* search strategy */
 #define	DB_STGY_PROC	2			/* only procedures */
 
 /*
+ * Multiple symbol tables
+ */
+#ifndef MAXNOSYMTABS
+#define	MAXNOSYMTABS	3	/* mach, ux, emulator */
+#endif
+
+extern int db_nsymtab;
+extern db_symtab_t db_symtabs[MAXNOSYMTABS];
+extern db_symtab_t	*db_last_symtab;
+
+/*
  * Functions exported by the symtable module
  */
 void		db_add_symbol_table(char *, char *, char *, char *);

@@ -48,6 +48,8 @@ struct mod_depend;
 typedef struct linker_file* linker_file_t;
 typedef TAILQ_HEAD(, linker_file) linker_file_list_t;
 
+extern linker_file_list_t linker_files;
+
 typedef caddr_t linker_sym_t;		/* opaque symbol */
 typedef c_caddr_t c_linker_sym_t;	/* const opaque symbol */
 typedef int (*linker_function_name_callback_t)(const char *, void *);
