@@ -20549,6 +20549,7 @@ static struct cdevsw helper_cdevsw = {
 #include <dtrace_unload.c>
 #include <dtrace_vtime.c>
 #include <dtrace_hacks.c>
+#include <dtrace_db.c>
 #include <dtrace_isa.c>
 
 SYSINIT(dtrace_load, SI_SUB_DTRACE, SI_ORDER_FIRST, dtrace_load, NULL);
