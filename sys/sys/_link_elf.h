@@ -1,6 +1,7 @@
 #ifndef __LINK_ELF_H_
 #define __LINK_ELF_H_
 
+#include <sys/param.h>
 #include <sys/linker.h>
 
 typedef struct link_map {
@@ -27,6 +28,8 @@ struct r_debug {
 	}		r_state;
 	void		*r_ldbase;		/* Base address of rtld */
 };
+
+#ifdef _KERNEL
 
 typedef struct elf_file {
 	struct linker_file lf;		/* Common fields */
@@ -77,5 +80,7 @@ typedef struct elf_file {
 	struct link_map	gdb;		/* hooks for gdb */
 #endif
 } *elf_file_t;
+
+#endif
 
 #endif /* __LINK_ELF_H_ */

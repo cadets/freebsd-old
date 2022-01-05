@@ -32,4 +32,5 @@
  * $FreeBSD$
  */
 
+#include <sys/_link_elf.h>
 #include <sys/link_elf.h>
