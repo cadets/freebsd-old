@@ -53,6 +53,8 @@ int dtrace_trap(struct trapframe *, u_int);
  */
 typedef int (*dtrace_trap_func_t)(struct trapframe *, u_int);
 extern dtrace_trap_func_t dtrace_trap_func;
+typedef int (*dtrace_fault_func_t)(void);
+extern dtrace_fault_func_t dtrace_fault_func;
 
 /*
  * A hook which removes active FBT probes before executing the double fault

@@ -52,6 +52,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/linker.h>
 #include <sys/sysctl.h>
+#include <sys/dtrace_bsd.h>
 
 #include <machine/elf.h>
 
@@ -1556,9 +1557,21 @@ link_elf_search_symbol(linker_file_t lf, caddr_t value,
 	int i;
 
 	for (i = 0, es = ef->ddbsymtab; i < ef->ddbsymcnt; i++, es++) {
+		/*
+		 * XXX: This might not be needed for DTrace, but it beats
+		 * spending a week chasing a weird panic.
+		 */
+#ifdef KDTRACE_HOOKS
+		if (dtrace_fault_func())
+			return (-1);
+#endif
 		if (es->st_name == 0)
 			continue;
 		st_value = es->st_value + (uintptr_t) (void *) ef->address;
+#ifdef KDTRACE_HOOKS
+		if (dtrace_fault_func())
+			return (-1);
+#endif
 		if (off >= st_value) {
 			if (off - st_value < diff) {
 				diff = off - st_value;

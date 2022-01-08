@@ -52,6 +52,10 @@
 #include <sys/kernel.h>
 #include <sys/stack.h>
 #include <sys/pcpu.h>
+#include <sys/_link_elf.h>
+#include <sys/link_elf.h>
+#include <ddb/ddb.h>
+#include <ddb/db_sym.h>
 
 #include <machine/frame.h>
 #include <machine/md_var.h>
@@ -74,8 +78,10 @@ int	dtrace_ustackdepth_max = 2048;
 
 typedef int (*stack_entry_fn_t)(void *, int, int *, pc_t);
 
+static db_expr_t dtrace_db_maxoff = 0x10000; /* taken from db_sym.c */
+
 static int
-populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
+dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 {
 	const char *symname, *unk, *c_copy;
 	char *stack = _stack, *c, *stack_start, *stack_end;
@@ -85,6 +91,7 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	uintptr_t addr;
 	int needs_caching;
 	volatile uint16_t *flags;
+	int failed = 0;
 
 	stack_start = stack + *depth;
 	stack_end = stack + *depth + size - 8; /* -8 to fit a uintptr_t */
@@ -133,7 +140,8 @@ populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	}
 
 finalize:
-	if (pc == 0 || symname == NULL || off >= (db_addr_t)dtrace_db_maxoff) {
+	if (pc == 0 || symname == NULL || off >= (db_addr_t)dtrace_db_maxoff ||
+	    failed != 0) {
 		if (pc == 0 || size < sizeof("??")) {
 			for (c = stack_start; c < stack_end; c++)
 				*c = 0;
@@ -149,10 +157,18 @@ finalize:
 		return (0);
 	}
 
+	*flags |= CPU_DTRACE_NOFAULT;
 	for (c = stack_start, c_copy = symname; c < stack_end && *c_copy;
 	     c++, c_copy++) {
-		*c = dtrace_load8(NULL, (uintptr_t)c_copy);
+		*c = *c_copy;
+		if (*flags & CPU_DTRACE_FAULT) {
+			*flags &= ~CPU_DTRACE_FAULT;
+			*flags &= ~CPU_DTRACE_NOFAULT;
+			failed = 1;
+			goto finalize;
+		}
 	}
+	*flags &= ~CPU_DTRACE_NOFAULT;
 
 	if (c == stack_end)
 		*(c - 1) = 0;
@@ -177,7 +193,7 @@ end:
 }
 
 static int
-populate_stack_addr(void *_pcstack, int size __unused, int *depth, pc_t pc)
+dtrace_populate_stack_addr(void *_pcstack, int size __unused, int *depth, pc_t pc)
 {
 	pc_t *pcstack = _pcstack;
 
@@ -254,7 +270,7 @@ dtrace_getpcimmstack(char *stack, int stack_limit, int size, int aframes,
 {
 
 	dtrace_getpcstack_generic(stack, stack_limit, size, aframes, intrpc,
-	    populate_stack_str);
+	    dtrace_populate_stack_str);
 }
 
 void
@@ -263,7 +279,7 @@ dtrace_getpcstack(pc_t *pcstack, int pcstack_limit, int aframes,
 {
 
 	dtrace_getpcstack_generic(pcstack, pcstack_limit, 1, aframes, intrpc,
-	    populate_stack_addr);
+	    dtrace_populate_stack_addr);
 }
 
 static int

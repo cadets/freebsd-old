@@ -48,12 +48,18 @@
 #include <sys/cdefs.h>
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/kernel.h>
+#include <sys/module.h>
+
+#include <sys/linker.h>
 
 #include <ddb/ddb.h>
 #include <ddb/db_sym.h>
 
 #include <sys/_link_elf.h>
 #include <sys/link_elf.h>
+
+#include "linker_if.h"
 
 struct dtrace_db_private {
 	char*		strtab;
@@ -64,48 +70,13 @@ typedef struct dtrace_db_private *dtrace_db_private_t;
 
 #define DTRACE_DB_PRIVATE(x) ((dtrace_db_private_t)(x->private))
 
-static db_expr_t dtrace_db_maxoff = 0x10000; /* taken from db_sym.c */
-
-static int
-dtrace_linker_elf_symbol_values(linker_file_t lf, c_linker_sym_t sym,
-    linker_symval_t *symval)
-{
-	elf_file_t ef;
-	const Elf_Sym *es;
-	caddr_t val;
-
-	ef = (elf_file_t)lf;
-	es = (const Elf_Sym *)sym;
-	if (es >= ef->symtab && es < (ef->symtab + ef->nchains)) {
-		symval->name = ef->strtab + es->st_name;
-		val = (caddr_t)ef->address + es->st_value;
-		if (ELF_ST_TYPE(es->st_info) == STT_GNU_IFUNC)
-			val = ((caddr_t (*)(void))val)();
-		symval->value = val;
-		symval->size = es->st_size;
-		return (0);
-	}
-	if (ef->symtab == ef->ddbsymtab)
-		return (ENOENT);
-	if (es >= ef->ddbsymtab && es < (ef->ddbsymtab + ef->ddbsymcnt)) {
-		symval->name = ef->ddbstrtab + es->st_name;
-		val = (caddr_t)ef->address + es->st_value;
-		if (ELF_ST_TYPE(es->st_info) == STT_GNU_IFUNC)
-			val = ((caddr_t (*)(void))val)();
-		symval->value = val;
-		symval->size = es->st_size;
-		return (0);
-	}
-	return (ENOENT);
-}
-
 static int
 dtrace_linker_symbol_values(c_linker_sym_t sym, linker_symval_t *symval)
 {
 	linker_file_t lf;
 
 	TAILQ_FOREACH(lf, &linker_files, link) {
-		if (dtrace_linker_elf_symbol_values(lf, sym, symval) == 0)
+		if (LINKER_SYMBOL_VALUES(lf, sym, symval) == 0)
 			return (0);
 	}
 	return (ENOENT);
@@ -158,8 +129,14 @@ dtrace_linker_search_symbol(caddr_t value, c_linker_sym_t *sym, long *diffp)
 	off = (uintptr_t)value;
 	bestdiff = off;
 	TAILQ_FOREACH(lf, &linker_files, link) {
-		if (dtrace_linker_elf_search_symbol(lf, value, &es, &diff) != 0)
+		if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
+			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_FAULT);
+			return (-1);
+		}
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+		if (LINKER_SEARCH_SYMBOL(lf, value, &es, &diff) != 0)
 			continue;
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 		if (es != 0 && diff < bestdiff) {
 			best = es;
@@ -287,24 +264,6 @@ dtrace_symbol_is_ambiguous(c_db_sym_t sym)
 	return (false);
 }
 
-/*
- *  db_qualify("vm_map", "ux") returns "unix:vm_map".
- *
- *  Note: return value points to static data whose content is
- *  overwritten by each call... but in practice this seems okay.
- */
-static char *
-dtrace_qualify(c_db_sym_t sym, char *symtabname)
-{
-	const char	*symname;
-	static char     tmp[256];
-
-	dtrace_symbol_values(sym, &symname, 0);
-	/* FIXME: Unwind this snprintf */
-	snprintf(tmp, sizeof(tmp), "%s:%s", symtabname, symname);
-	return tmp;
-}
-
 static void
 _dtrace_symbol_values(db_symtab_t *symtab, c_db_sym_t sym, const char **namep,
     db_expr_t *valp)
@@ -343,8 +302,6 @@ dtrace_symbol_values(c_db_sym_t sym, const char **namep, db_expr_t *valuep)
 
 	_dtrace_symbol_values(db_last_symtab, sym, namep, &value);
 
-	if (dtrace_symbol_is_ambiguous(sym))
-		*namep = dtrace_qualify(sym, db_last_symtab->name);
 	if (valuep)
 		*valuep = value;
 }

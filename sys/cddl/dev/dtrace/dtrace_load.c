@@ -66,6 +66,7 @@ dtrace_load(void *dummy)
 
 	/* Hook into the trap handler. */
 	dtrace_trap_func = dtrace_trap;
+	dtrace_fault_func = dtrace_fault;
 
 	/* Hang our hook for thread switches. */
 	dtrace_vtime_switch_func = dtrace_vtime_switch;

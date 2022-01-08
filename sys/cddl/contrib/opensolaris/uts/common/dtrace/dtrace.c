@@ -20541,6 +20541,13 @@ static struct cdevsw helper_cdevsw = {
 	.d_name		= "helper",
 };
 
+static int
+dtrace_fault(void)
+{
+
+	return (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT));
+}
+
 #include <dtrace_anon.c>
 #include <dtrace_ioctl.c>
 #include <dtrace_load.c>
