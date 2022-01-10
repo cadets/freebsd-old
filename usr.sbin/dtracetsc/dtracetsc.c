@@ -89,7 +89,7 @@ main(int argc, char **argv)
 	drop_rate = (double)drops/((double)(records + drops));
 
 	if (csv != 0) {
-		printf("%lf, %lf, %lf, %lf", stack, immstack, hit_rate,
+		printf("%lf,%lf,%lf,%lf", stack, immstack, hit_rate,
 		    drop_rate);
 	} else {
 		printf("Stack: %lf\n"
