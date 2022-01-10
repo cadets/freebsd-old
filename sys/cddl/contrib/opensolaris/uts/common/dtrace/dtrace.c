@@ -297,6 +297,8 @@ static uint64_t _dtrace_immstack_sum[256];
 static uint64_t _dtrace_immstack_avgcnt[256];
 static uint64_t _dtrace_immstack_cache_hit[256];
 static uint64_t _dtrace_immstack_cache_miss[256];
+static uint64_t _dtrace_drops[256];
+static uint64_t _dtrace_records[256];
 
 static dtrace_hash_t	*dtrace_bymod[HYPERTRACE_MAX_VMS];
 						/* probes hashed by module */
@@ -8917,6 +8919,7 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 					_dtrace_immstack_sum[cpuid] += (end_time - start_time);
 					_dtrace_immstack_avgcnt[cpuid]++;
+					_dtrace_records[cpuid]++;
 				}
 				continue;
 			}
@@ -14047,6 +14050,7 @@ err:
 static void
 dtrace_buffer_drop(dtrace_buffer_t *buf)
 {
+	_dtrace_drops[curcpu]++;
 	buf->dtb_drops++;
 }
 

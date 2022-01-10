@@ -39,11 +39,11 @@ int
 main(int argc, char **argv)
 {
 	dtrace_tscdata_t val;
-	double stack, immstack, hit_rate;
+	double stack, immstack, hit_rate, drop_rate;
 	size_t len;
 	int csv = 0;
 	int ch;
-	uint64_t hits, misses, total;
+	uint64_t hits, misses, total, drops, records;
 
 	program_name = argv[0];
 
@@ -84,11 +84,19 @@ main(int argc, char **argv)
 	total = hits + misses;
 	hit_rate = ((double)hits) / ((double)total);
 
+	records = val.records;
+	drops = val.drops;
+	drop_rate = (double)drops/((double)(records + drops));
+
 	if (csv != 0) {
-		printf("%lf, %lf, %lf\n", stack, immstack, hit_rate);
+		printf("%lf, %lf, %lf, %lf", stack, immstack, hit_rate,
+		    drop_rate);
 	} else {
-		printf("Stack: %lf\nImmstack: %lf\nHit rate: %lf\n", stack,
-		    immstack, hit_rate);
+		printf("Stack: %lf\n"
+		       "Immstack: %lf\n"
+		       "Hit rate: %lf\n"
+		       "Drop rate: %lf\n",
+		    stack, immstack, hit_rate, drop_rate);
 	}
 
 	return (EXIT_SUCCESS);

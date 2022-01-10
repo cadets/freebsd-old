@@ -1091,6 +1091,8 @@ typedef struct {
 	uint64_t immstack_cnt;
 	uint64_t cache_hits;
 	uint64_t cache_misses;
+	uint64_t drops;
+	uint64_t records;
 } dtrace_tscdata_t;
 
 typedef struct dtrace_ecbdesc {

@@ -78,12 +78,12 @@ sysctl_dtrace_stacktscinfo(SYSCTL_HANDLER_ARGS)
 {
 	size_t i;
 	uint64_t stack_fullsum, stack_fullcnt, immstack_fullsum,
-	    immstack_fullcnt, cache_hits, cache_misses;
+	    immstack_fullcnt, cache_hits, cache_misses, records, drops;
 	dtrace_tscdata_t val = { 0 };
 	int error;
 
 	stack_fullsum = stack_fullcnt = immstack_fullsum = immstack_fullcnt =
-	    cache_hits = cache_misses = 0;
+	    cache_hits = cache_misses = records = drops = 0;
 	for (i = 0; i < NCPU; i++) {
 		stack_fullsum += _dtrace_stack_sum[i];
 		stack_fullcnt += _dtrace_stack_avgcnt[i];
@@ -94,6 +94,9 @@ sysctl_dtrace_stacktscinfo(SYSCTL_HANDLER_ARGS)
 		cache_hits += _dtrace_immstack_cache_hit[i];
 		cache_misses += _dtrace_immstack_cache_miss[i];
 
+		records += _dtrace_records[i];
+		drops += _dtrace_drops[i];
+
 		_dtrace_stack_sum[i] = 0;
 		_dtrace_stack_avgcnt[i] = 0;
 
@@ -102,6 +105,9 @@ sysctl_dtrace_stacktscinfo(SYSCTL_HANDLER_ARGS)
 
 		_dtrace_immstack_cache_hit[i] = 0;
 		_dtrace_immstack_cache_miss[i] = 0;
+
+		_dtrace_records[i] = 0;
+		_dtrace_drops[i] = 0;
 	}
 
 	val.stack_sum = stack_fullsum;
@@ -110,6 +116,8 @@ sysctl_dtrace_stacktscinfo(SYSCTL_HANDLER_ARGS)
 	val.immstack_cnt = immstack_fullcnt;
 	val.cache_hits = cache_hits;
 	val.cache_misses = cache_misses;
+	val.records = records;
+	val.drops = drops;
 
 	error = sysctl_handle_opaque(oidp, &val, sizeof(val), req);
 	return (error);
