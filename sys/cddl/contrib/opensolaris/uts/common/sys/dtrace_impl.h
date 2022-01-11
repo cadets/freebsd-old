@@ -78,6 +78,9 @@ typedef	u_long			greg_t;
 #define	NCPU		MAXCPU
 #endif /* __FreeBSD__ */
 
+extern uint64_t _dtrace_nested_xlate_time[256];
+extern uint64_t _dtrace_nested_xlates[256];
+
 struct dtrace_probe;
 struct dtrace_ecb;
 struct dtrace_predicate;

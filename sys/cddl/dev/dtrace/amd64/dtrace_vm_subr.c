@@ -314,7 +314,7 @@ int
 dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 {
 	const uint8_t shift = PAGE_SHIFT + 9;
-	uint64_t *ptpbase, ptpphys, pte, pgsize, pde, thing_to_or;
+	uint64_t *ptpbase, ptpphys, pte, pgsize, pde, thing_to_or, start, end;
 	vm_page_t m;
 	uint64_t index = 0, gpa = 0;
 	int ptpshift, nlevels, ptpindex, pageoff;
@@ -323,6 +323,8 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 	pd_entry_t *pdep;
 	pmap_t pmap;
 	long pi;
+
+	start = dtrace_gethrtime();
 
 	*hva = 0;
 	/* Make sure we have the paging */
@@ -400,5 +402,9 @@ dtrace_gla2hva(struct vm_guest_paging *paging, uint64_t gla, uint64_t *hva)
 		return (EINVAL);
 	}
 	*hva = DTRACE_PHYS_TO_DMAP(DTRACE_DMAP_TO_PHYS((uintptr_t)ptpbase));
+	end = dtrace_gethrtime();
+
+	_dtrace_nested_xlate_time[curcpu] += (end - start);
+	_dtrace_nested_xlates[curcpu]++;
 	return (0);
 }

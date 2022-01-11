@@ -1093,6 +1093,8 @@ typedef struct {
 	uint64_t cache_misses;
 	uint64_t drops;
 	uint64_t records;
+	uint64_t xlate_times;
+	uint64_t xlates;
 } dtrace_tscdata_t;
 
 typedef struct dtrace_ecbdesc {

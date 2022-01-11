@@ -299,6 +299,8 @@ static uint64_t _dtrace_immstack_cache_hit[256];
 static uint64_t _dtrace_immstack_cache_miss[256];
 static uint64_t _dtrace_drops[256];
 static uint64_t _dtrace_records[256];
+uint64_t _dtrace_nested_xlate_time[256];
+uint64_t _dtrace_nested_xlates[256];
 
 static dtrace_hash_t	*dtrace_bymod[HYPERTRACE_MAX_VMS];
 						/* probes hashed by module */
