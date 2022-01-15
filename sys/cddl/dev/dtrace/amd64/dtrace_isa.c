@@ -83,7 +83,7 @@ static db_expr_t dtrace_db_maxoff = 0x10000; /* taken from db_sym.c */
 static int
 dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 {
-	const char *symname, *unk, *c_copy;
+	const char *symname = NULL, *unk, *c_copy;
 	char *stack = _stack, *c, *stack_start, *stack_end;
 	c_db_sym_t sym;
 	db_expr_t off;
@@ -106,6 +106,10 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	}
 
 	flags = (volatile uint16_t *)&cpu_core[curcpu].cpuc_dtrace_flags;
+	if (dtrace_immstack_caching_enabled == 0) {
+		needs_caching = 0;
+		goto lookup;
+	}
 
 	symname = dtrace_immstack_get_cached(pc, &off);
 	needs_caching = 1;
@@ -113,6 +117,7 @@ dtrace_populate_stack_str(void *_stack, int size, int *depth, pc_t pc)
 	/*
 	 * FIXME: This duplicates a lot of the stuff...
 	 */
+lookup:
 	if (symname != NULL || pc == 0 || off >= (db_addr_t)dtrace_db_maxoff) {
 		needs_caching = 0;
 		goto finalize;

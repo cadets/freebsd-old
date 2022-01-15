@@ -87,6 +87,10 @@ SYSCTL_INT(_kern_dtrace, OID_AUTO, err_verbose, CTLFLAG_RW,
     &dtrace_err_verbose, 0,
     "print DIF and DOF validation errors to the message buffer");
 
+SYSCTL_INT(_kern_dtrace, OID_AUTO, immstack_caching_enabled, CTLFLAG_RW,
+    &dtrace_immstack_caching_enabled, 1,
+    "Enable/disable immstack() symbol caching.");
+
 SYSCTL_INT(_kern_dtrace, OID_AUTO, memstr_max, CTLFLAG_RW, &dtrace_memstr_max,
     0, "largest allowed argument to memstr(), 0 indicates no limit");
 
