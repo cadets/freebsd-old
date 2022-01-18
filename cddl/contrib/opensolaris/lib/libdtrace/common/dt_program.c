@@ -1209,6 +1209,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	for (stmt = dt_list_next(&pgp->dp_stmts);
 	     stmt; stmt = dt_list_next(stmt)) {
 		curstmtdesc = stmt->ds_desc;
+		assert(curstmtdesc != NULL);
 		curecb = curstmtdesc->dtsd_ecbdesc;
 
 		newpdesc = curecb->dted_probe;
@@ -1247,6 +1248,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 		has_immstack = 0;
 		for (curact = curstmtdesc->dtsd_action;
+		     curstmtdesc->dtsd_action_last &&
 		     curact != curstmtdesc->dtsd_action_last->dtad_next;
 		     curact = curact->dtad_next) {
 			if (curact->dtad_kind == DTRACEACT_IMMSTACK) {
