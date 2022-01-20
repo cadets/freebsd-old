@@ -926,6 +926,8 @@ set_snapshot_names(void)
 
 	for (be = dt_list_next(&g_benchlist); be; be = dt_list_next(be)) {
 		b = be->bench;
+		if (b == g_e2ebench)
+			continue;
 
 		assert(b != NULL);
 		assert(b->dtbe_nsnapshots == 5);
@@ -1047,6 +1049,8 @@ listen_dtraced(void *arg)
 			dabort("failed to read elf length");
 		}
 		bench = __dt_bench_new_time(5);
+		if (dt_bench_start(bench) == -1)
+			fatal("failed to start bench: %s", __LINE__);
 
 		if (atomic_load(&g_intr)) {
 			done = 1;
@@ -1311,7 +1315,9 @@ process_prog:
 		__dt_bench_stop_time(bench);
 		dt_bench_setinfo(bench, "rcvpgp",
 		    "Received program", DT_BENCHKIND_TIME);
+		pthread_mutex_lock(&g_benchlistmtx);
 		dt_list_append(&g_benchlist, new_bench_list_entry(bench));
+		pthread_mutex_unlock(&g_benchlistmtx);
 
 		/*
 		 * If this is a new program, we add it to the list.
@@ -1708,10 +1714,13 @@ exec_prog(const dtrace_cmd_t *dcp)
 			fatal("failed to open wx_sock");
 
 		g_e2ebench = dt_bench_new("hypertrace_end2end",
-		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 4);
+		    "HyperTrace end to end benchmark", DT_BENCHKIND_TIME, 0);
 
 		if (g_e2ebench == NULL)
 			fatal("failed to create new benchmark");
+
+		if (dt_bench_start(g_e2ebench) == -1)
+			fatal("failed to start g_e2ebench");
 
 		tmpfd = mkstemp(template);
 		if (tmpfd == -1)
@@ -1719,7 +1728,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
-		__dt_bench_snapshot_time(g_e2ebench);
 
 		if (fsync(tmpfd))
 			fatal("failed to sync file");
@@ -1727,10 +1735,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (lseek(tmpfd, 0, SEEK_SET))
 			fatal("lseek() failed");
 
-		__dt_bench_snapshot_time(g_e2ebench);
 		if (dtrace_send_elf(dcp->dc_prog, tmpfd, wx_sock, "base", 0))
 			fatal("failed to dtrace_send_elf()");
-		__dt_bench_snapshot_time(g_e2ebench);
 
 		close(tmpfd);
 
@@ -1814,26 +1820,32 @@ again:
 				dt_list_append(&g_kill_list, resp);
 		}
 
-		__dt_bench_snapshot_time(g_e2ebench);
 		for (resp = dt_list_next(&g_kill_list); resp;
 		     resp = dt_list_next(resp)) {
 			if (send_kill(wx_sock, resp))
 				fprintf(stderr, "send_kill() failed with: %s\n",
 				    strerror(errno));
 		}
-		__dt_bench_stop_time(g_e2ebench);
+
+		dt_bench_stop(g_e2ebench);
+		dt_snapshot_setinfo(g_e2ebench, 0, "Created ELF file");
+		dt_snapshot_setinfo(g_e2ebench, 1, "ELF file sent");
+		pthread_mutex_lock(&g_benchlistmtx);
+		dt_list_append(&g_benchlist, new_bench_list_entry(g_e2ebench));
+		pthread_mutex_unlock(&g_benchlistmtx);
 
 		set_snapshot_names();
 		merge = merge_benchmarks();
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
 		    dt_bench_file("/root/userspace_e2e"), g_script);
 
-		dt_bench_free(g_e2ebench);
+		pthread_mutex_lock(&g_benchlistmtx);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
 			dt_list_delete(&g_benchlist, be);
 			dt_bench_free(be->bench);
 			free(be);
 		}
+		pthread_mutex_unlock(&g_benchlistmtx);
 
 		dt_merge_cleanup(merge);
 
