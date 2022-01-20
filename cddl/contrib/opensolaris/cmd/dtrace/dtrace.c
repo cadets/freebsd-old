@@ -1828,8 +1828,6 @@ again:
 		}
 
 		dt_bench_stop(g_e2ebench);
-		dt_snapshot_setinfo(g_e2ebench, 0, "Created ELF file");
-		dt_snapshot_setinfo(g_e2ebench, 1, "ELF file sent");
 		pthread_mutex_lock(&g_benchlistmtx);
 		dt_list_append(&g_benchlist, new_bench_list_entry(g_e2ebench));
 		pthread_mutex_unlock(&g_benchlistmtx);
