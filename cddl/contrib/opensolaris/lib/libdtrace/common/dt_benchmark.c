@@ -289,9 +289,12 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 		case DT_BENCHKIND_TIME:
 			xo_emit_h(hdl,
 			    " {:kind/time} {:name/%s} {:desc/%s} "
-			    "{:start time/%jd} {:end time/%jd} ",
+			    "{:start time sec/%jd} {:start time nsec/%jd} "
+			    "{:end time sec/%jd} {:end time nsec/%jd} ",
 			    bench->dtbe_name, bench->dtbe_desc,
+			    bench->dtbe_starttime.tv_sec,
 			    bench->dtbe_starttime.tv_nsec,
+			    bench->dtbe_endtime.tv_sec,
 			    bench->dtbe_endtime.tv_nsec);
 
 			xo_open_list_h(hdl, "snapshots");
@@ -300,11 +303,12 @@ dt_bench_dump(dt_benchmark_t **benchmarks, size_t n_benches,
 				snap = &bench->dtbe_timesnaps[j].__time;
 
 				xo_open_instance_h(hdl, "snapshots");
-				xo_emit_h(hdl, " {:name/%s} {:time/%jd} ",
+				xo_emit_h(hdl, " {:name/%s} "
+				"{:time sec/%jd} {:time nsec/%jd} ",
 				    bench->dtbe_snapnames == NULL ? "(null)" :
 				    bench->dtbe_snapnames[j] ?
 				    bench->dtbe_snapnames[j] : "(null)",
-				    snap->tv_nsec);
+				    snap->tv_sec, snap->tv_nsec);
 				xo_close_instance_h(hdl, "snapshots");
 			}
 			xo_close_list_h(hdl, "snapshots");
