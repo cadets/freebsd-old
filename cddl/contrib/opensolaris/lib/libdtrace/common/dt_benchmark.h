@@ -159,7 +159,7 @@ typedef size_t dt_snapshot_hdl_t;
 #define  dt_bench_merge(...) ((void *)1)
 #define  dt_bench_new(...) ((void *)1) /* XXX: Oof. */
 #define  dt_bench_free(...)
-#define  dt_bench_start(...)
+#define  dt_bench_start(...) (0)
 #define  dt_bench_stop(...)
 #define  dt_bench_snapshot(...)
 #define  dt_bench_dump(...)
