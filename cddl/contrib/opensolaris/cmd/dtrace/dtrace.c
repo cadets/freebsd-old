@@ -117,8 +117,9 @@ typedef struct dt_probelist {
 #define	E_USAGE		2
 
 static const char DTRACE_OPTSTR[] =
-	"3:6:aAb:Bc:CD:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
+	"3:6:aAb:Bc:Cd:D:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
+static char g_bench_suffix[MAXPATHLEN/4] = "userspace_e2e.json";
 static char *g_script;
 static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
@@ -236,9 +237,10 @@ usage(FILE *fp)
 	    "\t-b  set trace buffer size\n"
 	    "\t-c  run specified command and exit upon its completion\n"
 	    "\t-C  run cpp(1) preprocessor on script files\n"
+	    "\t-d  specify benchmark file suffix [default: userspace_e2e.json]\n"
 	    "\t-D  define symbol when invoking preprocessor\n"
 	    "\t-e  exit after compiling request but prior to enabling probes\n"
-	    "\t-E  generate an ELF file instead of a DOF file\n"
+	    "\t-E  operate in HyperTrace mode (use ELF instead of DOF)\n"
 	    "\t-f  enable or list probes matching the specified function name\n"
 	    "\t-F  coalesce trace output by function\n"
 	    "\t-G  generate an ELF file containing embedded dtrace program\n"
@@ -264,6 +266,8 @@ usage(FILE *fp)
 	    "\t-w  permit destructive actions\n"
 	    "\t-x  enable or modify compiler and tracing options\n"
 	    "\t-X  specify ISO C conformance settings for preprocessor\n"
+	    "\t-y  run the provided ELF file\n"
+	    "\t-Y  process the provided ELF file in a HyperTrace context\n"
 	    "\t-Z  permit probe descriptions that match zero probes\n");
 
 	return (E_USAGE);
@@ -1834,6 +1838,35 @@ again:
 
 		set_snapshot_names();
 		merge = merge_benchmarks();
+		bench_path = getenv("DTRACEBENCHPATH");
+		if (bench_path == NULL)
+			bench_path = "/root/bench";
+
+		if (mkdir(bench_path, 0660) == -1) {
+			if (errno != EEXIST) {
+				fprintf(stderr, "mkdir(%s) failed: %s\n",
+				    bench_path, strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+		}
+
+		if ((rval = realpath(bench_path, full_bench_path)) != full_bench_path) {
+			fprintf(stderr, "realpath(%s, %p) != %p: %s\n",
+			    bench_name, full_bench_path, rval, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		if (strlen(full_bench_path) > MAXPATHLEN / 2) {
+			fprintf(stderr, "strlen(%s) (%zu) > %zu\n",
+			    full_bench_path, strlen(full_bench_path),
+			    MAXPATHLEN / 2);
+			exit(EXIT_FAILURE);
+		}
+
+		strcpy(bench_name, full_bench_path);
+		strcat(bench_name, "/");
+		strcat(bench_name, g_bench_suffix);
+
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
 		    dt_bench_file("/root/userspace_e2e"), g_script);
 
@@ -2935,6 +2968,13 @@ main(int argc, char *argv[])
 
 			case 'C':
 				g_cflags |= DTRACE_C_CPP;
+				break;
+
+			case 'd':
+				if (strlen(optarg) > MAXPATHLEN/4 - 1)
+					fatal("strlen(%s) (%zu) > %zu", optarg,
+					    strlen(optarg), MAXPATHLEN / 4 - 1);
+				strcpy(g_bench_suffix, optarg);
 				break;
 
 			case 'D':
