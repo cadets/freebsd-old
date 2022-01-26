@@ -119,7 +119,7 @@ typedef struct dt_probelist {
 static const char DTRACE_OPTSTR[] =
 	"3:6:aAb:Bc:Cd:D:eEf:FGhHi:I:lL:m:Mn:No:p:P:qrs:SuU:vVwx:y:Y:X:Z";
 
-static char g_bench_suffix[MAXPATHLEN/4] = "userspace_e2e.json";
+static char g_bench_path[MAXPATHLEN] = "/root/bench/userspace_e2e.json";
 static char *g_script;
 static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
@@ -1838,37 +1838,9 @@ again:
 
 		set_snapshot_names();
 		merge = merge_benchmarks();
-		bench_path = getenv("DTRACEBENCHPATH");
-		if (bench_path == NULL)
-			bench_path = "/root/bench";
-
-		if (mkdir(bench_path, 0660) == -1) {
-			if (errno != EEXIST) {
-				fprintf(stderr, "mkdir(%s) failed: %s\n",
-				    bench_path, strerror(errno));
-				exit(EXIT_FAILURE);
-			}
-		}
-
-		if ((rval = realpath(bench_path, full_bench_path)) != full_bench_path) {
-			fprintf(stderr, "realpath(%s, %p) != %p: %s\n",
-			    bench_name, full_bench_path, rval, strerror(errno));
-			exit(EXIT_FAILURE);
-		}
-
-		if (strlen(full_bench_path) > MAXPATHLEN / 2) {
-			fprintf(stderr, "strlen(%s) (%zu) > %zu\n",
-			    full_bench_path, strlen(full_bench_path),
-			    MAXPATHLEN / 2);
-			exit(EXIT_FAILURE);
-		}
-
-		strcpy(bench_name, full_bench_path);
-		strcat(bench_name, "/");
-		strcat(bench_name, g_bench_suffix);
 
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
-		    dt_bench_file("/root/userspace_e2e"), g_script);
+		    g_bench_path, g_script);
 
 		pthread_mutex_lock(&g_benchlistmtx);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
@@ -2971,10 +2943,10 @@ main(int argc, char *argv[])
 				break;
 
 			case 'd':
-				if (strlen(optarg) > MAXPATHLEN/4 - 1)
+				if (strlen(optarg) >= MAXPATHLEN)
 					fatal("strlen(%s) (%zu) > %zu", optarg,
 					    strlen(optarg), MAXPATHLEN / 4 - 1);
-				strcpy(g_bench_suffix, optarg);
+				strcpy(g_bench_path, optarg);
 				break;
 
 			case 'D':
