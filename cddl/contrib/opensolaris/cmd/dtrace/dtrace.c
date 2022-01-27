@@ -1633,6 +1633,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_proginfo_t dpi;
 	char template[MAXPATHLEN] = "/tmp/dtrace-execprog.XXXXXXXX";
+	char bench_path[MAXPATHLEN] = { 0 };
 	char *elf;
 	size_t elflen;
 	int rx_sock;
@@ -1839,8 +1840,14 @@ again:
 		set_snapshot_names();
 		merge = merge_benchmarks();
 
+		if ((rval = realpath(g_bench_path, bench_path)) != bench_path) {
+			fprintf(stderr, "realpath(%s) failed: %s\n",
+			    g_bench_path, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
 		dt_bench_dump(dt_merge_get(merge), dt_merge_size(merge),
-		    g_bench_path, g_script);
+		    bench_path, g_script);
 
 		pthread_mutex_lock(&g_benchlistmtx);
 		while ((be = dt_list_next(&g_benchlist)) != NULL) {
