@@ -10637,7 +10637,7 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 		    sizeof (dtrace_probe_t *);
 		size_t nsize;
 
-		if (osize << 1 > id - 1)
+		if ((osize << 1) > (id - 1))
 			nsize = osize << 1;
 		else
 			nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
@@ -10666,7 +10666,8 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 			dtrace_sync();
 
 			kmem_free(oprobes, osize);
-			dtrace_nvprobes[vmid] <<= 1;
+			dtrace_nvprobes[vmid] = nsize /
+			    sizeof(dtrace_probe_t *);
 		}
 
 		ASSERT(id - 1 < dtrace_nvprobes[vmid]);

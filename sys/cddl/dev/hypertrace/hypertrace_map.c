@@ -129,7 +129,7 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 			map->probes[vmid] = new_probes;
 
 			kmem_free(oprobes, osize);
-			map->nprobes[vmid] <<= 1;
+			map->nprobes[vmid] = nsize / sizeof(dtrace_probe_t *);
 		}
 
 		ASSERT(id - 1 < map->nprobes[vmid]);
