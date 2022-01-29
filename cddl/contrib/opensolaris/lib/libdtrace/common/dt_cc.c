@@ -1256,7 +1256,8 @@ dt_compile_agg(dtrace_hdl_t *dtp, dt_node_t *dnp, dtrace_stmtdesc_t *sdp)
 	fid = dnp->dn_aggfun->dn_ident;
 
 	if (dnp->dn_aggfun->dn_args != NULL &&
-	    dt_node_is_scalar(dnp->dn_aggfun->dn_args) == 0) {
+	    dt_node_is_scalar(dnp->dn_aggfun->dn_args) == 0 &&
+	    dt_node_is_bottom(dnp->dn_aggfun->dn_args) == 0) {
 		dnerror(dnp->dn_aggfun, D_AGG_SCALAR, "%s( ) argument #1 must "
 		    "be of scalar type\n", fid->di_name);
 	}
