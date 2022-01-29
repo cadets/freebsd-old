@@ -1840,7 +1840,7 @@ again:
 		set_snapshot_names();
 		merge = merge_benchmarks();
 
-		if ((rval = realpath(g_bench_path, bench_path)) != bench_path) {
+		if ((rval = dt_bench_file(g_bench_path, bench_path)) != bench_path) {
 			fprintf(stderr, "realpath(%s) failed: %s\n",
 			    g_bench_path, strerror(errno));
 			exit(EXIT_FAILURE);

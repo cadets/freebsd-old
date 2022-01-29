@@ -381,23 +381,10 @@ dt_bench_setinfo(dt_benchmark_t *b, const char *name,
 }
 
 char *
-dt_bench_file(const char *initial)
+dt_bench_file(const char *p, char *rp)
 {
-	char *full;
-	char *_p;
-	time_t t = time(NULL);
-	struct tm tm = *localtime(&t);
 
-	full = malloc(MAXPATHLEN);
-	if (full == NULL)
-		abort();
-
-	strcpy(full, initial);
-	_p = full + strlen(initial);
-	sprintf(_p, "-%d_%02d_%02d-%02d:%02d:%02d.json", tm.tm_year + 1900,
-	    tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-	return (full);
+	return (realpath(p, rp));
 }
 
 #endif // __DTRACE_RUN_BENCHMARKS__
