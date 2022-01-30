@@ -461,6 +461,11 @@ dt_infer_type(dt_ifg_node_t *n)
 			return (n->din_type);
 		}
 
+		if (strcmp(symname, "bottom") == 0) {
+			n->din_type = DIF_TYPE_BOTTOM;
+			return (n->din_type);
+		}
+
 		if (strcmp(n->din_edp->dted_probe.dtpd_mod, "freebsd") == 0)
 			n->din_tf = dt_typefile_kernel();
 		else
