@@ -580,6 +580,9 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 		return (dr->din_type);
 	}
 
+	if (dr->din_type == DIF_TYPE_BOTTOM)
+		return (dif_var->dtdv_type.dtdt_kind);
+
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING && dr->din_isnull)
 		return (DIF_TYPE_STRING);
 
