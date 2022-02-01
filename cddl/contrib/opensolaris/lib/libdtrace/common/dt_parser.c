@@ -4440,7 +4440,8 @@ dt_cook_clause(dt_node_t *dnp, uint_t idflags)
 		dt_node_attr_assign(dnp,
 		    dt_attr_min(dnp->dn_attr, dnp->dn_pred->dn_attr));
 
-		if (!dt_node_is_scalar(dnp->dn_pred)) {
+		if (!dt_node_is_scalar(dnp->dn_pred) &&
+		    !dt_node_is_bottom(dnp->dn_pred)) {
 			xyerror(D_PRED_SCALAR,
 			    "predicate result must be of scalar type\n");
 		}
