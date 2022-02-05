@@ -201,7 +201,8 @@ dump_action(dtrace_actdesc_t *ap)
 		break;
 
 	case DTRACEAGG_QUANTIZE:
-		fprintf(stderr, "QUANTIZE\n");
+		fprintf(stderr, "quantize( ): (%" PRIu64 ", %" PRIu64 ")\n",
+		    ap->dtad_arg, ap->dtad_uarg);
 		assert(dp != NULL);
 		dt_dis(dp, stderr);
 		break;
@@ -270,23 +271,26 @@ dump_action(dtrace_actdesc_t *ap)
 int
 dtrace_dump_actions(dtrace_prog_t *pgp)
 {
-	dtrace_actdesc_t *ap;
+	dtrace_actdesc_t *ap, *ad_last;
 	dtrace_ecbdesc_t *last = NULL;
 	dtrace_probedesc_t *descp;
 	dt_stmt_t *stp;
 
 	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
-		dtrace_ecbdesc_t *edp = stp->ds_desc->dtsd_ecbdesc;
-		if (edp == last)
-			continue;
-		last = edp;
+		dtrace_stmtdesc_t *sdp = stp->ds_desc;
+		dtrace_ecbdesc_t *edp = sdp->dtsd_ecbdesc;
+
 		descp = &edp->dted_probe;
 
 		fprintf(stderr, "%s:%s:%s:%s:%s ==>\n", descp->dtpd_target,
 		    descp->dtpd_provider, descp->dtpd_mod,
 		    descp->dtpd_func, descp->dtpd_name);
 
-		for (ap = edp->dted_action; ap; ap = ap->dtad_next)
+		ad_last = sdp->dtsd_action_last;
+		assert(ad_last != NULL);
+		for (ap = sdp->dtsd_action;
+		     ad_last && ap != ad_last->dtad_next;
+		     ap = ap->dtad_next)
 			dump_action(ap);
 
 		fprintf(stderr, "\n");
