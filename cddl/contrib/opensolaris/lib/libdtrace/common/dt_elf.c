@@ -698,9 +698,14 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	 * next reference in the ELF file, which constructs the "action list" as known
 	 * in DTrace, but in our ELF file.
 	 */
-	for (ad = stmt->dtsd_action; ad != NULL; ad = ad->dtad_next) {
-		if (ad->dtad_uarg != (uintptr_t)stmt)
+	for (ad = stmt->dtsd_action; ad != stmt->dtsd_action_last->dtad_next;
+	     ad = ad->dtad_next) {
+		if (ad->dtad_uarg != (uintptr_t)stmt) {
+			fprintf(stderr,
+			    "WARNING:  Skipping action %p (%p != %p)!\n", ad,
+			    (void *)ad->dtad_uarg, stmt);
 			continue;
+		}
 
 		scn = dt_elf_new_action(e, ad, sscn);
 
@@ -1829,6 +1834,7 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	    el != NULL; el = dt_list_next(el)) {
 		act = el->act;
 
+
 		if (el->eact_ndx == fst)
 			stmt->dtsd_action = act;
 
@@ -1907,7 +1913,6 @@ dt_elf_in_actlist(dtrace_actdesc_t *find)
 
 	return (NULL);
 }
-
 
 static void
 dt_elf_add_stmt(Elf *e, dtrace_prog_t *prog,
