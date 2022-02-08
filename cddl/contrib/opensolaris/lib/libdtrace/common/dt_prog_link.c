@@ -595,14 +595,11 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		 * sign extension is needed -- however we don't actually want to
 		 * do this for an uintptr_t.
 		 */
-		fprintf(stderr, "r1defs = %p\n", dt_list_next(&node->din_r1defs));
 		for (rd1 = dt_list_next(&node->din_r1defs); rd1;
 		     rd1 = dt_list_next(rd1)) {
 			ndef1 = rd1->dil_ifgnode;
 			idef1 = ndef1->din_buf[ndef1->din_uidx];
 			opdef1 = DIF_INSTR_OP(idef1);
-
-			fprintf(stderr, "Looking at node %zu\n", ndef1->din_uidx);
 
 			if (opdef1 != DIF_OP_SRA)
 				continue;
