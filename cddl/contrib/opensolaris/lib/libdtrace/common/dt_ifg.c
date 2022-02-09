@@ -1208,8 +1208,8 @@ dt_node_find_bb(dt_basic_block_t *root, uint_t ins_idx)
  * We assume that both dtp and difo are not NULL.
  */
 int
-dt_prog_infer_defns(
-    dtrace_hdl_t *dtp, dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
+dt_prog_infer_defns(dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
+    dtrace_ecbdesc_t *edp, dtrace_difo_t *difo)
 {
 	uint_t i = 0, idx = 0;
 	dt_ifg_node_t *n = NULL;
@@ -1274,7 +1274,7 @@ dt_prog_infer_defns(
 		nodebb = dt_node_find_bb(difo->dtdo_bb, i);
 		assert(nodebb != NULL);
 
-		n = dt_ifg_node_alloc(edp, difo, nodebb, i);
+		n = dt_ifg_node_alloc(pgp, edp, difo, nodebb, i);
 		ifgl = dt_ifgl_alloc(n);
 		if (ifgl == NULL)
 			errx(EXIT_FAILURE, "failed to malloc ifgl");

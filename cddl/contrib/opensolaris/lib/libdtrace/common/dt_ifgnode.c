@@ -68,8 +68,8 @@ dt_ifgl_alloc(dt_ifg_node_t *node)
 }
 
 dt_ifg_node_t *
-dt_ifg_node_alloc(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo,
-    dt_basic_block_t *bb, uint_t idx)
+dt_ifg_node_alloc(dtrace_prog_t *pgp, dtrace_ecbdesc_t *edp,
+    dtrace_difo_t *difo, dt_basic_block_t *bb, uint_t idx)
 {
 	dt_ifg_node_t *node;
 
@@ -79,6 +79,7 @@ dt_ifg_node_alloc(dtrace_ecbdesc_t *edp, dtrace_difo_t *difo,
 
 	memset(node, 0, sizeof(dt_ifg_node_t));
 
+	node->din_pgp = pgp;
 	node->din_difo = difo;
 	node->din_bb = bb;
 	node->din_uidx = idx;

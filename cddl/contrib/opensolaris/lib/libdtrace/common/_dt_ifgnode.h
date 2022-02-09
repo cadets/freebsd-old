@@ -81,6 +81,7 @@ typedef struct dt_ifg_node {
 	dtrace_ecbdesc_t   *din_edp;       /* node's ecbdesc */
 	ctf_id_t           din_ctfid;      /* CTF type */
 	char               *din_sym;       /* symbol (if applicable) */
+	dtrace_prog_t      *din_pgp;       /* program this node belongs to */
 	dtrace_difo_t      *din_difo;      /* DIFO which this node belongs to */
 #define din_buf            din_difo->dtdo_buf
 	dt_basic_block_t   *din_bb;        /* basic block that the node is in */

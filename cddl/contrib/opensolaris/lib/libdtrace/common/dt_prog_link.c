@@ -349,6 +349,7 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 {
 	dtrace_diftype_t *rtype;
 	dtrace_difo_t *difo;
+	dtrace_prog_t *pgp;
 	int ctf_kind;
 
 	/*
@@ -940,7 +941,7 @@ process_difo(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_actdesc_t *ad,
 	dtrace_actkind_t actkind;
 	dtrace_diftype_t saved_rtype;
 
-	rval = dt_prog_infer_defns(dtp, ecbdesc, difo);
+	rval = dt_prog_infer_defns(dtp, pgp, ecbdesc, difo);
 	if (rval != 0)
 		return (rval);
 
@@ -989,7 +990,7 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	memset(&bb_list, 0, sizeof(dt_list_t));
 	memset(&processed_ecbdescs, 0, sizeof(dt_list_t));
 
-	r0node = dt_ifg_node_alloc(NULL, NULL, NULL, UINT_MAX);
+	r0node = dt_ifg_node_alloc(pgp, NULL, NULL, NULL, UINT_MAX);
 	r0node->din_type = DIF_TYPE_BOTTOM;
 
 	/*
