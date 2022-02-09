@@ -793,6 +793,8 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 	dtrace_hdl_t *dtp;
 	dtrace_difv_t *difv, *curdifo_var;
 	dtrace_difo_t *difo;
+	dtrace_diftype_t *rtype;
+	dtrace_optval_t strsize = 0;
 
 	i = 0;
 	ibase = 0;
@@ -800,6 +802,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 	opbase = 0;
 	opnew = 0;
 	dtp = ctx->dtp;
+	rtype = &dnew->dtdo_rtype;
 
 	for (i = 0; i < ctx->num_difos; i++) {
 		difo = ctx->difovec[i];
@@ -826,6 +829,10 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 				difv->dtdv_type = curdifo_var->dtdv_type;
 		}
 	}
+
+	(void) dtrace_getopt(dtp, "strsize", &strsize);
+	if (rtype->dtdt_kind == DIF_TYPE_STRING)
+		rtype->dtdt_size = strsize;
 
 	/*
 	 * Go through all of the base instructions and compare it to the new

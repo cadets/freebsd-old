@@ -2896,6 +2896,7 @@ main(int argc, char *argv[])
 	(void) dtrace_setopt(g_dtp, "aggsize", "4m");
 #endif
 	(void) dtrace_setopt(g_dtp, "temporal", "yes");
+	(void) dtrace_setopt(g_dtp, "strsize", "256");
 
 	/*
 	 * If -G is specified, enable -xlink=dynamic and -xunodefs to permit
