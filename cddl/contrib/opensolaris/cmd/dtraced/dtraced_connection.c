@@ -60,7 +60,7 @@
 #include "dtraced_misc.h"
 #include "dtraced_state.h"
 
-#define DTRACED_BACKLOG_SIZE    4
+#define DTRACED_BACKLOG_SIZE    10000
 
 int
 send_ack(int fd)
