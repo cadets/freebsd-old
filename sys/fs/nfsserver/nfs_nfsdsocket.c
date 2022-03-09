@@ -42,6 +42,10 @@ __FBSDID("$FreeBSD$");
 
 #include <fs/nfs/nfsport.h>
 
+#ifdef KDTRACE_HOOKS
+#include <fs/nfsserver/nfs_srvkdtrace.h> 
+#endif
+
 extern struct nfsstatsv1 nfsstatsv1;
 extern struct nfsrvfh nfs_pubfh, nfs_rootfh;
 extern int nfs_pubfhset, nfs_rootfhset;
@@ -533,6 +537,7 @@ nfsrvd_dorpc(struct nfsrv_descript *nd, int isdgram, u_char *tag, int taglen,
     u_int32_t minorvers)
 {
 	int error = 0, lktype;
+  bool is_retry = false;
 	vnode_t vp;
 	mount_t mp;
 	struct nfsrvfh fh;
@@ -592,6 +597,25 @@ tryagain:
 				goto out;
 		}
 	}
+#ifdef KDTRACE_HOOKS
+		if (dtrace_nfssrv_start_op_probe != NULL && !is_retry) {
+			uint32_t probe_id;
+			int probe_procnum = nd->nd_procnum;
+
+			if (nd->nd_flag & ND_NFSV4) {
+				probe_id = nfssrv_nfs4_start_probes[probe_procnum];
+			} else if (nd->nd_flag & ND_NFSV3) {
+				probe_id = nfssrv_nfs3_start_probes[probe_procnum];
+			} else {
+				probe_id = nfssrv_nfs2_start_probes[probe_procnum];
+			}
+			if (probe_id != 0)
+				(dtrace_nfssrv_start_op_probe)
+				    (probe_id, nd->nd_xprt, nd, nd->nd_retxid, vp, NULL,
+				     probe_procnum);
+		}
+#endif
+    is_retry=false;
 
 	/*
 	 * For V2 and 3, set the ND_SAVEREPLY flag for the recent request
@@ -656,6 +680,7 @@ tryagain:
 			m_freem(nd->nd_mreq);
 			nd->nd_mreq = nd->nd_mb = NULL;
 			nd->nd_repstat = 0;
+      is_retry = true;
 			goto tryagain;
 		}
 
@@ -689,6 +714,24 @@ tryagain:
 		nd->nd_flag &= ~ND_SAVEREPLY;
 
 out:
+#ifdef KDTRACE_HOOKS
+		if (dtrace_nfssrv_done_op_probe != NULL) {
+			uint32_t probe_id;
+			int probe_procnum = nd->nd_procnum;
+
+			if (nd->nd_flag & ND_NFSV4) {
+				probe_id = nfssrv_nfs4_done_probes[probe_procnum];
+			} else if (nd->nd_flag & ND_NFSV3) {
+				probe_id = nfssrv_nfs3_done_probes[probe_procnum];
+			} else {
+				probe_id = nfssrv_nfs2_done_probes[probe_procnum];
+			}
+			if (probe_id != 0)
+				(dtrace_nfssrv_done_op_probe)
+				    (probe_id, nd->nd_xprt, nd, nd->nd_retxid, NULL, NULL,
+				     probe_procnum);
+		}
+#endif
 	NFSEXITCODE2(0, nd);
 }
 

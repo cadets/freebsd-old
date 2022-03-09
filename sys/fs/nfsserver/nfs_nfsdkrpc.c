@@ -50,6 +50,26 @@ __FBSDID("$FreeBSD$");
 
 #include <security/mac/mac_framework.h>
 
+#ifdef KDTRACE_HOOKS
+#include <fs/nfsserver/nfs_srvkdtrace.h> 
+
+dtrace_nfsserver_op_probe_func_t 
+  dtrace_nfssrv_start_op_probe,
+  dtrace_nfssrv_done_op_probe;
+
+/*
+ * Registered NFS probes by version and RPC type.
+ */
+uint32_t			nfssrv_nfs2_start_probes[NFSV4_NPROCS + 1];
+uint32_t			nfssrv_nfs2_done_probes[NFSV4_NPROCS + 1];
+
+uint32_t			nfssrv_nfs3_start_probes[NFSV4_NPROCS + 1];
+uint32_t			nfssrv_nfs3_done_probes[NFSV4_NPROCS + 1];
+
+uint32_t			nfssrv_nfs4_start_probes[NFSV4_NPROCS + 1];
+uint32_t			nfssrv_nfs4_done_probes[NFSV4_NPROCS + 1];
+#endif
+
 NFSDLOCKMUTEX;
 NFSV4ROOTLOCKMUTEX;
 struct nfsv4lock nfsd_suspend_lock;

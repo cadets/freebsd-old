@@ -70,6 +70,7 @@ SRCS=		dt_aggregate.c \
 DSRCS=		errno.d			\
 		io.d			\
 		ip.d			\
+		net.d			\
 		psinfo.d		\
 		sctp.d			\
 		siftr.d			\

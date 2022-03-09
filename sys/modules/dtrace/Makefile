@@ -6,6 +6,7 @@
 SUBDIR=		dtaudit		\
 		dtmalloc	\
 		dtnfscl		\
+		dtnfssrv  \
 		dtrace		\
 		dtraceall	\
 		dtrace_test	\

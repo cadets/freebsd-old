@@ -375,6 +375,7 @@ cddl/dev/fbt/fbt.c			optional dtrace_fbt      | dtraceall compile-with "${FBT_C}
 cddl/dev/systrace/systrace.c		optional dtrace_systrace | dtraceall compile-with "${CDDL_C}"
 cddl/dev/prototype.c			optional dtrace_prototype | dtraceall compile-with "${CDDL_C}"
 fs/nfsclient/nfs_clkdtrace.c		optional dtnfscl nfscl   | dtraceall nfscl compile-with "${CDDL_C}"
+fs/nfsserver/nfs_srvkdtrace.c		optional dtnfssrv nfssrv   | dtraceall nfssrv compile-with "${CDDL_C}"
 compat/cloudabi/cloudabi_clock.c	optional compat_cloudabi32 | compat_cloudabi64
 compat/cloudabi/cloudabi_errno.c	optional compat_cloudabi32 | compat_cloudabi64
 compat/cloudabi/cloudabi_fd.c		optional compat_cloudabi32 | compat_cloudabi64

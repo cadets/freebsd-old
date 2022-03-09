@@ -73,6 +73,9 @@ MODULE_DEPEND(dtraceall, dtmalloc, 1, 1, 1);
 #if defined(NFSCL)
 MODULE_DEPEND(dtraceall, dtnfscl, 1, 1, 1);
 #endif
+#if defined(NFSD)
+MODULE_DEPEND(dtraceall, dtnfssrv, 1, 1, 1);
+#endif
 #if defined(__aarch64__) || defined(__amd64__) || defined(__arm__) || \
     defined(__i386__) || defined(__mips__) || \
     defined(__powerpc__) || defined(__riscv)

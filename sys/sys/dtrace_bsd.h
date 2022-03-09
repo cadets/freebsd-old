@@ -166,6 +166,7 @@ extern dtrace_nfsclient_nfs23_done_probe_func_t
 extern dtrace_nfsclient_nfs23_done_probe_func_t
     dtrace_nfscl_nfs234_done_probe;
 
+
 /*
  * Functions which allow the dtrace module to check that the kernel 
  * hooks have been compiled with sufficient space for it's private
