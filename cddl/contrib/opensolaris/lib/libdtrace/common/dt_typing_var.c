@@ -531,6 +531,7 @@ dt_infer_type_arg(
 				    "subtyping relation\n");
 				return (1);
 			}
+
 			return (0);
 		}
 	}

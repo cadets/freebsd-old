@@ -877,7 +877,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr],
-			    SUBTYPE_SND | SUBTYPE_EQUAL);
+			    SUBTYPE_ANY);
 		}
 
 		n->din_type = DIF_TYPE_STRING;
@@ -987,7 +987,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_SND | SUBTYPE_EQUAL);
+		    SUBTYPE_ANY);
 
 		/*
 		 * Check if the third (optional) argument is present
@@ -1004,7 +1004,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr],
-			    SUBTYPE_SND | SUBTYPE_EQUAL);
+			    SUBTYPE_ANY);
 		}
 
 		n->din_type = DIF_TYPE_STRING;
@@ -1067,7 +1067,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr],
-			    SUBTYPE_SND | SUBTYPE_EQUAL);
+			    SUBTYPE_ANY);
 		}
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int");
@@ -1096,7 +1096,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint16_t", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_SND | SUBTYPE_EQUAL);
+		    SUBTYPE_ANY);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint16_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -1124,7 +1124,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "uint32_t", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_SND | SUBTYPE_EQUAL);
+		    SUBTYPE_ANY);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uint32_t");
 		if (n->din_ctfid == CTF_ERR)
@@ -1179,7 +1179,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_SND | SUBTYPE_EQUAL);
+		    SUBTYPE_ANY);
 
 		/*
 		 * We expect a "void *" as a second argument.
@@ -1410,7 +1410,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 		    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 		                          dt_typefile_kernel() },
 		    2, "int", buf, sizeof(buf), subr_name[subr],
-		    SUBTYPE_SND | SUBTYPE_EQUAL);
+		    SUBTYPE_ANY);
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "file_t *");
 		if (n->din_ctfid == CTF_ERR)
@@ -1458,7 +1458,7 @@ dt_infer_type_subr(dt_ifg_node_t *n, dt_list_t *stack)
 			    (dt_typefile_t *[]) { dt_typefile_mod("D"),
 			                          dt_typefile_kernel() },
 			    2, "int", buf, sizeof(buf), subr_name[subr],
-			    SUBTYPE_SND | SUBTYPE_EQUAL);
+			    SUBTYPE_ANY);
 		}
 
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "int64_t");

@@ -298,6 +298,14 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 	return (0);
 }
 
+static int
+dt_is_void(char *t_name)
+{
+
+	return (strcmp(t_name, "void *") == 0 ||
+	    strcmp(t_name, "const void *") == 0);
+}
+
 int
 dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
     ctf_id_t id2, int *which)
@@ -306,6 +314,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	void *memb1, *memb2;
 	size_t n_stars1, n_stars2;
 	uint32_t size1, size2;
+	int isvoid1, isvoid2;
 	char memb1_name[4096], memb2_name[4096];
 	char type1_name[4096], type2_name[4096];
 	void *s1, *s2;
@@ -327,6 +336,20 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
 		    dt_typefile_error(tf2));
 		return (-1);
+	}
+
+	isvoid1 = dt_is_void(type1_name);
+	isvoid2 = dt_is_void(type2_name);
+
+	if (isvoid1 && isvoid2) {
+		*which = SUBTYPE_EQUAL;
+		return (0);
+	} else if (isvoid1) {
+		*which = SUBTYPE_FST;
+		return (0);
+	} else if (isvoid2) {
+		*which = SUBTYPE_SND;
+		return (0);
 	}
 
 	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
