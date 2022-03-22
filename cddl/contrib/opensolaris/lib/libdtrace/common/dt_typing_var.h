@@ -48,9 +48,10 @@
 typedef struct argcheck_cookie {
 	dt_ifg_node_t *node;
 	uint16_t varcode;
+	uint8_t idx;
 } argcheck_cookie_t;
 
-extern void dt_builtin_type(dt_ifg_node_t *n, uint16_t var);
+extern void dt_builtin_type(dt_ifg_node_t *, uint16_t, uint8_t);
 extern int dt_infer_type_arg(dtrace_hdl_t *, const dtrace_probedesc_t *,
     void *);
 extern int dt_infer_type_var(dtrace_difo_t *, dt_ifg_node_t *, dtrace_difv_t *);

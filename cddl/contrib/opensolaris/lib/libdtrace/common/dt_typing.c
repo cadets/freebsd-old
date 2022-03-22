@@ -97,7 +97,7 @@ dt_infer_type(dt_ifg_node_t *n)
 	uint16_t var;
 	dtrace_difo_t *difo;
 	dif_instr_t instr, dn1_instr;
-	uint8_t opcode, dn1_op;
+	uint8_t opcode, dn1_op, idx;
 	uint16_t sym;
 	ctf_id_t type = 0;
 	dtrace_difv_t *dif_var;
@@ -885,7 +885,24 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (n->din_type);
 
 	case DIF_OP_LDGA:
-		break;
+		/*
+		 *   var : t          %r2 : int
+		 * --------------------------------
+		 *  ldga var, %r2,  %r1 => %r1 : t
+		 */
+
+		var = DIF_INSTR_R1(instr);
+		idx = DIF_INSTR_R2(instr);
+
+		if (!dt_var_is_builtin(var)) {
+			dt_set_progerr(g_dtp, g_pgp,
+			    "dt_infer_type(%s, %zu): %u "
+			    "is not a built-in variable",
+			    insname[opcode], n->din_uidx, var);
+		}
+
+		dt_builtin_type(n, var, idx);
+		return (n->din_type);
 
 	case DIF_OP_LDLS:
 		/*
@@ -1022,7 +1039,7 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		if (dn1 == NULL) {
 			if (dt_var_is_builtin(var)) {
-				dt_builtin_type(n, var);
+				dt_builtin_type(n, var, 0);
 				return (n->din_type);
 			} else if (dif_var == NULL) {
 				fprintf(stderr,
