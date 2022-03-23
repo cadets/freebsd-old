@@ -242,6 +242,8 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var, uint8_t idx)
 	case DIF_VAR_HARG7:
 	case DIF_VAR_HARG8:
 	case DIF_VAR_HARG9:
+	case DIF_VAR_UREGS:
+	case DIF_VAR_REGS:
 		n->din_tf = dt_typefile_mod("D");
 		assert(n->din_tf != NULL);
 		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uintptr_t");
