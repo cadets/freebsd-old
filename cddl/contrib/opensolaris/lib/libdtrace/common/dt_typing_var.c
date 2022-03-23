@@ -242,6 +242,17 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var, uint8_t idx)
 	case DIF_VAR_HARG7:
 	case DIF_VAR_HARG8:
 	case DIF_VAR_HARG9:
+		n->din_tf = dt_typefile_mod("D");
+		assert(n->din_tf != NULL);
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "uintptr_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed to get type uintptr_t: %s",
+			    dt_typefile_error(n->din_tf));
+
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
 	case DIF_VAR_WALLTIMESTAMP:
 	case DIF_VAR_HWALLTIMESTAMP:
 		n->din_tf = dt_typefile_mod("D");
