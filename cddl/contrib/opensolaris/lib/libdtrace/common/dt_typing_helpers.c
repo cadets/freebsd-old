@@ -548,14 +548,13 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 			*which = SUBTYPE_EQUAL;
 
 		return (0);
-
 	} else if (kind1 == CTF_K_UNION || kind1 == CTF_K_ENUM ||
 	    kind1 == CTF_K_FORWARD) {
 		/*
 		 * It doesn't really make sense to support different unions or
 		 * enum types. We only check pointwise equality.
 		 */
-		if (dt_ctf_type_compare(tf1, id1, tf2, id2) == 0)
+		if (dt_ctf_type_compare(tf1, id1, tf2, id2))
 			return (-1);
 
 		*which = SUBTYPE_EQUAL;
