@@ -154,7 +154,57 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		 * inferred in the current one, which is nonsense.
 		 */
 		if (first_iter == 0 && otype != type) {
-			fprintf(stderr, "otype = %d, type = %d\n", otype, type);
+			char otype_str[256] = { 0 };
+			char ctype_str[256] = { 0 };
+
+			if (otype == DIF_TYPE_STRING) {
+				strcpy(otype_str, "D string");
+			} else if (otype == DIF_TYPE_BOTTOM) {
+				strcpy(otype_str, "D bottom type");
+			} else if (otype == DIF_TYPE_NONE) {
+				strcpy(otype_str, "none");
+			} else if (otype == DIF_TYPE_CTF) {
+				/*
+				 * Get the CTF type name
+				 */
+				if (dt_typefile_typename(onode->din_tf,
+				    onode->din_ctfid, otype_str,
+				    sizeof(otype_str)) != ((char *)otype_str))
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_typecheck_regdefs(): failed at "
+					    "getting type name node %ld: %s",
+					    onode->din_ctfid,
+					    dt_typefile_error(onode->din_tf));
+			} else {
+				strcpy(otype_str, "unknown (ERROR)");
+			}
+
+			if (type == DIF_TYPE_STRING) {
+				strcpy(ctype_str, "D string");
+			} else if (type == DIF_TYPE_BOTTOM) {
+				strcpy(ctype_str, "D bottom type");
+			} else if (type == DIF_TYPE_NONE) {
+				strcpy(ctype_str, "none");
+			} else if (type == DIF_TYPE_CTF) {
+				/*
+				 * Get the CTF type name
+				 */
+				if (dt_typefile_typename(node->din_tf,
+				    node->din_ctfid, ctype_str,
+				    sizeof(ctype_str)) != ((char *)ctype_str))
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_typecheck_regdefs(): failed at "
+					    "getting type name node %ld: %s",
+					    node->din_ctfid,
+					    dt_typefile_error(node->din_tf));
+			} else {
+				strcpy(ctype_str, "unknown (ERROR)");
+			}
+
+			fprintf(stderr,
+			    "failed to typecheck conditional: "
+			    "(branch 1: %s != branch 2: %s)\n",
+			    otype_str, ctype_str);
 			return (NULL);
 		}
 
