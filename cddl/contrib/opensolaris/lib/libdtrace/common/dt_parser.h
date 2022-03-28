@@ -57,6 +57,7 @@ typedef struct dt_node {
 	int dn_line;		/* line number for error messages */
 	int dn_reg;		/* register allocated by cg */
 	dtrace_attribute_t dn_attr; /* node stability attributes */
+	int dn_from_stringof;	/* does the node have stringof() applied? */
 
 	char dn_target[DTRACE_TARGETNAMELEN]; /* what target is this node for? */
 	dtrace_hdl_t *dn_dtp;	/* backpointer to the handle */

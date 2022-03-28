@@ -578,6 +578,7 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	dnp->dn_dtp = dtp;
 	bzero(&dnp->dn_u, sizeof (dnp->dn_u));
 	bzero(&dnp->dn_target, sizeof (dnp->dn_target));
+	dnp->dn_from_stringof = 0;
 
 	return (dnp);
 }
@@ -3229,6 +3230,7 @@ dt_cook_op1(dt_node_t *dnp, uint_t idflags)
 		}
 		dt_node_type_assign(dnp, DT_STR_CTFP(dtp), DT_STR_TYPE(dtp),
 		    cp->dn_flags & DT_NF_USERLAND);
+		dnp->dn_from_stringof = 1;
 		break;
 
 	case DT_TOK_PREINC:
