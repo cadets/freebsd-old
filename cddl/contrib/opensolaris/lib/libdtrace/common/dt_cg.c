@@ -1835,10 +1835,24 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		break;
 	}
 
-	case DT_TOK_STRINGOF:
+	case DT_TOK_STRINGOF: {
+		ssize_t typeref = 0;
+
 		dt_cg_node(dnp->dn_child, dlp, drp);
 		dnp->dn_reg = dnp->dn_child->dn_reg;
+
+		typeref = dt_strtab_insert(yypcb->pcb_symtab, "D string");
+
+		if (typeref == -1L)
+			longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
+
+		if (typeref > DIF_STROFF_MAX)
+			longjmp(yypcb->pcb_jmpbuf, EDT_STR2BIG);
+
+		instr = DIF_INSTR_TYPECAST(typeref, dnp->dn_reg);
+		dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 		break;
+	}
 
 	case DT_TOK_XLATE:
 		/*
