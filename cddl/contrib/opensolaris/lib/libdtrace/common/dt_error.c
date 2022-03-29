@@ -343,6 +343,7 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	va_start(args, fmt);
 	vfprintf(stderr, fmt, args);
 	va_end(args);
+	fprintf(stderr, "\n");
 
 	va_start(args, fmt);
 	l = vsnprintf(pgp->dp_err, DT_PROG_ERRLEN, fmt, args);
