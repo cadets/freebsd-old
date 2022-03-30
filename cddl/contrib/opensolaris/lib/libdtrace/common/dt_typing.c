@@ -246,6 +246,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (-1);
 	}
 
+#ifdef notyet
 	data_dn1 = dt_typecheck_regdefs(&n->din_r1datadefs, &empty);
 	if (data_dn1 == NULL && empty == 0) {
 		fprintf(stderr,
@@ -263,6 +264,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		    insname[opcode], n->din_uidx);
 		return (-1);
 	}
+#endif
 
 	dnv = dt_typecheck_vardefs(difo, &n->din_vardefs, &empty);
 	if (dnv == NULL && empty == 0) {
@@ -456,7 +458,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * TODO: Maybe we can tolerate some failures by looking at
 		 * symbols too?
 		 */
-		if (strcmp(symname, "string") == 0) {
+		if (strcmp(symname, "D string") == 0) {
 			n->din_type = DIF_TYPE_STRING;
 			return (n->din_type);
 		}
@@ -1699,7 +1701,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			return (-1);
 		}
 
-		if (data_dn1->din_sym != NULL) {
+		if (dn1->din_sym != NULL) {
 			/*
 			 * We only need one type here (the first one).
 			 */
@@ -1707,13 +1709,13 @@ dt_infer_type(dt_ifg_node_t *n)
 			/*
 			 * sym in range(symtab)
 			 */
-			if ((uintptr_t)data_dn1->din_sym >=
+			if ((uintptr_t)dn1->din_sym >=
 			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "dt_infer_type(%s, %zu): sym (%p) is out "
 				    "of range: %p",
 				    insname[opcode], n->din_uidx,
-				    data_dn1->din_sym,
+				    dn1->din_sym,
 				    (void *)(((uintptr_t)difo->dtdo_symtab) +
 				    difo->dtdo_symlen));
 
@@ -1721,18 +1723,18 @@ dt_infer_type(dt_ifg_node_t *n)
 			 * Get the original type name of dn1->din_ctfid for
 			 * error reporting.
 			 */
-			if (dt_typefile_typename(data_dn1->din_tf,
-			    data_dn1->din_ctfid, buf,
+			if (dt_typefile_typename(dn1->din_tf,
+			    dn1->din_ctfid, buf,
 			    sizeof(buf)) != ((char *)buf))
 				dt_set_progerr(g_dtp, g_pgp,
 				    "dt_infer_type(%s, %zu): failed at getting "
 				    "type name %ld: %s",
 				    insname[opcode], n->din_uidx,
-				    data_dn1->din_ctfid,
-				    dt_typefile_error(data_dn1->din_tf));
+				    dn1->din_ctfid,
+				    dt_typefile_error(dn1->din_tf));
 
-			if (dt_get_class(data_dn1->din_tf,
-			    data_dn1->din_ctfid) != DTC_STRUCT)
+			if (dt_get_class(dn1->din_tf,
+			    dn1->din_ctfid) != DTC_STRUCT)
 				return (-1);
 
 			/*
@@ -1751,35 +1753,21 @@ dt_infer_type(dt_ifg_node_t *n)
 			 * Get the non-pointer type. This should NEVER fail.
 			 */
 			type = dt_typefile_reference(
-			    data_dn1->din_tf, data_dn1->din_ctfid);
+			    dn1->din_tf, dn1->din_ctfid);
 
-			if (dt_typefile_membinfo(data_dn1->din_tf, type,
-			    data_dn1->din_sym, mip) == 0)
+			if (dt_typefile_membinfo(dn1->din_tf, type,
+			    dn1->din_sym, mip) == 0)
 				dt_set_progerr(g_dtp, g_pgp,
 				    "dt_infer_type(%s, %zu): failed to get "
 				    "member info for %s(%s): %s",
 				    insname[opcode], n->din_uidx, buf,
-				    data_dn1->din_sym,
-				    dt_typefile_error(data_dn1->din_tf));
+				    dn1->din_sym,
+				    dt_typefile_error(dn1->din_tf));
 
 			n->din_mip = mip;
-			/*
-			 * This should only happen with a typecast.
-			 */
-			if (dn1 != data_dn1) {
-				dn1_instr = dn1->din_buf[dn1->din_uidx];
-				dn1_op = DIF_INSTR_OP(dn1_instr);
-
-				assert(dn1_op == DIF_OP_TYPECAST);
-
-				n->din_ctfid = dn1->din_ctfid;
-				n->din_tf = dn1->din_tf;
-				n->din_type = dn1->din_type;
-			} else {
-				n->din_ctfid = mip->ctm_type;
-				n->din_tf = data_dn1->din_tf;
-				n->din_type = DIF_TYPE_CTF;
-			}
+			n->din_ctfid = mip->ctm_type;
+			n->din_tf = dn1->din_tf;
+			n->din_type = DIF_TYPE_CTF;
 		} else if (dn1->din_type == DIF_TYPE_CTF) {
 			n->din_ctfid = dn1->din_ctfid;
 			n->din_tf = dn1->din_tf;

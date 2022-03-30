@@ -149,6 +149,36 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		if (onode == r0node)
 			continue;
 
+		if (type == DIF_TYPE_STRING) {
+			if (otype == DIF_TYPE_BOTTOM)
+				continue;
+
+			if (otype ==  DIF_TYPE_STRING) {
+				first_iter = 0;
+				continue;
+			}
+
+			if (otype == DIF_TYPE_CTF) {
+				/*
+				 * Get the CTF type name
+				 */
+				if (dt_typefile_typename(onode->din_tf,
+				    onode->din_ctfid, buf2,
+				    sizeof(buf2)) != ((char *)buf2))
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_typecheck_regdefs(): failed at "
+					    "getting type name node %ld: %s",
+					    onode->din_ctfid,
+					    dt_typefile_error(onode->din_tf));
+
+				if (strcmp(buf2, "const char *") == 0 ||
+				    strcmp(buf2, "char *") == 0) {
+					first_iter = 0;
+					continue;
+				}
+			}
+		}
+
 		/*
 		 * The type at the previous definition does not match the type
 		 * inferred in the current one, which is nonsense.
@@ -203,8 +233,9 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 
 			fprintf(stderr,
 			    "failed to typecheck conditional: "
-			    "(branch 1: %s != branch 2: %s)\n",
-			    otype_str, ctype_str);
+			    "(branch 1: %s (%zu) != branch 2: %s (%zu))\n",
+			    otype_str, onode->din_uidx, ctype_str,
+			    node->din_uidx);
 			return (NULL);
 		}
 

@@ -492,7 +492,7 @@ dt_update_nodes_bb_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len,
 
 static int
 dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
-    uint8_t rd, dt_ifg_list_t *ifgl)
+    uint8_t rd, dt_ifg_list_t *ifgl, int *seen_typecast)
 {
 	dtrace_difo_t *_difo;
 	dt_ifg_node_t *n;
@@ -501,7 +501,6 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	uint8_t opcode, curop;
 	dt_ifg_node_t *curnode;
 	dt_ifg_list_t *curnode_e, *n_e;
-	int seen_typecast;
 	int clobbers;
 
 	r1 = 0;
@@ -513,7 +512,6 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	opcode = 0;
 	curop = 0;
 	curnode_e = NULL;
-	seen_typecast = 0;
 
 	assert(ifgl != NULL);
 
@@ -573,7 +571,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 
 		if (dt_usite_contains_reg(n, curnode, rd, &r1, &r2)) {
 			assert(r1 == 1 || r2 == 1);
-			if (r1 == 1 && seen_typecast == 0) {
+			if (r1 == 1 && *seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r1defs, (void *)&curnode,
 				    sizeof(dt_ifg_node_t *)) == NULL)
@@ -592,7 +590,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 					free(n_e);
 			}
 
-			if (r2 == 1 && seen_typecast == 0) {
+			if (r2 == 1 && *seen_typecast == 0) {
 				curnode_e = dt_ifgl_alloc(curnode);
 				if (dt_in_list(&n->din_r2defs, (void *)&curnode,
 				    sizeof(dt_ifg_node_t *)) == NULL)
@@ -645,7 +643,7 @@ dt_update_nodes_bb_reg(dtrace_difo_t *difo, dt_basic_block_t *bb,
 			return (1);
 
 		if (clobbers && opcode == DIF_OP_TYPECAST)
-			seen_typecast = 1;
+			*seen_typecast = 1;
 	}
 
 	return (0);
@@ -981,6 +979,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 	ssize_t top;
 	size_t i;
 	uint8_t active_varregs[DIF_DIR_NREGS + 2];
+	int seen_typecast = 0;
 
 	if (ifgl == NULL || difo == NULL || bb == NULL || nkind == NULL)
 		return;
@@ -1010,7 +1009,7 @@ dt_update_nodes(dtrace_difo_t *difo, dt_basic_block_t *bb,
 		if (nkind->dtnk_kind == DT_NKIND_REG) {
 			if (redefined == 0)
 				redefined = dt_update_nodes_bb_reg(difo, bb,
-				    nkind->dtnk_rd, ifgl);
+				    nkind->dtnk_rd, ifgl, &seen_typecast);
 			if (var_redefined == 0) {
 				update_active_varregs(active_varregs, difo, bb,
 				    ifgl);
