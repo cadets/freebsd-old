@@ -309,6 +309,23 @@ dt_typefile_kernel(void)
 	return (NULL);
 }
 
+dt_typefile_t *
+dt_typefile_D(void)
+{
+	dt_typefile_t *typef;
+	dt_module_t *mod;
+
+	for (typef = dt_list_next(&typefiles); typef;
+	     typef = dt_list_next(typef))
+		if (strcmp(typef->modname, "D") == 0) {
+			mod = dt_module_lookup_by_name(typef->dtp, "D");
+			assert(mod == typef->modhdl);
+			return (typef);
+		}
+
+	return (NULL);
+}
+
 ctf_id_t
 dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
 {

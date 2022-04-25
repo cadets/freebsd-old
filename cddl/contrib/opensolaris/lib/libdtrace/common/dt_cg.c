@@ -1945,13 +1945,15 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			break;
 		}
 
-		mod = dt_module_lookup_by_ctf(dnp->dn_dtp, dnp->dn_ctfp);
+		mod = dt_module_lookup_by_ctf(dnp->dn_dtp,
+		    dnp->dn_ctfp);
+
 		/*
 		 * We check if this particular node has a type that's defined
 		 * by the current D script. If so, we won't generate any
 		 * relocations, and instead process it fully.
 		 */
-		if (mod != dnp->dn_dtp->dt_ddefs) {
+		if (dnp->dn_copied_ctf || mod != dnp->dn_dtp->dt_ddefs) {
 			/*
 			 * Generate an USETX instruction with the current symbol
 			 * that we will resolve later on in the linking process.
@@ -1984,8 +1986,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 				    DT_NF_USERLAND);
 
 				instr = DIF_INSTR_LOAD(dt_cg_uload(dnp,
-							   dnp->dn_flags &
-							       DT_NF_USERLAND),
+				    dnp->dn_flags & DT_NF_USERLAND),
 				    dnp->dn_left->dn_reg, dnp->dn_left->dn_reg);
 
 				dnp->dn_flags &= ~DT_NF_USERLAND;

@@ -151,7 +151,8 @@ dt_copyvar(dt_idhash_t *dhp, dt_ident_t *idp, void *data)
 		dvp->dtdv_flags |= DIFV_F_MOD;
 
 	bzero(&dn, sizeof (dn));
-	dt_node_type_assign(&dn, idp->di_ctfp, idp->di_type, B_FALSE);
+	dt_node_type_assign(&dn, idp->di_ctfp, idp->di_type, B_FALSE,
+	    idp->di_copied_ctf);
 	dt_node_diftype(pcb->pcb_hdl, &dn, &dvp->dtdv_type);
 
 	if (dt_module_lookup_by_ctf(pcb->pcb_hdl, idp->di_ctfp) ==

@@ -601,6 +601,7 @@ typedef struct dtrace_typeinfo {
 	ctf_file_t *dtt_ctfp;			/* CTF container handle */
 	ctf_id_t dtt_type;			/* CTF type identifier */
 	uint_t dtt_flags;			/* Misc. flags */
+	int dtt_copied_ctf;			/* did we copy this ctf info? */
 } dtrace_typeinfo_t;
 
 #define	DTT_FL_USER	0x1			/* user type */

@@ -1665,10 +1665,10 @@ exec_prog(const dtrace_cmd_t *dcp)
 		fclose(graph_file);
 	}
 
+	dtrace_dump_actions(dcp->dc_prog);
 	if (g_unsafe) {
 		return;
 	} else if (!g_exec) {
-		//dtrace_dump_actions(dcp->dc_prog);
 		dtrace_program_info(g_dtp, dcp->dc_prog, &dpi);
 		if (g_elf) {
 			tmpfd = mkstemp(template);
@@ -2007,6 +2007,7 @@ list_probe(dtrace_hdl_t *dtp, const dtrace_probedesc_t *pdp, void *arg)
 
 	if (atomic_load(&g_intr) != 0)
 		return (1);
+
 
 	return (0);
 }

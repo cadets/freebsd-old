@@ -1080,6 +1080,7 @@ dt_module_extern(dtrace_hdl_t *dtp, dt_module_t *dmp,
 	idp->di_data = sip;
 	idp->di_ctfp = tip->dtt_ctfp;
 	idp->di_type = tip->dtt_type;
+	idp->di_copied_ctf = tip->dtt_copied_ctf;
 
 	return (idp);
 }

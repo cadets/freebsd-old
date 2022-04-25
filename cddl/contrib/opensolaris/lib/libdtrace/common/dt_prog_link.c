@@ -154,32 +154,32 @@ relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 		if (encoding.cte_format & CTF_INT_SIGNED) {
 			if (size == 1)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSB :
-									DIF_OP_ULDSB;
+				    DIF_OP_ULDSB;
 			else if (size == 2)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSH :
-									DIF_OP_ULDSH;
+				    DIF_OP_ULDSH;
 			else if (size == 4)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDSW :
-									DIF_OP_ULDSW;
+				    DIF_OP_ULDSW;
 			else if (size == 8)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX :
-									DIF_OP_ULDX;
+				    DIF_OP_ULDX;
 			else
 				errx(
 				    EXIT_FAILURE, "unsupported size %zu", size);
 		} else {
 			if (size == 1)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUB :
-									DIF_OP_ULDUB;
+				    DIF_OP_ULDUB;
 			else if (size == 2)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUH :
-									DIF_OP_ULDUH;
+				    DIF_OP_ULDUH;
 			else if (size == 4)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDUW :
-									DIF_OP_ULDUW;
+				    DIF_OP_ULDUW;
 			else if (size == 8)
 				new_op = opcode == DIF_OP_ULOAD ? DIF_OP_LDX :
-									DIF_OP_ULDX;
+				    DIF_OP_ULDX;
 			else
 				errx(
 				    EXIT_FAILURE, "unsupported size %zu", size);
@@ -278,9 +278,7 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 			difo->dtdo_inthash = dt_inttab_create(dtp);
 
 			if (difo->dtdo_inthash == NULL)
-				errx(EXIT_FAILURE,
-				    "failed "
-				    "to allocate inttab");
+				errx(EXIT_FAILURE, "failed to allocate inttab");
 		}
 
 		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
@@ -450,7 +448,6 @@ relocate_ret(dtrace_hdl_t *dtp, dt_ifg_node_t *node, dtrace_actkind_t actkind,
 	if (node->din_type == DIF_TYPE_STRING) {
 		rtype->dtdt_flags |= DIF_TF_BYREF;
 		rtype->dtdt_ckind = CTF_ERR;
-		return;
 	}
 
 	relocate_retpush(dtp, node, actkind, ad, orig_rtype);
@@ -753,7 +750,9 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 		if (opcode == DIF_OP_ULOAD    ||
 		    opcode == DIF_OP_UULOAD   ||
 		    opcode == DIF_OP_RET      ||
-		    opcode == DIF_OP_PUSHTR) {
+		    opcode == DIF_OP_PUSHTR   ||
+		    opcode == DIF_OP_ADD      ||
+		    opcode == DIF_OP_TYPECAST) {
 			usetx_node = dt_find_node_in_ifg(node, n);
 
 			if (usetx_node != n)

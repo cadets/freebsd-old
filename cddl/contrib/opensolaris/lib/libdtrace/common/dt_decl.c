@@ -629,6 +629,7 @@ dt_decl_member(dt_node_t *dnp)
 		dtt.dtt_type = ctf_add_type(dsp->ds_ctfp,
 		    dtt.dtt_ctfp, dtt.dtt_type);
 		dtt.dtt_ctfp = dsp->ds_ctfp;
+		dtt.dtt_copied_ctf = 1;
 
 		if (dtt.dtt_type == CTF_ERR ||
 		    ctf_update(dtt.dtt_ctfp) == CTF_ERR) {
@@ -783,7 +784,7 @@ dt_decl_enumerator(char *s, dt_node_t *dnp)
 	yyintdecimal = 0;
 
 	dnp = dt_node_int(value);
-	dt_node_type_assign(dnp, dsp->ds_ctfp, dsp->ds_type, B_FALSE);
+	dt_node_type_assign(dnp, dsp->ds_ctfp, dsp->ds_type, B_FALSE, 0);
 
 	if ((inp = malloc(sizeof (dt_idnode_t))) == NULL)
 		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);
@@ -938,6 +939,7 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 			tip->dtt_type = ctf_add_type(dmp->dm_ctfp,
 			    tip->dtt_ctfp, tip->dtt_type);
 			tip->dtt_ctfp = dmp->dm_ctfp;
+			tip->dtt_copied_ctf = 1;
 
 			if (tip->dtt_type == CTF_ERR ||
 			    ctf_update(tip->dtt_ctfp) == CTF_ERR) {
