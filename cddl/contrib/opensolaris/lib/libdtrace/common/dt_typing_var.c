@@ -606,10 +606,49 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 
 	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
 	    dif_var->dtdv_type.dtdt_kind != dr->din_type) {
+		char b1[32] = "", b2[32] = "";
+		if (dr->din_type == DIF_TYPE_CTF) {
+			if (dt_typefile_typename(dr->din_tf, dr->din_ctfid, buf,
+			    sizeof(buf)) != ((char *)buf))
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type_var(): failed at getting "
+				    "type name %ld: %s\n",
+				    dr->din_ctfid,
+				    dt_typefile_error(dr->din_tf));
+			sprintf(b2, "@%ld", dr->din_ctfid);
+		} else if (dr->din_type == DIF_TYPE_STRING)
+			strcpy(buf, "D string");
+		else if (dr->din_type == DIF_TYPE_NONE)
+			strcpy(buf, "none");
+		else if (dr->din_type == DIF_TYPE_BOTTOM)
+			strcpy(buf, "bottom");
+		else
+			strcpy(buf, "unknown");
+
+		if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_CTF) {
+			if (dt_typefile_typename(dif_var->dtdv_tf,
+			    dif_var->dtdv_ctfid, var_type,
+			    sizeof(var_type)) != ((char *)var_type))
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type_var(): failed at getting "
+				    "type name %ld: %s\n",
+				    dif_var->dtdv_ctfid,
+				    dt_typefile_error(dif_var->dtdv_tf));
+			sprintf(b1, "@%ld", dif_var->dtdv_ctfid);
+		} else if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
+			strcpy(var_type, "D string");
+		else if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_NONE)
+			strcpy(var_type, "none");
+		else if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM)
+			strcpy(var_type, "bottom");
+		else
+			strcpy(var_type, "unknown");
+
 		fprintf(stderr,
 		    "dt_infer_type_var(): dif_var and dr have different "
-		    "types: %d != %d\n",
-		    dif_var->dtdv_type.dtdt_kind, dr->din_type);
+		    "types: %s (%d%s) != %s (%d%s)\n",
+		    var_type, dif_var->dtdv_type.dtdt_kind, b1, buf,
+		    dr->din_type, b2);
 
 		return (-1);
 	}
