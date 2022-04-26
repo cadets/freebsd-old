@@ -672,13 +672,11 @@ dt_infer_type(dt_ifg_node_t *n)
 				    dt_typefile_error(other->din_tf));
 
 			if (res == 1) {
-				if (strcmp(buf, "uint64_t") != 0 &&
-				    strcmp(buf, "uintptr_t") != 0)
+				if (strcmp(buf, "uint64_t") != 0)
 					dt_set_progerr(g_dtp, g_pgp,
 					    "dt_infer_type(%s, %zu): the type "
-					    "of the other node must be uint64_t"
-					    " or uintptr_t if "
-					    "symnode->din_ctfid <:"
+					    "of the other node must be unit64_t"
+					    " if symnode->din_ctfid <:"
 					    " other->din_ctfid, but it is: %s",
 					    insname[opcode], n->din_uidx, buf);
 			}
