@@ -66,5 +66,11 @@ extern int dt_type_compare(dt_ifg_node_t *, dt_ifg_node_t *);
 extern dt_typefile_t *dt_get_typename_tfcheck(dt_ifg_node_t *, dt_typefile_t **,
     size_t, char *, size_t, const char *);
 extern void dt_get_typename(dt_ifg_node_t *, char *, size_t, const char *);
+extern int dt_typecheck_string(dtrace_hdl_t *, int, int, ctf_id_t, ctf_id_t,
+    dt_typefile_t *, dt_typefile_t *);
+extern int dt_typecheck_stringii(dtrace_hdl_t *, dt_ifg_node_t *,
+    dt_ifg_node_t *);
+extern int dt_typecheck_stringiv(dtrace_hdl_t *, dt_ifg_node_t *,
+    dtrace_difv_t *);
 
 #endif /* _DT_TYPING_HELPERS_H_ */

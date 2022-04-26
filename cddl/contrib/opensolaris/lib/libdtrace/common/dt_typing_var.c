@@ -561,7 +561,8 @@ dt_infer_type_arg(
  * typechecks it against dr.
  */
 int
-dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var)
+dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dt_ifg_node_t *dr,
+    dtrace_difv_t *dif_var)
 {
 	char buf[4096] = {0}, var_type[4096] = {0};
 	dtrace_difv_t *difovar;
@@ -603,6 +604,11 @@ dt_infer_type_var(dtrace_difo_t *difo, dt_ifg_node_t *dr, dtrace_difv_t *dif_var
 
 	if (dif_var->dtdv_type.dtdt_kind == DIF_TYPE_STRING && dr->din_isnull)
 		return (DIF_TYPE_STRING);
+
+	if (dt_typecheck_stringiv(dtp, dr, dif_var)) {
+		dif_var->dtdv_type.dtdt_kind = DIF_TYPE_STRING;
+		return (DIF_TYPE_STRING);
+	}
 
 	if (dif_var->dtdv_type.dtdt_kind != DIF_TYPE_NONE &&
 	    dif_var->dtdv_type.dtdt_kind != dr->din_type) {

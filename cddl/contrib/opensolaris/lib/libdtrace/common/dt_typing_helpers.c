@@ -307,6 +307,36 @@ dt_is_void(char *t_name)
 }
 
 int
+dt_typecheck_string(dtrace_hdl_t *dtp, int t1, int t2, ctf_id_t c1, ctf_id_t c2,
+    dt_typefile_t *tf1, dt_typefile_t *tf2)
+{
+	if (t1 == DIF_TYPE_STRING && t2 == DIF_TYPE_CTF) {
+		dt_module_t *mod = tf2->modhdl;
+		return (c2 == dtp->dt_type_str && mod == dtp->dt_ddefs);
+	} else if (t1 == DIF_TYPE_CTF && t2 == DIF_TYPE_STRING) {
+		return (dt_typecheck_string(dtp, t2, t1, c2, c1, tf2, tf1));
+	}
+
+	return (t1 == DIF_TYPE_STRING && t2 == DIF_TYPE_STRING);
+}
+
+int
+dt_typecheck_stringiv(dtrace_hdl_t *dtp, dt_ifg_node_t *n, dtrace_difv_t *dv)
+{
+
+	return (dt_typecheck_string(dtp, n->din_type, dv->dtdv_type.dtdt_kind,
+	    n->din_ctfid, dv->dtdv_ctfid, n->din_tf, dv->dtdv_tf));
+}
+
+int
+dt_typecheck_stringii(dtrace_hdl_t *dtp, dt_ifg_node_t *n1, dt_ifg_node_t *n2)
+{
+
+	return (dt_typecheck_string(dtp, n1->din_type, n2->din_type,
+	    n1->din_ctfid, n2->din_ctfid, n1->din_tf, n2->din_tf));
+}
+
+int
 dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
     ctf_id_t id2, int *which)
 {

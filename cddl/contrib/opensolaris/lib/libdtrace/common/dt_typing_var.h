@@ -54,7 +54,8 @@ typedef struct argcheck_cookie {
 extern void dt_builtin_type(dt_ifg_node_t *, uint16_t, uint8_t);
 extern int dt_infer_type_arg(dtrace_hdl_t *, const dtrace_probedesc_t *,
     void *);
-extern int dt_infer_type_var(dtrace_difo_t *, dt_ifg_node_t *, dtrace_difv_t *);
+extern int dt_infer_type_var(dtrace_hdl_t *, dtrace_difo_t *, dt_ifg_node_t *,
+    dtrace_difv_t *);
 extern dt_ifg_node_t *dt_typecheck_vardefs(dtrace_difo_t *, dt_list_t *, int *);
 
 #endif /* _DT_TYPING_VAR_H_ */

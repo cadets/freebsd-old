@@ -1303,7 +1303,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, var,
 			    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
@@ -1347,7 +1347,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, var,
 			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
@@ -1391,7 +1391,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, var, DIFV_SCOPE_LOCAL,
 			    DIFV_KIND_SCALAR);
 
-		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
@@ -1444,7 +1444,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (dt_var_stack_typecheck(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(n->din_difo, dnv, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1491,7 +1491,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (dt_var_stack_typecheck(n, dnv, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(n->din_difo, dnv, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dnv, dif_var) == -1)
 			return (-1);
 
 		if (dnv) {
@@ -1544,7 +1544,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (dt_var_stack_typecheck(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;
@@ -1585,7 +1585,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		if (dt_var_stack_typecheck(n, dn2, dif_var) == -1)
 			return (-1);
 
-		if (dt_infer_type_var(n->din_difo, dn2, dif_var) == -1)
+		if (dt_infer_type_var(g_dtp, n->din_difo, dn2, dif_var) == -1)
 			return (-1);
 
 		n->din_ctfid = dn2->din_ctfid;

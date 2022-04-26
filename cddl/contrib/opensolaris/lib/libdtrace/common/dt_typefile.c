@@ -477,3 +477,10 @@ dt_typefile_memb_ctfid(void *_m)
 
 	return (m->type);
 }
+
+ctf_file_t *
+dt_typefile_getctfp(dt_typefile_t *tf)
+{
+
+	return dt_module_getctf(tf->dtp, tf->modhdl);
+}
