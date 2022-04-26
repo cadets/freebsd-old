@@ -1665,7 +1665,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		fclose(graph_file);
 	}
 
-	dtrace_dump_actions(dcp->dc_prog);
+	//dtrace_dump_actions(dcp->dc_prog);
 	if (g_unsafe) {
 		return;
 	} else if (!g_exec) {
