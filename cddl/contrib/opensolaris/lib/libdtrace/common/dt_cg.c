@@ -512,16 +512,16 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 	dif_instr_t instr;
 	int rg;
 
+	dt_node_type_name(dst, typename, sizeof(typename));
+	rg = dt_regset_alloc(drp);
+
 	if (!dt_node_is_scalar(dst))
-		return; /* not a scalar */
+		goto cg_typecast; /* not a scalar */
 	if (dstsize == srcsize &&
 	    ((src->dn_flags ^ dst->dn_flags) & DT_NF_SIGNED) != 0)
-		return; /* not narrowing or changing signed-ness */
+		goto cg_typecast; /* not narrowing or changing signed-ness */
 	if (dstsize > srcsize && (src->dn_flags & DT_NF_SIGNED) == 0)
-		return; /* nothing to do in this case */
-
-	rg = dt_regset_alloc(drp);
-	dt_node_type_name(dst, typename, sizeof(typename));
+		goto cg_typecast; /* nothing to do in this case */
 
 	if (dstsize > srcsize) {
 		int n = sizeof (uint64_t) * NBBY - srcsize * NBBY;
@@ -562,6 +562,7 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 		dt_irlist_append(dlp, dt_cg_node_alloc(DT_LBL_NONE, instr));
 	}
 
+cg_typecast:
 	/*
 	 * Insert the type name into the symbol table and get the reference
 	 * to it.
@@ -1922,7 +1923,6 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		    dnp->dn_left, DT_IDENT_XLSOU)) != NULL ||
 		    (idp = dt_node_resolve(
 		    dnp->dn_left, DT_IDENT_XLPTR)) != NULL) {
-
 			dt_xlator_t *dxp;
 			dt_node_t *mnp;
 

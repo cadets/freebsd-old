@@ -616,15 +616,6 @@ dt_infer_type(dt_ifg_node_t *n)
 				    "type (binary arithmetic operation)",
 				    insname[opcode], n->din_uidx);
 
-#if 0
-			if (other->din_tf != symnode->din_tf)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): typefile %s does "
-				    "not match typefile %s",
-				    insname[opcode], n->din_uidx,
-				    dt_typefile_stringof(other->din_tf),
-				    dt_typefile_stringof(symnode->din_tf));
-#endif
 			/*
 			 * Get the type name
 			 */
