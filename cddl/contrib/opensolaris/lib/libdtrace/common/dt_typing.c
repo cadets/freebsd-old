@@ -606,8 +606,30 @@ dt_infer_type(dt_ifg_node_t *n)
 				other->din_tf = tc_n->din_tf;
 			}
 		} else {
-			symnode = dn1->din_sym != NULL ? dn1 : dn2;
-			other = dn1->din_sym != NULL ? dn2 : dn1;
+			if (dn1->din_sym == NULL) {
+				assert(dn2->din_sym != NULL);
+				symnode = dn2;
+				other = dn1;
+			} else if (dn2->din_sym == NULL) {
+				assert(dn1->din_sym != NULL);
+				symnode = dn1;
+				other = dn2;
+			} else {
+				uint8_t op1, op2;
+				assert(dn1->din_sym != NULL &&
+				    dn2->din_sym != NULL);
+
+				op1 = DIF_INSTR_OP(dn1->din_buf[dn1->din_uidx]);
+				op2 = DIF_INSTR_OP(dn2->din_buf[dn2->din_uidx]);
+				if (op1 == DIF_OP_USETX) {
+					symnode = dn1;
+					other = dn2;
+				} else {
+					assert(op2 == DIF_OP_USETX);
+					symnode = dn2;
+					other = dn1;
+				}
+			}
 
 			if (other->din_type == DIF_TYPE_BOTTOM ||
 			    symnode->din_type == DIF_TYPE_BOTTOM)
@@ -628,12 +650,6 @@ dt_infer_type(dt_ifg_node_t *n)
 				    insname[opcode], n->din_uidx,
 				    symnode->din_ctfid,
 				    dt_typefile_error(symnode->din_tf));
-
-			if (strcmp(buf, "uint64_t") != 0)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): symbol must not "
-				    "exist if not paired with a uint64_t: %s",
-				    insname[opcode], n->din_uidx, buf);
 
 			/*
 			 * Check which type is "bigger".
