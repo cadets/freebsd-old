@@ -167,13 +167,8 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 
 	if (obj != NULL) {
 		rv = dtrace_lookup_by_type(typef->dtp, obj, nonuser_type, &tip);
-		if (rv != 0) {
-			fprintf(stderr,
-			    "dt_typefile_ctfid(): failed looking "
-			    "up C/D type: %s\n",
-			    dtrace_errmsg(typef->dtp, typef->dtp->dt_errno));
+		if (rv != 0)
 			return (CTF_ERR);
-		}
 
 		return (tip.dtt_type);
 	}

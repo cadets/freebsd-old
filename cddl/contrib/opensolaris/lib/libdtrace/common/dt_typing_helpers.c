@@ -596,31 +596,47 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	return (-1);
 }
 
+const char *
+dt_class_name(int class)
+{
+	switch (class) {
+	case DTC_BOTTOM:
+		return ("bottom");
+	case DTC_INT:
+		return ("integer");
+	case DTC_STRUCT:
+		return ("struct");
+	case DTC_STRING:
+		return ("string");
+	case DTC_FORWARD:
+		return ("forward");
+	}
+
+	return ("unknown");
+}
+
 /*
  * dt_get_class() takes in a buffer containing the type name and returns
  * the internal DTrace class it belongs to (DTC_INT, DTC_BOTTOM, DTC_STRUCT).
  */
 int
-dt_get_class(dt_typefile_t *tf, ctf_id_t id)
+dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 {
-	ctf_id_t ot, k;
+	ctf_id_t ot, k, new_id;
+	int class;
 	char buf[DT_TYPE_NAMELEN];
+	dt_typefile_t *typef;
 
 	ot = -1;
 	k = 0;
 
-	if (dt_typefile_typename(tf, id, buf, sizeof(buf)) != ((char *)buf))
-		dt_set_progerr(g_dtp, g_pgp,
-		    "dt_get_class(%s, %d): failed at "
-		    "getting type name: %s",
-		    dt_typefile_stringof(tf), id, dt_typefile_error(tf));
+	/* ignore any errors here. */
+	dt_typefile_typename(tf, id, buf, sizeof(buf));
 
 	do {
 
 		if ((k = dt_typefile_typekind(tf, id)) == CTF_ERR)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "failed getting type (%s) kind: %s", buf,
-			    dt_typefile_error(tf));
+			return (DTC_BOTTOM);
 
 		if (id == ot)
 			break;
@@ -633,6 +649,37 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id)
 
 	if (k == CTF_K_STRUCT)
 		return (DTC_STRUCT);
+
+	if (k == CTF_K_FORWARD) {
+		ctf_file_t *parent, *current;
+		if (!follow)
+			return (DTC_FORWARD);
+
+		parent = ctf_parent_file(dt_typefile_getctfp(tf));
+		if (parent == NULL)
+			return (DTC_FORWARD);
+
+		if (id == CTF_ERR)
+			id = ot;
+		/* follow the list of typefiles until we find the right one */
+		for (typef = dt_list_next(&typefiles); typef;
+		     typef = dt_list_next(typef)) {
+			current = dt_typefile_getctfp(typef);
+			if (current == parent)
+				break;
+			if (class == DTC_INT || class == DTC_STRUCT)
+				return (class);
+		}
+
+		if (typef == NULL)
+			return (DTC_FORWARD);
+
+		new_id = dt_typefile_ctfid(typef, buf);
+		if (new_id == CTF_ERR)
+			return (DTC_FORWARD);
+		class = dt_get_class(typef, new_id, 0);
+		return (class);
+	}
 
 	return (DTC_BOTTOM);
 }
@@ -692,10 +739,10 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	}
 
 	class1 = dn1->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn1->din_tf, dn1->din_ctfid) :
+	    dt_get_class(dn1->din_tf, dn1->din_ctfid, 1) :
 	    DTC_STRING;
 	class2 = dn2->din_type == DIF_TYPE_CTF ?
-	    dt_get_class(dn2->din_tf, dn2->din_ctfid) :
+	    dt_get_class(dn2->din_tf, dn2->din_ctfid, 1) :
 	    DTC_STRING;
 
 	if (class1 == DTC_BOTTOM)
@@ -712,7 +759,12 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	if (class1 == DTC_STRUCT && class2 == DTC_INT)
 		return (1);
 
-	if (class1 == DTC_INT && (class2 == DTC_STRUCT || class2 == DTC_STRING))
+	if (class1 == DTC_FORWARD && class2 == DTC_INT)
+		return (1);
+
+	if (class1 == DTC_INT &&
+	    (class2 == DTC_STRUCT || class2 == DTC_STRING ||
+	    class2 == DTC_FORWARD))
 		return (2);
 
 	/*

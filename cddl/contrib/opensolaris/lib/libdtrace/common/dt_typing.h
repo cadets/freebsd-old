@@ -44,10 +44,11 @@
 
 #include <_dt_ifgnode.h>
 
-#define DTC_BOTTOM	-1
-#define DTC_INT		 0
-#define DTC_STRUCT	 1
-#define DTC_STRING	 2
+#define DTC_BOTTOM  -1
+#define DTC_INT      0
+#define DTC_STRUCT   1
+#define DTC_STRING   2
+#define DTC_FORWARD  3
 
 extern int dt_prog_infer_types(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_difo_t *);

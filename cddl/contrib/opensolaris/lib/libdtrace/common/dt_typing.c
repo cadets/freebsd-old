@@ -106,6 +106,8 @@ dt_infer_type(dt_ifg_node_t *n)
 	int empty;
 	ctf_id_t varkind;
 	size_t userland_len = strlen("userland ");
+	int kind;
+	int c;
 
 	const char *insname[] = {
 		[DIF_OP_OR]        = "or",
@@ -338,10 +340,11 @@ dt_infer_type(dt_ifg_node_t *n)
 			    insname[opcode], n->din_uidx, dn1->din_ctfid,
 			    dt_typefile_error(dn1->din_tf));
 
-		if (dt_get_class(dn1->din_tf, dn1->din_ctfid) != DTC_STRUCT) {
+		if ((c = dt_get_class(dn1->din_tf, dn1->din_ctfid, 1)) !=
+		    DTC_STRUCT) {
 			fprintf(stderr,
-			    "dt_infer_type(%s, %zu): failed to get class\n",
-			    insname[opcode], n->din_uidx);
+			    "dt_infer_type(%s, %zu): expected struct, got %s\n",
+			    insname[opcode], n->din_uidx, dt_class_name(c));
 			return (-1);
 		}
 
@@ -356,10 +359,18 @@ dt_infer_type(dt_ifg_node_t *n)
 
 		memset(mip, 0, sizeof(ctf_membinfo_t));
 
-		/*
-		 * Get the non-pointer type. This should NEVER fail.
-		 */
-		type = dt_typefile_reference(dn1->din_tf, dn1->din_ctfid);
+		kind = dt_typefile_typekind(dn1->din_tf, dn1->din_ctfid);
+		if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
+		    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
+		    kind == CTF_K_CONST)
+			/*
+			 * Get the non-pointer type. This should NEVER fail.
+			 */
+			type = dt_typefile_reference(dn1->din_tf,
+			    dn1->din_ctfid);
+		else
+			type = dn1->din_ctfid;
+
 		assert(type != CTF_ERR);
 
 		if (dt_typefile_membinfo(
@@ -700,8 +711,47 @@ dt_infer_type(dt_ifg_node_t *n)
 			 *  (3) One of the uint64_ts originates from a symbol.
 			 */
 
+			if (other->din_sym == NULL) {
+				n->din_sym = symnode->din_sym;
+				n->din_ctfid = other->din_ctfid;
+				n->din_tf = other->din_tf;
+				n->din_type = DIF_TYPE_CTF;
+				return (n->din_type);
+			}
+
+			if ((c = dt_get_class(other->din_tf,
+			    other->din_ctfid, 1)) != DTC_STRUCT)
+				return (-1);
+
+			/*
+			 * Figure out t2 = type_at(t1, symname)
+			 */
+			mip = malloc(sizeof(ctf_membinfo_t));
+			if (mip == NULL)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type(%s, %zu): failed to "
+				    "malloc mip",
+				    insname[opcode], n->din_uidx);
+
+			memset(mip, 0, sizeof(ctf_membinfo_t));
+
+			/*
+			 * Get the non-pointer type. This should NEVER fail.
+			 */
+			type = dt_typefile_reference(
+			    other->din_tf, other->din_ctfid);
+
+			if (dt_typefile_membinfo(other->din_tf, type,
+			    other->din_sym, mip) == 0)
+				dt_set_progerr(g_dtp, g_pgp,
+				    "dt_infer_type(%s, %zu): failed to get "
+				    "member info for %s(%s): %s",
+				    insname[opcode], n->din_uidx, buf,
+				    other->din_sym,
+				    dt_typefile_error(other->din_tf));
+
 			n->din_sym = symnode->din_sym;
-			n->din_ctfid = other->din_ctfid;
+			n->din_ctfid = mip->ctm_type;
 			n->din_tf = other->din_tf;
 			n->din_type = DIF_TYPE_CTF;
 		}
@@ -1671,7 +1721,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				    ctfid,
 				    dt_typefile_error(tf));
 
-			if (dt_get_class(tf, ctfid) != DTC_STRUCT)
+			if ((c = dt_get_class(tf, ctfid, 1)) != DTC_STRUCT)
 				return (-1);
 
 			/*
@@ -1752,8 +1802,8 @@ dt_infer_type(dt_ifg_node_t *n)
 				    dn1->din_ctfid,
 				    dt_typefile_error(dn1->din_tf));
 
-			if (dt_get_class(dn1->din_tf,
-			    dn1->din_ctfid) != DTC_STRUCT)
+			if ((c = dt_get_class(dn1->din_tf,
+			    dn1->din_ctfid, 1)) != DTC_STRUCT)
 				return (-1);
 
 			/*
