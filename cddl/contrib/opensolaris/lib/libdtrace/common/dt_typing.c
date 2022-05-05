@@ -89,7 +89,7 @@ dt_infer_type(dt_ifg_node_t *n)
 {
 	dt_ifg_node_t *dn1, *dn2, *dnv, *tc_n,
 	    *symnode, *other, *var_stacknode, *node,
-	    *data_dn1, *data_dn2;
+	    *data_dn1 = NULL, *data_dn2 = NULL;
 	int type1, type2, res, i, t;
 	char buf[4096] = { 0 }, symname[4096] = { 0 }, var_type[4096] = { 0 };
 	ctf_membinfo_t *mip;
@@ -316,71 +316,14 @@ dt_infer_type(dt_ifg_node_t *n)
 			return (-1);
 		}
 
-		/*
-		 * sym in range(symtab)
-		 */
-		if ((uintptr_t)dn1->din_sym >=
-		    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+		mip = dt_mip_from_sym(dn1);
+		if (mip == NULL) {
 			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu): sym (%p) is "
-			    "out of range: %p",
-			    insname[opcode], n->din_uidx, dn1->din_sym,
-			    (void *)(((uintptr_t)difo->dtdo_symtab) +
-				difo->dtdo_symlen));
-
-		/*
-		 * Get the original type name of dn1->din_ctfid for
-		 * error reporting.
-		 */
-		if (dt_typefile_typename(dn1->din_tf, dn1->din_ctfid, buf,
-		    sizeof(buf)) != ((char *)buf))
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu): failed at "
-			    "getting type name %ld: %s",
-			    insname[opcode], n->din_uidx, dn1->din_ctfid,
-			    dt_typefile_error(dn1->din_tf));
-
-		if ((c = dt_get_class(dn1->din_tf, dn1->din_ctfid, 1)) !=
-		    DTC_STRUCT) {
-			fprintf(stderr,
-			    "dt_infer_type(%s, %zu): expected struct, got %s\n",
-			    insname[opcode], n->din_uidx, dt_class_name(c));
+			    "%s(%s, %zu): failed to get mip from symbol (%s)",
+			    __func__, insname[opcode], n->din_uidx,
+			    dn1->din_sym);
 			return (-1);
 		}
-
-		/*
-		 * Figure out t2 = type_at(t1, symname)
-		 */
-		mip = malloc(sizeof(ctf_membinfo_t));
-		if (mip == NULL)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu): failed to malloc mip",
-			    insname[opcode], n->din_uidx);
-
-		memset(mip, 0, sizeof(ctf_membinfo_t));
-
-		kind = dt_typefile_typekind(dn1->din_tf, dn1->din_ctfid);
-		if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
-		    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
-		    kind == CTF_K_CONST)
-			/*
-			 * Get the non-pointer type. This should NEVER fail.
-			 */
-			type = dt_typefile_reference(dn1->din_tf,
-			    dn1->din_ctfid);
-		else
-			type = dn1->din_ctfid;
-
-		assert(type != CTF_ERR);
-
-		if (dt_typefile_membinfo(
-		    dn1->din_tf, type, dn1->din_sym, mip) == 0)
-			dt_set_progerr(g_dtp, g_pgp,
-			    "dt_infer_type(%s, %zu): failed to get member info"
-			    " for %s(%s) in %s: %s",
-			    insname[opcode], n->din_uidx, buf, dn1->din_sym,
-			    dt_typefile_stringof(dn1->din_tf),
-			    dt_typefile_error(dn1->din_tf));
 
 		n->din_mip = mip;
 		n->din_ctfid = mip->ctm_type;
@@ -425,6 +368,10 @@ dt_infer_type(dt_ifg_node_t *n)
 		 *                typecast idx, %r1 => %r1 : t
 		 */
 
+		if (dn1 == NULL)
+			return (-1);
+
+		mip = dt_mip_from_sym(dn1);
 		sym = DIF_INSTR_SYMBOL(instr);
 		if (sym >= difo->dtdo_symlen) {
 			fprintf(stderr,
@@ -471,11 +418,13 @@ dt_infer_type(dt_ifg_node_t *n)
 		 */
 		if (strcmp(symname, "D string") == 0) {
 			n->din_type = DIF_TYPE_STRING;
+			n->din_mip = mip;
 			return (n->din_type);
 		}
 
 		if (strcmp(symname, "bottom") == 0) {
 			n->din_type = DIF_TYPE_BOTTOM;
+			n->din_mip = mip;
 			return (n->din_type);
 		}
 
@@ -510,6 +459,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			}
 		}
 
+		n->din_mip = mip;
 		n->din_type = DIF_TYPE_CTF;
 		return (n->din_type);
 	/*
@@ -750,6 +700,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				    other->din_sym,
 				    dt_typefile_error(other->din_tf));
 
+			n->din_mip = mip;
 			n->din_sym = symnode->din_sym;
 			n->din_ctfid = mip->ctm_type;
 			n->din_tf = other->din_tf;
@@ -1672,13 +1623,6 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (n->din_type);
 
 	case DIF_OP_RET:
-		if (dn1 == NULL) {
-			fprintf(stderr,
-			    "dt_infer_type(%s, %zu): ret dn1 is NULL\n",
-			    insname[opcode], n->din_uidx);
-			return (-1);
-		}
-
 		/* 
 		 * Only do this if it's a CTF type. We might be coming from a
 		 * typecast.
@@ -1691,69 +1635,27 @@ dt_infer_type(dt_ifg_node_t *n)
 			tf = dn1->din_tf;
 			type = dn1->din_type;
 			ctfid = dn1->din_ctfid;
+			fprintf(stderr, "ret: in the != NULL\n");
 
 			/*
 			 * We only need one type here (the first one).
 			 */
 
-			/*
-			 * sym in range(symtab)
-			 */
-			if ((uintptr_t)dn1->din_sym >=
-			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+			mip = dt_mip_from_sym(dn1);
+			if (mip == NULL) {
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): sym (%p) is out "
-				    "of range: %p",
-				    insname[opcode], n->din_uidx, dn1->din_sym,
-				    (void *)(((uintptr_t)difo->dtdo_symtab) +
-				    difo->dtdo_symlen));
-
-			/*
-			 * Get the original type name of dn1->din_ctfid for
-			 * error reporting.
-			 */
-			if (dt_typefile_typename(tf, ctfid, buf, sizeof(buf)) !=
-			    ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed at getting "
-				    "type name %ld: %s",
-				    insname[opcode], n->din_uidx,
-				    ctfid,
-				    dt_typefile_error(tf));
-
-			if ((c = dt_get_class(tf, ctfid, 1)) != DTC_STRUCT)
+				    "%s(%s, %zu): failed to get mip from symbol (%s)",
+				    __func__, insname[opcode], n->din_uidx,
+				    dn1->din_sym);
 				return (-1);
-
-			/*
-			 * Figure out t2 = type_at(t1, symname)
-			 */
-			mip = malloc(sizeof(ctf_membinfo_t));
-			if (mip == NULL)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed "
-				    "to malloc mip",
-				    insname[opcode], n->din_uidx);
-
-			memset(mip, 0, sizeof(ctf_membinfo_t));
-
-			/*
-			 * Get the non-pointer type. This should NEVER fail.
-			 */
-			type = dt_typefile_reference(tf, ctfid);
-
-			if (dt_typefile_membinfo(tf, type, dn1->din_sym, mip) ==
-			    0)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed to get "
-				    "member info for %s(%s): %s",
-				    insname[opcode], n->din_uidx, buf,
-				    dn1->din_sym,
-				    dt_typefile_error(tf));
-
+			}
+			fprintf(stderr, "ret: assigning\n");
 			n->din_mip = mip;
 			n->din_tf = dn1->din_tf;
-			n->din_ctfid = mip->ctm_type;
-			n->din_type = DIF_TYPE_CTF;
+			n->din_ctfid =
+			    dn1 == dn1 ? mip->ctm_type : dn1->din_ctfid;
+			n->din_type =
+			    dn1 == dn1 ? DIF_TYPE_CTF : dn1->din_type;
 		} else {
 			n->din_ctfid = dn1->din_ctfid;
 			n->din_tf = dn1->din_tf;
@@ -1775,63 +1677,14 @@ dt_infer_type(dt_ifg_node_t *n)
 			 * We only need one type here (the first one).
 			 */
 
-			/*
-			 * sym in range(symtab)
-			 */
-			if ((uintptr_t)dn1->din_sym >=
-			    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+			mip = dt_mip_from_sym(dn1);
+			if (mip == NULL) {
 				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): sym (%p) is out "
-				    "of range: %p",
-				    insname[opcode], n->din_uidx,
-				    dn1->din_sym,
-				    (void *)(((uintptr_t)difo->dtdo_symtab) +
-				    difo->dtdo_symlen));
-
-			/*
-			 * Get the original type name of dn1->din_ctfid for
-			 * error reporting.
-			 */
-			if (dt_typefile_typename(dn1->din_tf,
-			    dn1->din_ctfid, buf,
-			    sizeof(buf)) != ((char *)buf))
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed at getting "
-				    "type name %ld: %s",
-				    insname[opcode], n->din_uidx,
-				    dn1->din_ctfid,
-				    dt_typefile_error(dn1->din_tf));
-
-			if ((c = dt_get_class(dn1->din_tf,
-			    dn1->din_ctfid, 1)) != DTC_STRUCT)
+				    "%s(%s, %zu): failed to get mip from symbol (%s)",
+				    __func__, insname[opcode], n->din_uidx,
+				    dn1->din_sym);
 				return (-1);
-
-			/*
-			 * Figure out t2 = type_at(t1, symname)
-			 */
-			mip = malloc(sizeof(ctf_membinfo_t));
-			if (mip == NULL)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed to "
-				    "malloc mip",
-				    insname[opcode], n->din_uidx);
-
-			memset(mip, 0, sizeof(ctf_membinfo_t));
-
-			/*
-			 * Get the non-pointer type. This should NEVER fail.
-			 */
-			type = dt_typefile_reference(
-			    dn1->din_tf, dn1->din_ctfid);
-
-			if (dt_typefile_membinfo(dn1->din_tf, type,
-			    dn1->din_sym, mip) == 0)
-				dt_set_progerr(g_dtp, g_pgp,
-				    "dt_infer_type(%s, %zu): failed to get "
-				    "member info for %s(%s): %s",
-				    insname[opcode], n->din_uidx, buf,
-				    dn1->din_sym,
-				    dt_typefile_error(dn1->din_tf));
+			}
 
 			n->din_mip = mip;
 			n->din_ctfid = mip->ctm_type;

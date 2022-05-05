@@ -109,7 +109,7 @@ dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 }
 
 static void
-relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
+relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 {
 	size_t size, kind;
 	ctf_id_t ctfid;
@@ -127,9 +127,13 @@ relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 	instr = node->din_buf[node->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
+	if (opcode == DIF_OP_ADD)
+		goto usetx_relo;
+
 	ctfid = dt_typefile_resolve(node->din_tf, node->din_mip->ctm_type);
 	size = dt_typefile_typesize(node->din_tf, ctfid);
 	kind = dt_typefile_typekind(node->din_tf, ctfid);
+
 
 	/*
 	 * NOTE: We support loading of CTF_K_ARRAY due to it
@@ -191,6 +195,11 @@ relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 		new_instr = DIF_INSTR_LOAD(new_op, r1, rd);
 	}
 
+usetx_relo:
+	if (node->din_mip == NULL) {
+		node->din_relocated = 1;
+		return;
+	}
 	offset = node->din_mip->ctm_offset / 8; /* bytes */
 
 	for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
@@ -225,7 +234,8 @@ relocate_uload(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 		usetx_node->din_relocated = 1;
 	}
 
-	node->din_buf[node->din_uidx] = new_instr;
+	if (opcode != DIF_OP_ADD)
+		node->din_buf[node->din_uidx] = new_instr;
 	node->din_relocated = 1;
 }
 static void
@@ -261,9 +271,11 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 	kind = dt_typefile_typekind(node->din_tf, ctfid);
 	offset = node->din_mip->ctm_offset / 8; /* bytes */
 
+	fprintf(stderr, "ret = %p\n", dt_list_next(&node->din_usetxs));
 	for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
 	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
 		usetx_node = usetx_ifgl->dil_ifgnode;
+		fprintf(stderr, "relocating from ret, node %zu\n", usetx_node->din_uidx);
 		if (usetx_node->din_relocated == 1)
 			continue;
 
@@ -543,9 +555,10 @@ relocate_ifg_entry(dt_ifg_list_t *ifgl, dtrace_hdl_t *dtp, dtrace_prog_t *pgp,
 		break;
 	}
 
+	case DIF_OP_ADD:
 	case DIF_OP_ULOAD:
 	case DIF_OP_UULOAD:
-		relocate_uload(dtp, node);
+		relocate_uloadadd(dtp, node);
 		break;
 
 	case DIF_OP_TYPECAST: {
@@ -763,10 +776,8 @@ dt_update_usetx_bb(dtrace_difo_t *difo, dt_basic_block_t *bb, dt_ifg_node_t *n)
 
 			nifgl->dil_ifgnode = n;
 			if (dt_in_list(&node->din_usetxs,
-			    (void *)&n, sizeof(dt_ifg_node_t *)) == NULL) {
-				DPRINTF("usetx %zu ==> %zu\n", n->din_uidx, node->din_uidx);
+			    (void *)&n, sizeof(dt_ifg_node_t *)) == NULL)
 				dt_list_append(&node->din_usetxs, nifgl);
-			}
 		}
 	}
 

@@ -1665,7 +1665,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 		fclose(graph_file);
 	}
 
-	//dtrace_dump_actions(dcp->dc_prog);
 	if (g_unsafe) {
 		return;
 	} else if (!g_exec) {
@@ -1876,6 +1875,7 @@ again:
 		dtrace_close(g_dtp);
 		exit(0);
 	} else if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) == 0) {
+		dtrace_dump_actions(dcp->dc_prog);
 		verictx = dt_verictx_init(g_dtp);
 		if (dt_prog_verify(verictx, dcp->dc_prog, dcp->dc_prog) != 0)
 			dfatal("failed to verify %p", dcp->dc_prog);

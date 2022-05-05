@@ -149,9 +149,8 @@ dt_typefile_ctfid(dt_typefile_t *typef, const char *type)
 	static size_t userland_len = strlen("userland ");
 	int rv;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (CTF_ERR);
 
 	obj = NULL;
 
@@ -185,9 +184,8 @@ dt_typefile_typename(dt_typefile_t *typef,
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (NULL);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -200,9 +198,8 @@ dt_typefile_reference(dt_typefile_t *typef, ctf_id_t id)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (CTF_ERR);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -215,9 +212,8 @@ dt_typefile_typesize(dt_typefile_t *typef, ctf_id_t id)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (-1);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -230,9 +226,8 @@ dt_typefile_error(dt_typefile_t *typef)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return ("NOT INITIALIZED");
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -246,21 +241,22 @@ dt_typefile_membinfo(dt_typefile_t *typef, ctf_id_t type,
 {
 	dt_module_t *mod;
 	ctf_file_t *fp;
+	dtrace_hdl_t *dtp;
 
-	assert(typef != NULL);
-	assert(typef->dtp != NULL);
-	assert(typef->modhdl != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (NULL);
 
 	mod = typef->modhdl;
 	fp = dt_module_getctf(typef->dtp, mod);
+	dtp = typef->dtp;
 
 	while (ctf_type_kind(fp, type) == CTF_K_FORWARD) {
 		char n[DT_TYPE_NAMELEN];
 		dtrace_typeinfo_t dtt;
 
-		if (ctf_type_name(fp, type, n, sizeof (n)) == NULL ||
-		    dt_type_lookup(n, &dtt) == -1 || (
-		    dtt.dtt_ctfp == fp && dtt.dtt_type == type))
+		if (ctf_type_name(fp, type, n, sizeof(n)) == NULL ||
+		    dtrace_lookup_by_type(dtp, DTRACE_OBJ_EVERY, n, &dtt) == -1 ||
+		    (dtt.dtt_ctfp == fp && dtt.dtt_type == type))
 			break; /* unable to improve our position */
 
 		fp = dtt.dtt_ctfp;
@@ -278,7 +274,8 @@ dt_typefile_typekind(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (CTF_ERR);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -326,7 +323,8 @@ dt_typefile_resolve(dt_typefile_t *typef, ctf_id_t type)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (CTF_ERR);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -340,7 +338,8 @@ dt_typefile_encoding(dt_typefile_t *typef, ctf_id_t type, ctf_encoding_t *ep)
 {
 	ctf_file_t *ctfp;
 
-	assert(typef != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (-1);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)
@@ -382,8 +381,8 @@ dt_typefile_compat(
 {
 	ctf_file_t *ctfp1, *ctfp2;
 
-	assert(tf1 != NULL);
-	assert(tf2 != NULL);
+	if (tf1 == NULL || tf2 == NULL)
+		return (0);
 
 	ctfp1 = dt_module_getctf(tf1->dtp, tf1->modhdl);
 	ctfp2 = dt_module_getctf(tf2->dtp, tf2->modhdl);
@@ -421,7 +420,8 @@ dt_typefile_buildup_struct(dt_typefile_t *typef, ctf_id_t id)
 	ctf_file_t *ctfp;
 	dt_typefile_struct_t *s;
 
-	assert(typef != NULL);
+	if (typef == NULL || typef->dtp == NULL || typef->modhdl == NULL)
+		return (NULL);
 
 	ctfp = dt_module_getctf(typef->dtp, typef->modhdl);
 	if (ctfp == NULL)

@@ -684,6 +684,79 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 	return (DTC_BOTTOM);
 }
 
+ctf_membinfo_t *
+dt_mip_from_sym(dt_ifg_node_t *n)
+{
+	ctf_membinfo_t *mip;
+	int c;
+	char buf[DT_TYPE_NAMELEN] = { 0 };
+	ctf_id_t type;
+	ctf_id_t kind;
+	dtrace_difo_t *difo;
+
+	if (n == NULL)
+		return (NULL);
+
+	/*
+	 * If there is no symbol here, we can't do anything.
+	 */
+	if (n->din_sym == NULL)
+		return (NULL);
+
+	if (n->din_difo == NULL)
+		return (NULL);
+
+	difo = n->din_difo;
+
+	/*
+	 * sym in range(symtab)
+	 */
+	if ((uintptr_t)n->din_sym >=
+	    ((uintptr_t)difo->dtdo_symtab) + difo->dtdo_symlen)
+		return (NULL);
+
+	/*
+	 * Get the original type name of n->din_ctfid for
+	 * error reporting.
+	 */
+	if (dt_typefile_typename(n->din_tf, n->din_ctfid, buf,
+	    sizeof(buf)) != ((char *)buf))
+		return (NULL);
+
+	c = dt_get_class(n->din_tf, n->din_ctfid, 1);
+	if (c != DTC_STRUCT && c != DTC_FORWARD)
+		return (NULL);
+
+	/*
+	 * Figure out t2 = type_at(t1, symname)
+	 */
+	mip = malloc(sizeof(ctf_membinfo_t));
+	if (mip == NULL)
+		return (NULL);
+
+	memset(mip, 0, sizeof(ctf_membinfo_t));
+
+	kind = dt_typefile_typekind(n->din_tf, n->din_ctfid);
+	if (kind == CTF_K_POINTER || kind == CTF_K_VOLATILE ||
+	    kind == CTF_K_TYPEDEF || kind == CTF_K_RESTRICT ||
+	    kind == CTF_K_CONST)
+		/*
+		 * Get the non-pointer type. This should NEVER fail.
+		 */
+		type = dt_typefile_reference(n->din_tf, n->din_ctfid);
+	else
+		type = n->din_ctfid;
+
+	assert(type != CTF_ERR);
+
+	if (dt_typefile_membinfo(n->din_tf, type, n->din_sym, mip) == 0) {
+		free(mip);
+		return (NULL);
+	}
+
+	return (mip);
+}
+
 /*
  * dt_type_compare() takes in two IFG nodes and "compares" their types.
  * Specifically, BOTTOM is the smallest element and no matter what it is

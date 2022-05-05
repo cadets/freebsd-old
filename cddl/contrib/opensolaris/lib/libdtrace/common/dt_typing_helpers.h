@@ -73,5 +73,6 @@ extern int dt_typecheck_stringii(dtrace_hdl_t *, dt_ifg_node_t *,
     dt_ifg_node_t *);
 extern int dt_typecheck_stringiv(dtrace_hdl_t *, dt_ifg_node_t *,
     dtrace_difv_t *);
+extern ctf_membinfo_t *dt_mip_from_sym(dt_ifg_node_t *);
 
 #endif /* _DT_TYPING_HELPERS_H_ */

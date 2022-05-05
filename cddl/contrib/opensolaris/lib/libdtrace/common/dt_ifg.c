@@ -1087,69 +1087,6 @@ dt_update_ifg(dtrace_difo_t *difo,
 	curnode = ifgl->dil_ifgnode;
 
 	dt_update_nodes(difo, curnode->din_bb, nkind, ifgl);
-
-#ifdef NDEBUG
-	DPRINTF("----------------------------------------------\n");
-	for (ifgl != NULL; ifgl = dt_list_next(ifgl)) {
-		n = ifgl->dil_ifgnode;
-
-		for (r1l = dt_list_next(&n->din_r1defs); r1l;
-		     r1l = dt_list_next(r1l)) {
-			n1 = r1l->dil_ifgnode;
-			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx,
-			    n1->din_uidx);
-		}
-
-		for (r1l = dt_list_next(&n->din_r2defs); r1l;
-		     r1l = dt_list_next(r1l)) {
-			n1 = r1l->dil_ifgnode;
-			DPRINTF("DEFN: %zu ==> %zu\n", n->din_uidx,
-			    n1->din_uidx);
-		}
-
-		for (r1l = dt_list_next(&n->din_vardefs); r1l;
-		     r1l = dt_list_next(r1l)) {
-			n1 = r1l->dil_ifgnode;
-			__nkind = &n1->din_kind;
-			if (__nkind->dtnk_kind != DT_NKIND_VAR)
-				errx(EXIT_FAILURE, "nkind of n1 is wrong: %d",
-				    __nkind->dtnk_kind);
-
-			DPRINTF("VAR: (%s, %s)\n",
-			    __nkind->dtnk_scope == DIFV_SCOPE_GLOBAL ?
-				      "global" :
-				__nkind->dtnk_scope == DIFV_SCOPE_THREAD ?
-				      "thread" :
-				      "local",
-			    __nkind->dtnk_varkind == DIFV_KIND_SCALAR ?
-				      "scalar" :
-				      "array");
-			DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx,
-			    n1->din_uidx);
-		}
-
-		for (sl = dt_list_next(&n->din_stacklist); sl;
-		     sl = dt_list_next(sl)) {
-			stack = &sl->dsl_stack;
-			DPRINTF("Stack identified by: ");
-			for (il = dt_list_next(&sl->dsl_identifier); il;
-			     il = dt_list_next(il)) {
-				if (dt_list_next(il) != NULL)
-					DPRINTF("%zu--", il->dtpl_bb->dtbb_idx);
-				else
-					DPRINTF("%zu\n", il->dtpl_bb->dtbb_idx);
-			}
-
-			for (se = dt_list_next(stack); se;
-			     se = dt_list_next(se)) {
-				n1 = se->ds_ifgnode;
-				DPRINTF("\tDEFN: %zu ==> %zu\n", n->din_uidx,
-				    n1->din_uidx);
-			}
-		}
-	}
-	DPRINTF("----------------------------------------------\n");
-#endif
 }
 
 static dt_basic_block_t *
