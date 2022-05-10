@@ -85,6 +85,62 @@ char t_sx[MAXPATHLEN];
 char t_thread[MAXPATHLEN];
 
 static void
+patch_usetxs(dtrace_hdl_t *dtp, dt_ifg_node_t *n)
+{
+	dt_ifg_list_t *usetx_ifgl;
+	dt_ifg_node_t *usetx_node;
+	uint8_t rd, opcode;
+	dif_instr_t instr;
+	dtrace_difo_t *difo;
+	int index;
+	uint16_t offset;
+
+	if (n == NULL)
+		return;
+
+	if (n->din_difo == NULL)
+		return;
+
+	if (n->din_mip == NULL)
+		return;
+
+	difo = n->din_difo;
+	offset = n->din_mip->ctm_offset / 8 /* bytes */;
+
+	for (usetx_ifgl = dt_list_next(&n->din_usetxs); usetx_ifgl;
+	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
+		usetx_node = usetx_ifgl->dil_ifgnode;
+		if (usetx_node->din_relocated == 1)
+			continue;
+
+		instr = usetx_node->din_buf[usetx_node->din_uidx];
+		opcode = DIF_INSTR_OP(instr);
+		if (opcode != DIF_OP_USETX)
+			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
+
+		rd = DIF_INSTR_RD(instr);
+
+		if (difo->dtdo_inthash == NULL) {
+			difo->dtdo_inthash = dt_inttab_create(dtp);
+
+			if (difo->dtdo_inthash == NULL)
+				errx(EXIT_FAILURE,
+				    "failed "
+				    "to allocate inttab");
+		}
+
+		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
+		    -1)
+			errx(EXIT_FAILURE, "failed to insert %u into inttab",
+			    offset);
+
+		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
+		    index, rd);
+		usetx_node->din_relocated = 1;
+	}
+}
+
+static void
 dt_prepare_typestrings(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	char __kernel[] = "kernel`";
@@ -200,39 +256,8 @@ usetx_relo:
 		node->din_relocated = 1;
 		return;
 	}
-	offset = node->din_mip->ctm_offset / 8; /* bytes */
 
-	for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
-	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
-		usetx_node = usetx_ifgl->dil_ifgnode;
-		if (usetx_node->din_relocated == 1)
-			continue;
-
-		instr = usetx_node->din_buf[usetx_node->din_uidx];
-		opcode = DIF_INSTR_OP(instr);
-		if (opcode != DIF_OP_USETX)
-			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
-
-		rd = DIF_INSTR_RD(instr);
-
-		if (difo->dtdo_inthash == NULL) {
-			difo->dtdo_inthash = dt_inttab_create(dtp);
-
-			if (difo->dtdo_inthash == NULL)
-				errx(EXIT_FAILURE,
-				    "failed "
-				    "to allocate inttab");
-		}
-
-		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
-		    -1)
-			errx(EXIT_FAILURE, "failed to insert %u into inttab",
-			    offset);
-
-		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
-		    index, rd);
-		usetx_node->din_relocated = 1;
-	}
+	patch_usetxs(dtp, node);
 
 	if (opcode != DIF_OP_ADD)
 		node->din_buf[node->din_uidx] = new_instr;
@@ -513,62 +538,6 @@ check_setxs(dt_list_t *setx_defs1, dt_list_t *setx_defs2)
 	}
 
 	return (1);
-}
-
-static void
-patch_usetxs(dtrace_hdl_t *dtp, dt_ifg_node_t *n)
-{
-	dt_ifg_list_t *usetx_ifgl;
-	dt_ifg_node_t *usetx_node;
-	uint8_t rd, opcode;
-	dif_instr_t instr;
-	dtrace_difo_t *difo;
-	int index;
-	uint16_t offset;
-
-	if (n == NULL)
-		return;
-
-	if (n->din_difo == NULL)
-		return;
-
-	if (n->din_mip == NULL)
-		return;
-
-	difo = n->din_difo;
-	offset = n->din_mip->ctm_offset / 8 /* bytes */;
-
-	for (usetx_ifgl = dt_list_next(&n->din_usetxs); usetx_ifgl;
-	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
-		usetx_node = usetx_ifgl->dil_ifgnode;
-		if (usetx_node->din_relocated == 1)
-			continue;
-
-		instr = usetx_node->din_buf[usetx_node->din_uidx];
-		opcode = DIF_INSTR_OP(instr);
-		if (opcode != DIF_OP_USETX)
-			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
-
-		rd = DIF_INSTR_RD(instr);
-
-		if (difo->dtdo_inthash == NULL) {
-			difo->dtdo_inthash = dt_inttab_create(dtp);
-
-			if (difo->dtdo_inthash == NULL)
-				errx(EXIT_FAILURE,
-				    "failed "
-				    "to allocate inttab");
-		}
-
-		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
-		    -1)
-			errx(EXIT_FAILURE, "failed to insert %u into inttab",
-			    offset);
-
-		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
-		    index, rd);
-		usetx_node->din_relocated = 1;
-	}
 }
 
 static void
