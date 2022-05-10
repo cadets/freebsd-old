@@ -173,13 +173,7 @@ relocate_uloadadd(dtrace_hdl_t *dtp, dt_ifg_node_t *node)
 	uint8_t opcode, new_op;
 	ctf_encoding_t encoding;
 	dif_instr_t instr, new_instr;
-	uint16_t offset;
-	dt_ifg_list_t *usetx_ifgl;
-	dt_ifg_node_t *usetx_node;
-	dtrace_difo_t *difo;
-	int index;
 
-	difo = node->din_difo;
 	instr = node->din_buf[node->din_uidx];
 	opcode = DIF_INSTR_OP(instr);
 
@@ -269,21 +263,6 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
     dtrace_actkind_t actkind, dtrace_actdesc_t *ad,
     dtrace_diftype_t *orig_rtype)
 {
-	uint8_t opcode;
-	dt_ifg_list_t *usetx_ifgl;
-	dt_ifg_node_t *usetx_node;
-	dtrace_diftype_t *rtype;
-	uint16_t offset;
-	size_t size, kind;
-	ctf_id_t ctfid;
-	int index;
-	dtrace_difo_t *difo;
-	dif_instr_t instr;
-	uint8_t rd, r1;
-
-	instr = node->din_buf[node->din_uidx];
-	opcode = DIF_INSTR_OP(instr);
-	difo = node->din_difo;
 
 	/*
 	 * If this instruction does not come from a usetx,
@@ -292,42 +271,7 @@ relocate_retpush(dtrace_hdl_t *dtp, dt_ifg_node_t *node,
 	if (node->din_mip == NULL)
 		return;
 
-	ctfid = dt_typefile_resolve(node->din_tf, node->din_mip->ctm_type);
-	size = dt_typefile_typesize(node->din_tf, ctfid);
-	kind = dt_typefile_typekind(node->din_tf, ctfid);
-	offset = node->din_mip->ctm_offset / 8; /* bytes */
-
-	fprintf(stderr, "ret = %p\n", dt_list_next(&node->din_usetxs));
-	for (usetx_ifgl = dt_list_next(&node->din_usetxs); usetx_ifgl;
-	     usetx_ifgl = dt_list_next(usetx_ifgl)) {
-		usetx_node = usetx_ifgl->dil_ifgnode;
-		fprintf(stderr, "relocating from ret, node %zu\n", usetx_node->din_uidx);
-		if (usetx_node->din_relocated == 1)
-			continue;
-
-		instr = usetx_node->din_buf[usetx_node->din_uidx];
-		opcode = DIF_INSTR_OP(instr);
-		if (opcode != DIF_OP_USETX)
-			errx(EXIT_FAILURE, "opcode (%d) is not usetx", opcode);
-
-		rd = DIF_INSTR_RD(instr);
-
-		if (difo->dtdo_inthash == NULL) {
-			difo->dtdo_inthash = dt_inttab_create(dtp);
-
-			if (difo->dtdo_inthash == NULL)
-				errx(EXIT_FAILURE, "failed to allocate inttab");
-		}
-
-		if ((index = dt_inttab_insert(difo->dtdo_inthash, offset, 0)) ==
-		    -1)
-			errx(EXIT_FAILURE, "failed to insert %u into inttab",
-			    offset);
-
-		usetx_node->din_buf[usetx_node->din_uidx] = DIF_INSTR_SETX(
-		    index, rd);
-		usetx_node->din_relocated = 1;
-	}
+	patch_usetxs(dtp, node);
 }
 
 static void
