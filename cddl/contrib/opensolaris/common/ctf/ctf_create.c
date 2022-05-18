@@ -1247,8 +1247,8 @@ membadd(const char *name, ctf_id_t type, ulong_t offset, void *arg)
  * destination container already contains a named type which has the same
  * attributes, then we succeed and return this type but no changes occur.
  */
-ctf_id_t
-ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
+static ctf_id_t
+_ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 {
 	ctf_id_t dst_type = CTF_ERR;
 	uint_t dst_kind = CTF_K_UNKNOWN;
@@ -1576,4 +1576,11 @@ ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 	}
 
 	return (dst_type);
+}
+
+ctf_id_t
+ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
+{
+
+	return (_ctf_add_type(dst_fp, src_fp, src_type));
 }
