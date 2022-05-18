@@ -227,6 +227,7 @@ extern ctf_id_t ctf_add_integer(ctf_file_t *, uint_t,
     const char *, const ctf_encoding_t *);
 extern ctf_id_t ctf_add_pointer(ctf_file_t *, uint_t, ctf_id_t);
 extern ctf_id_t ctf_add_type(ctf_file_t *, ctf_file_t *, ctf_id_t);
+extern ctf_id_t ctf_add_type_cp(ctf_file_t *, ctf_file_t *, ctf_id_t);
 extern ctf_id_t ctf_add_typedef(ctf_file_t *, uint_t, const char *, ctf_id_t);
 extern ctf_id_t ctf_add_restrict(ctf_file_t *, uint_t, ctf_id_t);
 extern ctf_id_t ctf_add_struct(ctf_file_t *, uint_t, const char *);

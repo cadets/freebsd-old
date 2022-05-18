@@ -1584,3 +1584,34 @@ ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 
 	return (_ctf_add_type(dst_fp, src_fp, src_type));
 }
+
+static void
+ctf_set_copied(ctf_type_t *tp)
+{
+
+	tp->ctt_copied = 1;
+}
+
+ctf_id_t
+ctf_add_type_cp(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
+{
+	ctf_id_t dst_type;
+	const ctf_type_t *tp;
+
+	dst_type = _ctf_add_type(dst_fp, src_fp, src_type);
+	tp = ctf_lookup_by_id(&dst_fp, dst_type);
+	if (tp == NULL) {
+		/*
+		 * If deletion fails, we want to return a different error
+		 * message than the one that we return if we couldn't find
+		 * the ctf_type_t.
+		 */
+		if (ctf_delete_type(dst_fp, dst_type) != 0)
+			return (CTF_ERR);
+
+		return (ctf_set_errno(dst_fp, ECTF_NOTYPE));
+	}
+
+	ctf_set_copied((ctf_type_t *)tp);
+	return (dst_type);
+}
