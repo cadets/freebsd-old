@@ -1953,7 +1953,12 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		 * by the current D script. If so, we won't generate any
 		 * relocations, and instead process it fully.
 		 */
-		if (dnp->dn_copied_ctf || mod != dnp->dn_dtp->dt_ddefs) {
+		if (ctf_type_copied(dnp->dn_ctfp, dnp->dn_type) == CTF_ERR)
+			errx(EXIT_FAILURE,
+			    "%s(): ctf_type_copied() error: %s\n", __func__,
+			    ctf_errmsg(ctf_errno(dnp->dn_ctfp)));
+
+		if (dnp->dn_copied_ctf == 1 || mod != dnp->dn_dtp->dt_ddefs) {
 			/*
 			 * Generate an USETX instruction with the current symbol
 			 * that we will resolve later on in the linking process.
