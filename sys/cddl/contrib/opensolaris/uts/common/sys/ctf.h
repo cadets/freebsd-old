@@ -177,15 +177,15 @@ typedef struct ctf_stype {
  * CTF_LSIZE_SENT in ctt_size.
  */
 typedef struct ctf_type {
-	uint_t ctt_name;		/* reference to name in string table */
-	ushort_t ctt_info;		/* encoded kind, variant length (see below) */
+	uint_t ctt_name;	/* reference to name in string table */
+	ushort_t ctt_info;	/* encoded kind, variant length (see below) */
 	union {
-		ushort_t _size;		/* always CTF_LSIZE_SENT */
-		ushort_t _type; 	/* do not use */
+		ushort_t _size;	/* always CTF_LSIZE_SENT */
+		ushort_t _type; /* do not use */
 	} _u;
-	uint_t ctt_lsizehi;		/* high 32 bits of type size in bytes */
-	uint_t ctt_lsizelo;		/* low 32 bits of type size in bytes */
-	unsigned char ctt_copied;	/* has this type been copied in-memory? */
+	uint_t ctt_lsizehi;	/* high 32 bits of type size in bytes */
+	uint_t ctt_lsizelo;	/* low 32 bits of type size in bytes */
+	int ctt_copied;		/* has this type been copied in-memory? */
 } ctf_type_t;
 
 #define	ctt_size _u._size	/* for fundamental types that have a size */

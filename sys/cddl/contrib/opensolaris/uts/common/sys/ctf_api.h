@@ -189,6 +189,7 @@ extern ssize_t ctf_type_lname(ctf_file_t *, ctf_id_t, char *, size_t);
 extern char *ctf_type_name(ctf_file_t *, ctf_id_t, char *, size_t);
 extern char *ctf_type_qname(ctf_file_t *, ctf_id_t, char *, size_t,
     const char *);
+extern int ctf_type_copied(ctf_file_t *, ctf_id_t);
 extern ssize_t ctf_type_size(ctf_file_t *, ctf_id_t);
 extern ssize_t ctf_type_align(ctf_file_t *, ctf_id_t);
 extern int ctf_type_kind(ctf_file_t *, ctf_id_t);

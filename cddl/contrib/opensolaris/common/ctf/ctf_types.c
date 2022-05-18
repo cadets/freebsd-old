@@ -339,6 +339,16 @@ ctf_type_qname(ctf_file_t *fp, ctf_id_t type, char *buf, size_t len,
 	return (rv >= 0 && rv < len ? buf : NULL);
 }
 
+int
+ctf_type_copied(ctf_file_t *fp, ctf_id_t type)
+{
+	const ctf_type_t *tp;
+
+	if ((tp = ctf_lookup_by_id(&fp, type)) == NULL)
+		return (ctf_set_errno(fp, ECTF_BADID));
+
+	return (tp->ctt_copied);
+}
 
 /*
  * Resolve the type down to a base type node, and then return the size
