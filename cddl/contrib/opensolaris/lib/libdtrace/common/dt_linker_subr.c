@@ -342,6 +342,14 @@ dt_insert_var_by_tup(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 	dt_list_append(&var_list, ve);
 }
 
+int
+dt_var_uninitialized(dtrace_difv_t *difv)
+{
+
+	return (difv->dtdv_ctfid == CTF_ERR && difv->dtdv_tf == NULL &&
+	    difv->dtdv_sym == NULL);
+}
+
 void
 dt_insert_var_by_difv(dtrace_difv_t *difv)
 {
@@ -381,8 +389,7 @@ dt_insert_var_by_difv(dtrace_difv_t *difv)
 
 	var->dtdv_ctfid = CTF_ERR;
 	var->dtdv_sym = NULL;
-	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
-	var->dtdv_type.dtdt_size = 0;
+	var->dtdv_type = difv->dtdv_type;
 	var->dtdv_stack = NULL;
 	var->dtdv_tf = NULL;
 	var->dtdv_storedtype = difv->dtdv_type;

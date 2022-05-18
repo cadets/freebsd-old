@@ -60,6 +60,7 @@ extern dtrace_difv_t *dt_get_variable(dtrace_difo_t *, uint16_t, int, int);
 extern dtrace_difv_t *dt_get_var_from_varlist(uint16_t, int, int);
 extern void dt_get_varinfo(dif_instr_t, uint16_t *, int *, int *);
 extern void dt_insert_var(dtrace_difv_t *);
+extern int dt_var_uninitialized(dtrace_difv_t *);
 extern void dt_populate_varlist(dtrace_difo_t *);
 extern dt_stacklist_t *dt_get_stack(dt_basic_block_t **, ssize_t,
     dt_ifg_node_t *);
