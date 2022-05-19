@@ -299,6 +299,7 @@ write_type(void *arg1, void *arg2)
 	ctf_enum_t cte;
 	ushort_t id;
 
+	ctt.ctt_copied = 0;
 	ctlm.ctlm_pad = 0;
 
 	/*
