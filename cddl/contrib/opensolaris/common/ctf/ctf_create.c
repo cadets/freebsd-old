@@ -658,7 +658,7 @@ clp2(size_t x)
 
 static ctf_id_t
 ctf_add_encoded(ctf_file_t *fp, uint_t flag,
-    const char *name, const ctf_encoding_t *ep, uint_t kind)
+    const char *name, const ctf_encoding_t *ep, uint_t kind, int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -671,6 +671,7 @@ ctf_add_encoded(ctf_file_t *fp, uint_t flag,
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(kind, flag, 0);
 	dtd->dtd_data.ctt_size = clp2(P2ROUNDUP(ep->cte_bits, NBBY) / NBBY);
+	dtd->dtd_data.ctt_copied = mark_copy;
 	dtd->dtd_u.dtu_enc = *ep;
 
 	return (type);
@@ -696,18 +697,33 @@ ctf_add_reftype(ctf_file_t *fp, uint_t flag, ctf_id_t ref, uint_t kind)
 	return (type);
 }
 
-ctf_id_t
-ctf_add_integer(ctf_file_t *fp, uint_t flag,
-    const char *name, const ctf_encoding_t *ep)
+static ctf_id_t
+_ctf_add_integer(ctf_file_t *fp, uint_t flag,
+    const char *name, const ctf_encoding_t *ep, int mark_copy)
 {
-	return (ctf_add_encoded(fp, flag, name, ep, CTF_K_INTEGER));
+	return (ctf_add_encoded(fp, flag, name, ep, CTF_K_INTEGER, mark_copy));
 }
 
 ctf_id_t
-ctf_add_float(ctf_file_t *fp, uint_t flag,
-    const char *name, const ctf_encoding_t *ep)
+ctf_add_integer(ctf_file_t *fp, uint_t flag, const char *name,
+    const ctf_encoding_t *ep)
 {
-	return (ctf_add_encoded(fp, flag, name, ep, CTF_K_FLOAT));
+
+	return (_ctf_add_integer(fp, flag, name, ep, 0));
+}
+
+static ctf_id_t
+_ctf_add_float(ctf_file_t *fp, uint_t flag,
+    const char *name, const ctf_encoding_t *ep, int mark_copy)
+{
+	return (ctf_add_encoded(fp, flag, name, ep, CTF_K_FLOAT, mark_copy));
+}
+
+ctf_id_t
+ctf_add_float(ctf_file_t *fp, uint_t flag, const char *name,
+    const ctf_encoding_t *ep)
+{
+	return (_ctf_add_float(fp, flag, name, ep, 0));
 }
 
 ctf_id_t
