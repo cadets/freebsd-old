@@ -939,8 +939,8 @@ ctf_add_union(ctf_file_t *fp, uint_t flag, const char *name)
 	return (_ctf_add_union(fp, flag, name, 0));
 }
 
-ctf_id_t
-ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name)
+static ctf_id_t
+_ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 {
 	ctf_hash_t *hp = &fp->ctf_enums;
 	ctf_helem_t *hep = NULL;
@@ -957,8 +957,16 @@ ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_ENUM, flag, 0);
 	dtd->dtd_data.ctt_size = fp->ctf_dmodel->ctd_int;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name)
+{
+
+	return (_ctf_add_enum(fp, flag, name, 0));
 }
 
 ctf_id_t
@@ -1619,7 +1627,7 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 			    ctf_enum_iter(dst_fp, dst_type, enumcmp, &src))
 				return (ctf_set_errno(dst_fp, ECTF_CONFLICT));
 		} else {
-			dst_type = ctf_add_enum(dst_fp, flag, name);
+			dst_type = _ctf_add_enum(dst_fp, flag, name, mark_copy);
 			if ((dst.ctb_type = dst_type) == CTF_ERR ||
 			    ctf_enum_iter(src_fp, src_type, enumadd, &dst))
 				return (CTF_ERR); /* errno is set for us */
