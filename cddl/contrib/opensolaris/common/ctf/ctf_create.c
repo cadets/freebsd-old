@@ -740,8 +740,9 @@ ctf_add_pointer(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 	return (_ctf_add_pointer(fp, flag, ref, 0));
 }
 
-ctf_id_t
-ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp)
+static ctf_id_t
+_ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -765,11 +766,19 @@ ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_ARRAY, flag, 0);
 	dtd->dtd_data.ctt_size = 0;
+	dtd->dtd_data.ctt_copied = mark_copy;
 	dtd->dtd_u.dtu_arr = *arp;
 	ctf_ref_inc(fp, arp->ctr_contents);
 	ctf_ref_inc(fp, arp->ctr_index);
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp)
+{
+
+	return (_ctf_add_array(fp, flag, arp, 0));
 }
 
 int
@@ -1489,7 +1498,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 			if (bcmp(&src_ar, &dst_ar, sizeof (ctf_arinfo_t)))
 				return (ctf_set_errno(dst_fp, ECTF_CONFLICT));
 		} else
-			dst_type = ctf_add_array(dst_fp, flag, &src_ar);
+			dst_type = _ctf_add_array(dst_fp, flag, &src_ar,
+			    mark_copy);
 		break;
 
 	case CTF_K_FUNCTION:
