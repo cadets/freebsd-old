@@ -813,9 +813,9 @@ ctf_set_array(ctf_file_t *fp, ctf_id_t type, const ctf_arinfo_t *arp)
 	return (0);
 }
 
-ctf_id_t
-ctf_add_function(ctf_file_t *fp, uint_t flag,
-    const ctf_funcinfo_t *ctc, const ctf_id_t *argv)
+static ctf_id_t
+_ctf_add_function(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
+    const ctf_id_t *argv, int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -857,6 +857,7 @@ ctf_add_function(ctf_file_t *fp, uint_t flag,
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_FUNCTION, flag, vlen);
 	dtd->dtd_data.ctt_type = (ushort_t)ctc->ctc_return;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	ctf_ref_inc(fp, ctc->ctc_return);
 	for (i = 0; i < ctc->ctc_argc; i++)
@@ -868,6 +869,14 @@ ctf_add_function(ctf_file_t *fp, uint_t flag,
 	dtd->dtd_u.dtu_argv = vdat;
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_function(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
+    const ctf_id_t *argv)
+{
+
+	return (_ctf_add_function(fp, flag, ctc, argv, 0));
 }
 
 ctf_id_t
@@ -1510,7 +1519,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 		if (ctc.ctc_return == CTF_ERR)
 			return (CTF_ERR); /* errno is set for us */
 
-		dst_type = ctf_add_function(dst_fp, flag, &ctc, NULL);
+		dst_type = _ctf_add_function(dst_fp, flag, &ctc, NULL,
+		    mark_copy);
 		break;
 
 	case CTF_K_STRUCT:
