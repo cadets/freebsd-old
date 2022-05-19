@@ -1084,8 +1084,9 @@ ctf_add_restrict(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 	return (_ctf_add_restrict(fp, flag, ref, 0));
 }
 
-int
-ctf_add_enumerator(ctf_file_t *fp, ctf_id_t enid, const char *name, int value)
+static int
+_ctf_add_enumerator(ctf_file_t *fp, ctf_id_t enid, const char *name, int value,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd = ctf_dtd_lookup(fp, enid);
 	ctf_dmdef_t *dmd;
@@ -1132,12 +1133,20 @@ ctf_add_enumerator(ctf_file_t *fp, ctf_id_t enid, const char *name, int value)
 	dmd->dmd_value = value;
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(kind, root, vlen + 1);
+	dtd->dtd_data.ctt_copied = mark_copy;
 	ctf_list_append(&dtd->dtd_u.dtu_members, dmd);
 
 	fp->ctf_dtstrlen += strlen(s) + 1;
 	fp->ctf_flags |= LCTF_DIRTY;
 
 	return (0);
+}
+
+int
+ctf_add_enumerator(ctf_file_t *fp, ctf_id_t enid, const char *name, int value)
+{
+
+	return (_ctf_add_enumerator(fp, enid, name, value, 0));
 }
 
 int
@@ -1294,8 +1303,11 @@ enumadd(const char *name, int value, void *arg)
 {
 	ctf_bundle_t *ctb = arg;
 
-	return (ctf_add_enumerator(ctb->ctb_file, ctb->ctb_type,
-	    name, value) == CTF_ERR);
+	/*
+	 * TODO: FIXME: XXX: Assuming not copied for now, need to fix this.
+	 */
+	return (_ctf_add_enumerator(ctb->ctb_file, ctb->ctb_type,
+	    name, value, 0) == CTF_ERR);
 }
 
 /*ARGSUSED*/
