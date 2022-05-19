@@ -1149,8 +1149,9 @@ ctf_add_enumerator(ctf_file_t *fp, ctf_id_t enid, const char *name, int value)
 	return (_ctf_add_enumerator(fp, enid, name, value, 0));
 }
 
-int
-ctf_add_member(ctf_file_t *fp, ctf_id_t souid, const char *name, ctf_id_t type)
+static int
+_ctf_add_member(ctf_file_t *fp, ctf_id_t souid, const char *name, ctf_id_t type,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd = ctf_dtd_lookup(fp, souid);
 	ctf_dmdef_t *dmd;
@@ -1240,6 +1241,7 @@ ctf_add_member(ctf_file_t *fp, ctf_id_t souid, const char *name, ctf_id_t type)
 		dtd->dtd_data.ctt_size = (ushort_t)ssize;
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(kind, root, vlen + 1);
+	dtd->dtd_data.ctt_copied = mark_copy;
 	ctf_list_append(&dtd->dtd_u.dtu_members, dmd);
 
 	if (s != NULL)
@@ -1249,6 +1251,14 @@ ctf_add_member(ctf_file_t *fp, ctf_id_t souid, const char *name, ctf_id_t type)
 	fp->ctf_flags |= LCTF_DIRTY;
 	return (0);
 }
+
+int
+ctf_add_member(ctf_file_t *fp, ctf_id_t souid, const char *name, ctf_id_t type)
+{
+
+	return (_ctf_add_member(fp, souid, name, type, 0));
+}
+
 
 /*
  * This removes a type from the dynamic section. This will fail if the type is
