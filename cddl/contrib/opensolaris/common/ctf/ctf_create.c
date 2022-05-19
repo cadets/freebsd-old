@@ -879,8 +879,8 @@ ctf_add_function(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
 	return (_ctf_add_function(fp, flag, ctc, argv, 0));
 }
 
-ctf_id_t
-ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name)
+static ctf_id_t
+_ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 {
 	ctf_hash_t *hp = &fp->ctf_structs;
 	ctf_helem_t *hep = NULL;
@@ -897,8 +897,16 @@ ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_STRUCT, flag, 0);
 	dtd->dtd_data.ctt_size = 0;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name)
+{
+
+	return (_ctf_add_struct(fp, flag, name, 0));
 }
 
 ctf_id_t
