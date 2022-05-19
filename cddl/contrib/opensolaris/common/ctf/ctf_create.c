@@ -1017,8 +1017,9 @@ ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
 	return (_ctf_add_forward(fp, flag, name, kind, 0));
 }
 
-ctf_id_t
-ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
+static ctf_id_t
+_ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -1034,9 +1035,17 @@ ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_TYPEDEF, flag, 0);
 	dtd->dtd_data.ctt_type = (ushort_t)ref;
+	dtd->dtd_data.ctt_copied = mark_copy;
 	ctf_ref_inc(fp, ref);
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
+{
+
+	return (_ctf_add_typedef(fp, flag, name, ref, 0));
 }
 
 static ctf_id_t
@@ -1667,8 +1676,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 		 * already exists in dst_fp, it is correct or equivalent.
 		 */
 		if (dst_type == CTF_ERR) {
-			dst_type = ctf_add_typedef(dst_fp, flag,
-			    name, src_type);
+			dst_type = _ctf_add_typedef(dst_fp, flag,
+			    name, src_type, mark_copy);
 		}
 		break;
 
