@@ -678,7 +678,8 @@ ctf_add_encoded(ctf_file_t *fp, uint_t flag,
 }
 
 static ctf_id_t
-ctf_add_reftype(ctf_file_t *fp, uint_t flag, ctf_id_t ref, uint_t kind)
+ctf_add_reftype(ctf_file_t *fp, uint_t flag, ctf_id_t ref, uint_t kind,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -693,6 +694,7 @@ ctf_add_reftype(ctf_file_t *fp, uint_t flag, ctf_id_t ref, uint_t kind)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(kind, flag, 0);
 	dtd->dtd_data.ctt_type = (ushort_t)ref;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	return (type);
 }
@@ -726,10 +728,16 @@ ctf_add_float(ctf_file_t *fp, uint_t flag, const char *name,
 	return (_ctf_add_float(fp, flag, name, ep, 0));
 }
 
+static ctf_id_t
+_ctf_add_pointer(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
+{
+	return (ctf_add_reftype(fp, flag, ref, CTF_K_POINTER, mark_copy));
+}
+
 ctf_id_t
 ctf_add_pointer(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
-	return (ctf_add_reftype(fp, flag, ref, CTF_K_POINTER));
+	return (_ctf_add_pointer(fp, flag, ref, 0));
 }
 
 ctf_id_t
@@ -980,22 +988,40 @@ ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
 	return (type);
 }
 
+static ctf_id_t
+_ctf_add_volatile(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
+{
+	return (ctf_add_reftype(fp, flag, ref, CTF_K_VOLATILE, mark_copy));
+}
+
 ctf_id_t
 ctf_add_volatile(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
-	return (ctf_add_reftype(fp, flag, ref, CTF_K_VOLATILE));
+	return (_ctf_add_volatile(fp, flag, ref, 0));
+}
+
+static ctf_id_t
+_ctf_add_const(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
+{
+	return (ctf_add_reftype(fp, flag, ref, CTF_K_CONST, mark_copy));
 }
 
 ctf_id_t
 ctf_add_const(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
-	return (ctf_add_reftype(fp, flag, ref, CTF_K_CONST));
+	return (_ctf_add_const(fp, flag, ref, 0));
+}
+
+static ctf_id_t
+_ctf_add_restrict(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
+{
+	return (ctf_add_reftype(fp, flag, ref, CTF_K_RESTRICT, mark_copy));
 }
 
 ctf_id_t
 ctf_add_restrict(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
-	return (ctf_add_reftype(fp, flag, ref, CTF_K_RESTRICT));
+	return (_ctf_add_restrict(fp, flag, ref, 0));
 }
 
 int
@@ -1264,7 +1290,8 @@ membadd(const char *name, ctf_id_t type, ulong_t offset, void *arg)
  * attributes, then we succeed and return this type but no changes occur.
  */
 static ctf_id_t
-_ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
+_ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
+    int mark_copy)
 {
 	ctf_id_t dst_type = CTF_ERR;
 	uint_t dst_kind = CTF_K_UNKNOWN;
@@ -1365,6 +1392,10 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 				    sizeof (ctf_encoding_t)) != 0)
 					continue;
 			}
+
+			if (mark_copy)
+				dtd->dtd_data.ctt_copied = 1;
+
 			return (dtd->dtd_type);
 		}
 	}
@@ -1433,7 +1464,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 		if (src_type == CTF_ERR)
 			return (CTF_ERR); /* errno is set for us */
 
-		dst_type = ctf_add_reftype(dst_fp, flag, src_type, kind);
+		dst_type = ctf_add_reftype(dst_fp, flag, src_type, kind,
+		    mark_copy);
 		break;
 
 	case CTF_K_ARRAY:
@@ -1598,36 +1630,12 @@ ctf_id_t
 ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 {
 
-	return (_ctf_add_type(dst_fp, src_fp, src_type));
-}
-
-static void
-ctf_set_copied(ctf_type_t *tp)
-{
-
-	tp->ctt_copied = 1;
+	return (_ctf_add_type(dst_fp, src_fp, src_type, 0));
 }
 
 ctf_id_t
 ctf_add_type_cp(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type)
 {
-	ctf_id_t dst_type;
-	const ctf_type_t *tp;
 
-	dst_type = _ctf_add_type(dst_fp, src_fp, src_type);
-	tp = ctf_lookup_by_id(&dst_fp, dst_type);
-	if (tp == NULL) {
-		/*
-		 * If deletion fails, we want to return a different error
-		 * message than the one that we return if we couldn't find
-		 * the ctf_type_t.
-		 */
-		if (ctf_delete_type(dst_fp, dst_type) != 0)
-			return (CTF_ERR);
-
-		return (ctf_set_errno(dst_fp, ECTF_NOTYPE));
-	}
-
-	ctf_set_copied((ctf_type_t *)tp);
-	return (dst_type);
+	return (_ctf_add_type(dst_fp, src_fp, src_type, 1));
 }
