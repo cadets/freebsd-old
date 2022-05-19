@@ -969,8 +969,9 @@ ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name)
 	return (_ctf_add_enum(fp, flag, name, 0));
 }
 
-ctf_id_t
-ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
+static ctf_id_t
+_ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind,
+    int mark_copy)
 {
 	ctf_hash_t *hp;
 	ctf_helem_t *hep;
@@ -1004,8 +1005,16 @@ ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_FORWARD, flag, 0);
 	dtd->dtd_data.ctt_type = kind;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	return (type);
+}
+
+ctf_id_t
+ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
+{
+
+	return (_ctf_add_forward(fp, flag, name, kind, 0));
 }
 
 ctf_id_t
@@ -1636,8 +1645,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 
 	case CTF_K_FORWARD:
 		if (dst_type == CTF_ERR) {
-			dst_type = ctf_add_forward(dst_fp,
-			    flag, name, CTF_K_STRUCT); /* assume STRUCT */
+			dst_type = _ctf_add_forward(dst_fp, flag, name,
+			    CTF_K_STRUCT, mark_copy); /* assume STRUCT */
 		}
 		break;
 
