@@ -1952,13 +1952,11 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		/*
 		 * We check if this particular node has a type that's defined
 		 * by the current D script. If so, we won't generate any
-		 * relocations, and instead process it fully.
+		 * relocations, and instead process it fully. We also ignore the
+		 * potential return of CTF_ERR here, as it can occur in valid
+		 * scenarios.
 		 */
 		copied = ctf_type_copied(dnp->dn_ctfp, dnp->dn_type);
-		if (copied == CTF_ERR)
-			errx(EXIT_FAILURE,
-			    "%s(): ctf_type_copied() error: %s\n", __func__,
-			    ctf_errmsg(ctf_errno(dnp->dn_ctfp)));
 
 		if (copied == 1 || mod != dnp->dn_dtp->dt_ddefs) {
 			/*
