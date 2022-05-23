@@ -342,12 +342,12 @@ ctf_type_qname(ctf_file_t *fp, ctf_id_t type, char *buf, size_t len,
 int
 ctf_type_copied(ctf_file_t *fp, ctf_id_t type)
 {
-	const ctf_type_t *tp;
+	const ctf_dtdef_t *dtd;
 
-	if ((tp = ctf_lookup_by_id(&fp, type)) == NULL)
+	if ((dtd = ctf_dtd_lookup(fp, type)) == NULL)
 		return (ctf_set_errno(fp, ECTF_BADID));
 
-	return (tp->ctt_copied);
+	return (dtd->dtd_data.ctt_copied);
 }
 
 /*
