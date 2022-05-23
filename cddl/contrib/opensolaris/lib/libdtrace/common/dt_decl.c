@@ -626,7 +626,7 @@ dt_decl_member(dt_node_t *dnp)
 	if (dtt.dtt_ctfp != dsp->ds_ctfp &&
 	    dtt.dtt_ctfp != ctf_parent_file(dsp->ds_ctfp)) {
 
-		dtt.dtt_type = ctf_add_type(dsp->ds_ctfp,
+		dtt.dtt_type = ctf_add_type_cp(dsp->ds_ctfp,
 		    dtt.dtt_ctfp, dtt.dtt_type);
 		dtt.dtt_ctfp = dsp->ds_ctfp;
 		dtt.dtt_copied_ctf = 1;
@@ -936,7 +936,7 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 		if (tip->dtt_ctfp != dmp->dm_ctfp &&
 		    tip->dtt_ctfp != ctf_parent_file(dmp->dm_ctfp)) {
 
-			tip->dtt_type = ctf_add_type(dmp->dm_ctfp,
+			tip->dtt_type = ctf_add_type_cp(dmp->dm_ctfp,
 			    tip->dtt_ctfp, tip->dtt_type);
 			tip->dtt_ctfp = dmp->dm_ctfp;
 			tip->dtt_copied_ctf = 1;
