@@ -310,7 +310,7 @@ dt_type_pointer(dtrace_typeinfo_t *tip)
 		dmp = dtp->dt_ddefs;
 
 	if (ctfp != dmp->dm_ctfp && ctfp != ctf_parent_file(dmp->dm_ctfp) &&
-	    (type = ctf_add_type(dmp->dm_ctfp, ctfp, type)) == CTF_ERR) {
+	    (type = ctf_add_type_cp(dmp->dm_ctfp, ctfp, type)) == CTF_ERR) {
 		dtp->dt_ctferr = ctf_errno(dmp->dm_ctfp);
 		return (dt_set_errno(dtp, EDT_CTF));
 	}
@@ -1623,7 +1623,7 @@ dt_node_decl(void)
 		if (dtt.dtt_ctfp != dmp->dm_ctfp &&
 		    dtt.dtt_ctfp != ctf_parent_file(dmp->dm_ctfp)) {
 
-			dtt.dtt_type = ctf_add_type(dmp->dm_ctfp,
+			dtt.dtt_type = ctf_add_type_cp(dmp->dm_ctfp,
 			    dtt.dtt_ctfp, dtt.dtt_type);
 			dtt.dtt_ctfp = dmp->dm_ctfp;
 
