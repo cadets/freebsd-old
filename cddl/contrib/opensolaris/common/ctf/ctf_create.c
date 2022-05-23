@@ -1541,7 +1541,7 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 	case CTF_K_CONST:
 	case CTF_K_RESTRICT:
 		src_type = ctf_type_reference(src_fp, src_type);
-		src_type = ctf_add_type(dst_fp, src_fp, src_type);
+		src_type = _ctf_add_type(dst_fp, src_fp, src_type, mark_copy);
 
 		if (src_type == CTF_ERR)
 			return (CTF_ERR); /* errno is set for us */
@@ -1555,9 +1555,9 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 			return (ctf_set_errno(dst_fp, ctf_errno(src_fp)));
 
 		src_ar.ctr_contents =
-		    ctf_add_type(dst_fp, src_fp, src_ar.ctr_contents);
+		    _ctf_add_type(dst_fp, src_fp, src_ar.ctr_contents, mark_copy);
 		src_ar.ctr_index =
-		    ctf_add_type(dst_fp, src_fp, src_ar.ctr_index);
+		    _ctf_add_type(dst_fp, src_fp, src_ar.ctr_index, mark_copy);
 		src_ar.ctr_nelems = src_ar.ctr_nelems;
 
 		if (src_ar.ctr_contents == CTF_ERR ||
@@ -1576,7 +1576,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 		break;
 
 	case CTF_K_FUNCTION:
-		ctc.ctc_return = ctf_add_type(dst_fp, src_fp, tp->ctt_type);
+		ctc.ctc_return = _ctf_add_type(dst_fp, src_fp, tp->ctt_type,
+		    mark_copy);
 		ctc.ctc_argc = 0;
 		ctc.ctc_flags = 0;
 
@@ -1643,8 +1644,8 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 		 */
 		for (dmd = ctf_list_next(&dtd->dtd_u.dtu_members);
 		    dmd != NULL; dmd = ctf_list_next(dmd)) {
-			if ((dmd->dmd_type = ctf_add_type(dst_fp, src_fp,
-			    dmd->dmd_type)) == CTF_ERR)
+			if ((dmd->dmd_type = _ctf_add_type(dst_fp, src_fp,
+			    dmd->dmd_type, mark_copy)) == CTF_ERR)
 				errs++;
 		}
 
@@ -1683,7 +1684,7 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 
 	case CTF_K_TYPEDEF:
 		src_type = ctf_type_reference(src_fp, src_type);
-		src_type = ctf_add_type(dst_fp, src_fp, src_type);
+		src_type = _ctf_add_type(dst_fp, src_fp, src_type, mark_copy);
 
 		if (src_type == CTF_ERR)
 			return (CTF_ERR); /* errno is set for us */
