@@ -487,9 +487,9 @@ dt_decl_sou(uint_t kind, char *name)
 		xyerror(D_DECL_TYPERED, "type redeclared: %s\n", n);
 
 	if (kind == CTF_K_STRUCT)
-		type = ctf_add_struct(ctfp, flag, name);
+		type = ctf_add_struct_cp(ctfp, flag, name);
 	else
-		type = ctf_add_union(ctfp, flag, name);
+		type = ctf_add_union_cp(ctfp, flag, name);
 
 	if (type == CTF_ERR || ctf_update(ctfp) == CTF_ERR) {
 		xyerror(D_UNKNOWN, "failed to define %s: %s\n",
@@ -1032,7 +1032,7 @@ dt_decl_type(dt_decl_t *ddp, dtrace_typeinfo_t *tip)
 	case CTF_K_STRUCT:
 	case CTF_K_UNION:
 	case CTF_K_ENUM:
-		type = ctf_add_forward(dmp->dm_ctfp, flag,
+		type = ctf_add_forward_cp(dmp->dm_ctfp, flag,
 		    ddp->dd_name, ddp->dd_kind);
 		break;
 	default:
