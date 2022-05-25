@@ -163,6 +163,7 @@ typedef struct ctf_bundle {
 	ctf_file_t *ctb_file;	/* CTF container handle */
 	ctf_id_t ctb_type;	/* CTF type identifier */
 	ctf_dtdef_t *ctb_dtd;	/* CTF dynamic type definition (if any) */
+	int mark_copy;		/* CTF copy tag */
 } ctf_bundle_t;
 
 /*

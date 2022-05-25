@@ -1415,7 +1415,7 @@ enumadd(const char *name, int value, void *arg)
 	 * TODO: FIXME: XXX: Assuming not copied for now, need to fix this.
 	 */
 	return (_ctf_add_enumerator(ctb->ctb_file, ctb->ctb_type,
-	    name, value, 0) == CTF_ERR);
+	    name, value, ctb->mark_copy) == CTF_ERR);
 }
 
 /*ARGSUSED*/
@@ -1583,10 +1583,12 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 	src.ctb_file = src_fp;
 	src.ctb_type = src_type;
 	src.ctb_dtd = NULL;
+	src.mark_copy = 0;
 
 	dst.ctb_file = dst_fp;
 	dst.ctb_type = dst_type;
 	dst.ctb_dtd = NULL;
+	dst.mark_copy = mark_copy;
 
 	/*
 	 * Now perform kind-specific processing.  If dst_type is CTF_ERR, then
