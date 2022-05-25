@@ -597,7 +597,8 @@ ctf_discard(ctf_file_t *fp)
 }
 
 static ctf_id_t
-ctf_add_generic(ctf_file_t *fp, uint_t flag, const char *name, ctf_dtdef_t **rp)
+ctf_add_generic(ctf_file_t *fp, uint_t flag, const char *name, ctf_dtdef_t **rp,
+    int mark_copy)
 {
 	ctf_dtdef_t *dtd;
 	ctf_id_t type;
@@ -626,6 +627,7 @@ ctf_add_generic(ctf_file_t *fp, uint_t flag, const char *name, ctf_dtdef_t **rp)
 	bzero(dtd, sizeof (ctf_dtdef_t));
 	dtd->dtd_name = s;
 	dtd->dtd_type = type;
+	dtd->dtd_data.ctt_copied = mark_copy;
 
 	if (s != NULL)
 		fp->ctf_dtstrlen += strlen(s) + 1;
@@ -666,7 +668,7 @@ ctf_add_encoded(ctf_file_t *fp, uint_t flag,
 	if (ep == NULL)
 		return (ctf_set_errno(fp, EINVAL));
 
-	if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) == CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(kind, flag, 0);
@@ -687,7 +689,7 @@ ctf_add_reftype(ctf_file_t *fp, uint_t flag, ctf_id_t ref, uint_t kind,
 	if (ref == CTF_ERR || ref < 0 || ref > CTF_MAX_TYPE)
 		return (ctf_set_errno(fp, EINVAL));
 
-	if ((type = ctf_add_generic(fp, flag, NULL, &dtd)) == CTF_ERR)
+	if ((type = ctf_add_generic(fp, flag, NULL, &dtd, mark_copy)) == CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	ctf_ref_inc(fp, ref);
@@ -714,6 +716,14 @@ ctf_add_integer(ctf_file_t *fp, uint_t flag, const char *name,
 	return (_ctf_add_integer(fp, flag, name, ep, 0));
 }
 
+ctf_id_t
+ctf_add_integer_cp(ctf_file_t *fp, uint_t flag, const char *name,
+    const ctf_encoding_t *ep)
+{
+
+	return (_ctf_add_integer(fp, flag, name, ep, 1));
+}
+
 static ctf_id_t
 _ctf_add_float(ctf_file_t *fp, uint_t flag,
     const char *name, const ctf_encoding_t *ep, int mark_copy)
@@ -725,7 +735,16 @@ ctf_id_t
 ctf_add_float(ctf_file_t *fp, uint_t flag, const char *name,
     const ctf_encoding_t *ep)
 {
+
 	return (_ctf_add_float(fp, flag, name, ep, 0));
+}
+
+ctf_id_t
+ctf_add_float_cp(ctf_file_t *fp, uint_t flag, const char *name,
+    const ctf_encoding_t *ep)
+{
+
+	return (_ctf_add_float(fp, flag, name, ep, 1));
 }
 
 static ctf_id_t
@@ -737,7 +756,15 @@ _ctf_add_pointer(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
 ctf_id_t
 ctf_add_pointer(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
+
 	return (_ctf_add_pointer(fp, flag, ref, 0));
+}
+
+ctf_id_t
+ctf_add_pointer_cp(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
+{
+
+	return (_ctf_add_pointer(fp, flag, ref, 1));
 }
 
 static ctf_id_t
@@ -761,7 +788,7 @@ _ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp,
 	    ctf_dtd_lookup(fp, arp->ctr_index) == NULL)
 		return (ctf_set_errno(fp, ECTF_BADID));
 
-	if ((type = ctf_add_generic(fp, flag, NULL, &dtd)) == CTF_ERR)
+	if ((type = ctf_add_generic(fp, flag, NULL, &dtd, mark_copy)) == CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_ARRAY, flag, 0);
@@ -779,6 +806,13 @@ ctf_add_array(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp)
 {
 
 	return (_ctf_add_array(fp, flag, arp, 0));
+}
+
+ctf_id_t
+ctf_add_array_cp(ctf_file_t *fp, uint_t flag, const ctf_arinfo_t *arp)
+{
+
+	return (_ctf_add_array(fp, flag, arp, 1));
 }
 
 int
@@ -850,7 +884,7 @@ _ctf_add_function(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
 	if (vlen != 0 && (vdat = ctf_alloc(sizeof (ctf_id_t) * vlen)) == NULL)
 		return (ctf_set_errno(fp, EAGAIN));
 
-	if ((type = ctf_add_generic(fp, flag, NULL, &dtd)) == CTF_ERR) {
+	if ((type = ctf_add_generic(fp, flag, NULL, &dtd, mark_copy)) == CTF_ERR) {
 		ctf_free(vdat, sizeof (ctf_id_t) * vlen);
 		return (CTF_ERR); /* errno is set for us */
 	}
@@ -879,6 +913,14 @@ ctf_add_function(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
 	return (_ctf_add_function(fp, flag, ctc, argv, 0));
 }
 
+ctf_id_t
+ctf_add_function_cp(ctf_file_t *fp, uint_t flag, const ctf_funcinfo_t *ctc,
+    const ctf_id_t *argv)
+{
+
+	return (_ctf_add_function(fp, flag, ctc, argv, 1));
+}
+
 static ctf_id_t
 _ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 {
@@ -892,7 +934,8 @@ _ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 
 	if (hep != NULL && ctf_type_kind(fp, hep->h_type) == CTF_K_FORWARD)
 		dtd = ctf_dtd_lookup(fp, type = hep->h_type);
-	else if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	else if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) ==
+	    CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_STRUCT, flag, 0);
@@ -909,6 +952,13 @@ ctf_add_struct(ctf_file_t *fp, uint_t flag, const char *name)
 	return (_ctf_add_struct(fp, flag, name, 0));
 }
 
+ctf_id_t
+ctf_add_struct_cp(ctf_file_t *fp, uint_t flag, const char *name)
+{
+
+	return (_ctf_add_struct(fp, flag, name, 1));
+}
+
 static ctf_id_t
 _ctf_add_union(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 {
@@ -922,7 +972,8 @@ _ctf_add_union(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 
 	if (hep != NULL && ctf_type_kind(fp, hep->h_type) == CTF_K_FORWARD)
 		dtd = ctf_dtd_lookup(fp, type = hep->h_type);
-	else if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	else if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) ==
+	    CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_UNION, flag, 0);
@@ -939,6 +990,13 @@ ctf_add_union(ctf_file_t *fp, uint_t flag, const char *name)
 	return (_ctf_add_union(fp, flag, name, 0));
 }
 
+ctf_id_t
+ctf_add_union_cp(ctf_file_t *fp, uint_t flag, const char *name)
+{
+
+	return (_ctf_add_union(fp, flag, name, 1));
+}
+
 static ctf_id_t
 _ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 {
@@ -952,7 +1010,8 @@ _ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name, int mark_copy)
 
 	if (hep != NULL && ctf_type_kind(fp, hep->h_type) == CTF_K_FORWARD)
 		dtd = ctf_dtd_lookup(fp, type = hep->h_type);
-	else if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	else if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) ==
+	    CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_ENUM, flag, 0);
@@ -967,6 +1026,13 @@ ctf_add_enum(ctf_file_t *fp, uint_t flag, const char *name)
 {
 
 	return (_ctf_add_enum(fp, flag, name, 0));
+}
+
+ctf_id_t
+ctf_add_enum_cp(ctf_file_t *fp, uint_t flag, const char *name)
+{
+
+	return (_ctf_add_enum(fp, flag, name, 1));
 }
 
 static ctf_id_t
@@ -1000,7 +1066,7 @@ _ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind,
 	    fp, name, strlen(name))) != NULL)
 		return (hep->h_type);
 
-	if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) == CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_FORWARD, flag, 0);
@@ -1017,6 +1083,13 @@ ctf_add_forward(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
 	return (_ctf_add_forward(fp, flag, name, kind, 0));
 }
 
+ctf_id_t
+ctf_add_forward_cp(ctf_file_t *fp, uint_t flag, const char *name, uint_t kind)
+{
+
+	return (_ctf_add_forward(fp, flag, name, kind, 1));
+}
+
 static ctf_id_t
 _ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref,
     int mark_copy)
@@ -1030,7 +1103,7 @@ _ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref,
 	    ctf_dtd_lookup(fp, ref) == NULL))
 		return (ctf_set_errno(fp, EINVAL));
 
-	if ((type = ctf_add_generic(fp, flag, name, &dtd)) == CTF_ERR)
+	if ((type = ctf_add_generic(fp, flag, name, &dtd, mark_copy)) == CTF_ERR)
 		return (CTF_ERR); /* errno is set for us */
 
 	dtd->dtd_data.ctt_info = CTF_TYPE_INFO(CTF_K_TYPEDEF, flag, 0);
@@ -1048,6 +1121,13 @@ ctf_add_typedef(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
 	return (_ctf_add_typedef(fp, flag, name, ref, 0));
 }
 
+ctf_id_t
+ctf_add_typedef_cp(ctf_file_t *fp, uint_t flag, const char *name, ctf_id_t ref)
+{
+
+	return (_ctf_add_typedef(fp, flag, name, ref, 1));
+}
+
 static ctf_id_t
 _ctf_add_volatile(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
 {
@@ -1058,6 +1138,12 @@ ctf_id_t
 ctf_add_volatile(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
 	return (_ctf_add_volatile(fp, flag, ref, 0));
+}
+
+ctf_id_t
+ctf_add_volatile_cp(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
+{
+	return (_ctf_add_volatile(fp, flag, ref, 1));
 }
 
 static ctf_id_t
@@ -1072,6 +1158,12 @@ ctf_add_const(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 	return (_ctf_add_const(fp, flag, ref, 0));
 }
 
+ctf_id_t
+ctf_add_const_cp(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
+{
+	return (_ctf_add_const(fp, flag, ref, 1));
+}
+
 static ctf_id_t
 _ctf_add_restrict(ctf_file_t *fp, uint_t flag, ctf_id_t ref, int mark_copy)
 {
@@ -1082,6 +1174,12 @@ ctf_id_t
 ctf_add_restrict(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
 {
 	return (_ctf_add_restrict(fp, flag, ref, 0));
+}
+
+ctf_id_t
+ctf_add_restrict_cp(ctf_file_t *fp, uint_t flag, ctf_id_t ref)
+{
+	return (_ctf_add_restrict(fp, flag, ref, 1));
 }
 
 static int
@@ -1618,7 +1716,7 @@ _ctf_add_type(ctf_file_t *dst_fp, ctf_file_t *src_fp, ctf_id_t src_type,
 		 * manually so as to avoid repeated lookups in ctf_add_member
 		 * and to ensure the exact same member offsets as in src_type.
 		 */
-		dst_type = ctf_add_generic(dst_fp, flag, name, &dtd);
+		dst_type = ctf_add_generic(dst_fp, flag, name, &dtd, mark_copy);
 		if (dst_type == CTF_ERR)
 			return (CTF_ERR); /* errno is set for us */
 
