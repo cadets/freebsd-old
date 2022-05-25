@@ -315,7 +315,7 @@ dt_type_pointer(dtrace_typeinfo_t *tip)
 		return (dt_set_errno(dtp, EDT_CTF));
 	}
 
-	ptr = ctf_add_pointer(dmp->dm_ctfp, CTF_ADD_ROOT, type);
+	ptr = ctf_add_pointer_cp(dmp->dm_ctfp, CTF_ADD_ROOT, type);
 
 	if (ptr == CTF_ERR || ctf_update(dmp->dm_ctfp) == CTF_ERR) {
 		dtp->dt_ctferr = ctf_errno(dmp->dm_ctfp);
@@ -1635,7 +1635,7 @@ dt_node_decl(void)
 			}
 		}
 
-		type = ctf_add_typedef(dmp->dm_ctfp,
+		type = ctf_add_typedef_cp(dmp->dm_ctfp,
 		    CTF_ADD_ROOT, dsp->ds_ident, dtt.dtt_type);
 
 		if (type == CTF_ERR || ctf_update(dmp->dm_ctfp) == CTF_ERR) {
