@@ -2048,7 +2048,11 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		}
 
 		if (type == DIF_TYPE_CTF) {
-			assert(node->din_tf != NULL);
+			if (node->din_tf == NULL)
+				dt_set_progerr(dtp, pgp,
+				    "%s(): typefile NULL at %zu@%p\n", __func__,
+				    node->din_uidx, node->din_difo);
+
 			if (dt_typefile_typename(node->din_tf,
 			    node->din_ctfid, buf, sizeof(buf)) != (char *)buf)
 				dt_set_progerr(g_dtp, g_pgp,
