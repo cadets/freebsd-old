@@ -587,6 +587,7 @@ dt_node_xalloc(dtrace_hdl_t *dtp, int kind)
 	bzero(&dnp->dn_target, sizeof (dnp->dn_target));
 	dnp->dn_from_stringof = 0;
 	dnp->dn_copied_ctf = 0;
+	dnp->dn_needscast = 0;
 
 	return (dnp);
 }

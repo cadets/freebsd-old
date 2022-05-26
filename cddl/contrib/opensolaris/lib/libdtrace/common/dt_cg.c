@@ -502,7 +502,7 @@ dt_cg_store(dt_node_t *src, dt_irlist_t *dlp, dt_regset_t *drp, dt_node_t *dst)
  */
 static void
 dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
-    dt_irlist_t *dlp, dt_regset_t *drp)
+    dt_irlist_t *dlp, dt_regset_t *drp, int want_typecast)
 {
 	size_t srcsize = dt_node_type_size(src);
 	size_t dstsize = dt_node_type_size(dst);
@@ -516,12 +516,22 @@ dt_cg_typecast(const dt_node_t *src, const dt_node_t *dst,
 	rg = dt_regset_alloc(drp);
 
 	if (!dt_node_is_scalar(dst))
-		goto cg_typecast; /* not a scalar */
+		if (want_typecast)
+			goto cg_typecast; /* not a scalar */
+		else
+			return;
 	if (dstsize == srcsize &&
 	    ((src->dn_flags ^ dst->dn_flags) & DT_NF_SIGNED) != 0)
-		goto cg_typecast; /* not narrowing or changing signed-ness */
+		if (want_typecast)
+			goto cg_typecast; /* not narrowing or changing
+					     signed-ness */
+		else
+			return;
 	if (dstsize > srcsize && (src->dn_flags & DT_NF_SIGNED) == 0)
-		goto cg_typecast; /* nothing to do in this case */
+		if (want_typecast)
+			goto cg_typecast; /* nothing to do in this case */
+		else
+			return;
 
 	if (dstsize > srcsize) {
 		int n = sizeof (uint64_t) * NBBY - srcsize * NBBY;
@@ -620,7 +630,7 @@ dt_cg_arglist(dt_ident_t *idp, dt_node_t *args,
 		dt_node_diftype(yypcb->pcb_hdl, dnp, &t);
 
 		isp->dis_args[i].dn_reg = dnp->dn_reg; /* re-use register */
-		dt_cg_typecast(dnp, &isp->dis_args[i], dlp, drp);
+		dt_cg_typecast(dnp, &isp->dis_args[i], dlp, drp, 1);
 		isp->dis_args[i].dn_reg = -1;
 
 		if (t.dtdt_flags & DIF_TF_BYREF) {
@@ -1113,7 +1123,7 @@ dt_cg_asgn_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			 */
 			dt_cg_node(mnp->dn_membexpr, dlp, drp);
 			mnp->dn_reg = mnp->dn_membexpr->dn_reg;
-			dt_cg_typecast(mnp->dn_membexpr, mnp, dlp, drp);
+			dt_cg_typecast(mnp->dn_membexpr, mnp, dlp, drp, 1);
 
 			/*
 			 * Ask CTF for the offset of the member so we can store
@@ -1404,7 +1414,7 @@ dt_cg_inline(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 	dt_cg_node(inp->din_root, dlp, drp);
 	dnp->dn_reg = inp->din_root->dn_reg;
-	dt_cg_typecast(inp->din_root, dnp, dlp, drp);
+	dt_cg_typecast(inp->din_root, dnp, dlp, drp, 0);
 
 	if (idp->di_kind == DT_IDENT_ARRAY) {
 		for (i = 0; i < inp->din_argc; i++) {
@@ -1903,7 +1913,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		 * In this case, this must be a pointer type.
 		 */
 		dt_node_type_name(dnp->dn_right, buf, sizeof(buf));
-		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp);
+		dt_cg_typecast(dnp->dn_right, dnp, dlp, drp, 1);
 		break;
 	}
 	case DT_TOK_PTR:
@@ -1936,7 +1946,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 
 			dt_cg_node(mnp->dn_membexpr, dlp, drp);
 			dnp->dn_reg = mnp->dn_membexpr->dn_reg;
-			dt_cg_typecast(mnp->dn_membexpr, dnp, dlp, drp);
+			dt_cg_typecast(mnp->dn_membexpr, dnp, dlp, drp, 1);
 
 			dxp->dx_ident->di_flags &= ~DT_IDFLG_CGREG;
 			dxp->dx_ident->di_id = 0;
@@ -2207,7 +2217,7 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		/*
 		 * Generate a typecast if needed.
 		 */
-		if (dnp->dn_needscast) {
+		if (dnp->dn_needscast != 0) {
 			ssize_t typeref = 0;
 
 			typeref = dt_strtab_insert(yypcb->pcb_symtab,
