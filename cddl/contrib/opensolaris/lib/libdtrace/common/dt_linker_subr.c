@@ -389,7 +389,8 @@ dt_insert_var_by_difv(dtrace_difv_t *difv)
 
 	var->dtdv_ctfid = CTF_ERR;
 	var->dtdv_sym = NULL;
-	var->dtdv_type = difv->dtdv_type;
+	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM;
+	var->dtdv_type.dtdt_size = 0;
 	var->dtdv_stack = NULL;
 	var->dtdv_tf = NULL;
 	var->dtdv_storedtype = difv->dtdv_type;
