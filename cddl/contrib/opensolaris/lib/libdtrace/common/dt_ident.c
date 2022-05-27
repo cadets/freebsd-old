@@ -108,8 +108,7 @@ dt_idcook_sign(dt_node_t *dnp, dt_ident_t *idp,
 		}
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE,
-	    idp->di_copied_ctf);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*
@@ -174,8 +173,7 @@ dt_idcook_assc(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		if (argc != 0)
 			isp->dis_args[argc - 1].dn_list = NULL;
 
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE,
-		    idp->di_copied_ctf);
+		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 
 	} else {
 		dt_idcook_sign(dnp, idp, argc, args,
@@ -258,7 +256,6 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 		} else {
 			idp->di_ctfp = dtt.dtt_ctfp;
 			idp->di_type = dtt.dtt_type;
-			idp->di_copied_ctf = dtt.dtt_copied_ctf;
 		}
 
 		/*
@@ -319,7 +316,7 @@ dt_idcook_func(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 			}
 
 			dt_node_type_assign(&isp->dis_args[i], dtt.dtt_ctfp,
-			    dtt.dtt_type, B_FALSE, dtt.dtt_copied_ctf);
+			    dtt.dtt_type, B_FALSE);
 		}
 	}
 
@@ -408,7 +405,7 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		    prp->pr_argv[ap->dn_value].dtt_ctfp,
 		    prp->pr_argv[ap->dn_value].dtt_type,
 		    prp->pr_argv[ap->dn_value].dtt_flags & DTT_FL_USER ?
-		    B_TRUE : B_FALSE, 0);
+		    B_TRUE : B_FALSE);
 
 	} else if ((dxp = dt_xlator_lookup(dtp,
 	    nnp, xnp, DT_XLATE_FUZZY)) != NULL || (
@@ -435,10 +432,9 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		dnp->dn_ident->di_data = xidp->di_data;
 		dnp->dn_ident->di_ctfp = xidp->di_ctfp;
 		dnp->dn_ident->di_type = xidp->di_type;
-		dnp->dn_ident->di_copied_ctf = xidp->di_copied_ctf;
 
 		dt_node_type_assign(dnp, DT_DYN_CTFP(dtp), DT_DYN_TYPE(dtp),
-		    B_FALSE, 0);
+		    B_FALSE);
 
 	} else {
 		xyerror(D_ARGS_XLATOR, "translator for %s[%lld] from %s to %s "
@@ -483,10 +479,8 @@ dt_idcook_regs(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 
 	idp->di_ctfp = dtt.dtt_ctfp;
 	idp->di_type = dtt.dtt_type;
-	idp->di_copied_ctf = dtt.dtt_copied_ctf;
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE,
-	    idp->di_copied_ctf);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -506,11 +500,9 @@ dt_idcook_type(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 
 		idp->di_ctfp = dtt.dtt_ctfp;
 		idp->di_type = dtt.dtt_type;
-		idp->di_copied_ctf = dtt.dtt_copied_ctf;
 	}
 
-	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE,
-	    idp->di_copied_ctf);
+	dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 /*ARGSUSED*/
@@ -518,8 +510,7 @@ static void
 dt_idcook_thaw(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *args)
 {
 	if (idp->di_ctfp != NULL && idp->di_type != CTF_ERR)
-		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE,
-		    idp->di_copied_ctf);
+		dt_node_type_assign(dnp, idp->di_ctfp, idp->di_type, B_FALSE);
 }
 
 static void
@@ -950,7 +941,6 @@ dt_ident_create(const char *name, ushort_t kind, ushort_t flags, uint_t id,
 	idp->di_next = NULL;
 	idp->di_gen = gen;
 	idp->di_lineno = yylineno;
-	idp->di_copied_ctf = 0;
 
 	return (idp);
 }
@@ -1043,11 +1033,10 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 }
 
 void
-dt_ident_type_assign(dt_ident_t *idp, ctf_file_t *fp, ctf_id_t type, int copied)
+dt_ident_type_assign(dt_ident_t *idp, ctf_file_t *fp, ctf_id_t type)
 {
 	idp->di_ctfp = fp;
 	idp->di_type = type;
-	idp->di_copied_ctf = copied;
 }
 
 dt_ident_t *

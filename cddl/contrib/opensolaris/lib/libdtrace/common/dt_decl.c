@@ -784,7 +784,7 @@ dt_decl_enumerator(char *s, dt_node_t *dnp)
 	yyintdecimal = 0;
 
 	dnp = dt_node_int(value);
-	dt_node_type_assign(dnp, dsp->ds_ctfp, dsp->ds_type, B_FALSE, 0);
+	dt_node_type_assign(dnp, dsp->ds_ctfp, dsp->ds_type, B_FALSE);
 
 	if ((inp = malloc(sizeof (dt_idnode_t))) == NULL)
 		longjmp(yypcb->pcb_jmpbuf, EDT_NOMEM);

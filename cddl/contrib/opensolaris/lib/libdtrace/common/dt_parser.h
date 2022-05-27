@@ -57,8 +57,6 @@ typedef struct dt_node {
 	int dn_line;		/* line number for error messages */
 	int dn_reg;		/* register allocated by cg */
 	dtrace_attribute_t dn_attr; /* node stability attributes */
-	int dn_from_stringof;	/* does the node have stringof() applied? */
-	int dn_copied_ctf;	/* is this copied ctf information? */
 
 	char dn_target[DTRACE_TARGETNAMELEN]; /* what target is this node for? */
 	dtrace_hdl_t *dn_dtp;	/* backpointer to the handle */
@@ -247,8 +245,7 @@ extern void dt_node_list_free(dt_node_t **);
 extern void dt_node_link_free(dt_node_t **);
 
 extern void dt_node_attr_assign(dt_node_t *, dtrace_attribute_t);
-extern void dt_node_type_assign(dt_node_t *, ctf_file_t *, ctf_id_t, boolean_t,
-    int);
+extern void dt_node_type_assign(dt_node_t *, ctf_file_t *, ctf_id_t, boolean_t);
 extern void dt_node_type_propagate(const dt_node_t *, dt_node_t *);
 extern const char *dt_node_addr_type_name(const dt_node_t *);
 extern const char *dt_node_type_name(const dt_node_t *, char *, size_t);

@@ -82,7 +82,6 @@ typedef struct dt_ident {
 	struct dt_ident *di_next; /* pointer to next ident in hash chain */
 	ulong_t di_gen;		/* generation number (pass that created me) */
 	int di_lineno;		/* line number that defined this identifier */
-	int di_copied_ctf;	/* was this ctf info copied? */
 } dt_ident_t;
 
 #define	DT_IDENT_ARRAY	0	/* identifier is an array variable */
@@ -170,7 +169,7 @@ extern void dt_ident_morph(dt_ident_t *, ushort_t, const dt_idops_t *, void *);
 extern dtrace_attribute_t dt_ident_cook(struct dt_node *,
     dt_ident_t *, struct dt_node **);
 
-extern void dt_ident_type_assign(dt_ident_t *, ctf_file_t *, ctf_id_t, int);
+extern void dt_ident_type_assign(dt_ident_t *, ctf_file_t *, ctf_id_t);
 extern dt_ident_t *dt_ident_resolve(dt_ident_t *);
 extern size_t dt_ident_size(dt_ident_t *);
 extern int dt_ident_unref(const dt_ident_t *);
