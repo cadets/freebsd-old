@@ -626,7 +626,7 @@ dt_infer_type(dt_ifg_node_t *n)
 				if (strcmp(buf, "uint64_t") != 0)
 					dt_set_progerr(g_dtp, g_pgp,
 					    "dt_infer_type(%s, %zu@%p): the type "
-					    "of the other node must be unit64_t"
+					    "of the other node must be uint64_t"
 					    " if symnode->din_ctfid <:"
 					    " other->din_ctfid, but it is: %s",
 					    insname[opcode], n->din_uidx,
