@@ -248,26 +248,6 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (-1);
 	}
 
-#ifdef notyet
-	data_dn1 = dt_typecheck_regdefs(&n->din_r1datadefs, &empty);
-	if (data_dn1 == NULL && empty == 0) {
-		fprintf(stderr,
-		    "dt_infer_type(%s, %zu): inferring types "
-		    "for r1datadefs failed\n",
-		    insname[opcode], n->din_uidx);
-		return (-1);
-	}
-
-	data_dn2 = dt_typecheck_regdefs(&n->din_r2datadefs, &empty);
-	if (data_dn2 == NULL && empty == 0) {
-		fprintf(stderr,
-		    "dt_infer_type(%s, %zu): inferring types "
-		    "for r2datadefs failed\n",
-		    insname[opcode], n->din_uidx);
-		return (-1);
-	}
-#endif
-
 	dnv = dt_typecheck_vardefs(difo, &n->din_vardefs, &empty);
 	if (dnv == NULL && empty == 0) {
 		fprintf(stderr,
@@ -966,17 +946,6 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			}
 
-#if 0
-			if (dif_var->dtdv_tf != dnv->din_tf) {
-				fprintf(stderr,
-				    "dt_infer_type(%s, %zu): variable uses "
-				    "typefile %s, but dnv uses %s\n",
-				    insname[opcode], n->din_uidx,
-				    dt_typefile_stringof(dif_var->dtdv_tf),
-				    dt_typefile_stringof(dnv->din_tf));
-				return (-1);
-			}
-#endif
 			if (dif_var->dtdv_ctfid != dnv->din_ctfid) {
 				if (dt_typefile_typename(dnv->din_tf,
 				    dnv->din_ctfid, buf,
