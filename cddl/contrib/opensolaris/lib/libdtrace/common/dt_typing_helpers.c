@@ -891,3 +891,63 @@ dt_get_typename(dt_ifg_node_t *n, char *buf, size_t bufsize, const char *loc)
 
 	(void) dt_get_typename_tfcheck(n, &n->din_tf, 1, buf, bufsize, loc);
 }
+
+typedef struct {
+	ctf_file_t *ctfp;
+	ctf_membinfo_t *mip;
+	uint64_t offs;
+} dt_membinfo_helper_t;
+
+static int
+dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
+{
+	dt_membinfo_helper_t *mh = arg;
+
+	/* invalid argument, return an error */
+	if (arg == NULL)
+		return (-1);
+
+	/* we already found our member, simply return. */
+	if (mh->mip != NULL)
+		return (0);
+
+	/* if not matching, simply continue searching. */
+	if (off != mh->offs)
+		return (0);
+
+	/*
+	 * We now know we have a matching offset. Get the mip and populate our
+	 * struct.
+	 */
+	mh->mip = malloc(sizeof(ctf_membinfo_t));
+	if (mh->mip == NULL)
+		return (-1);
+
+	memset(mh->mip, 0, sizeof(ctf_membinfo_t));
+	if (ctf_member_info(mh->ctfp, ctfid, name, mh->mip) == CTF_ERR)
+		return (-1);
+
+	/*
+	 * We now have the membinfo filled in, so we just return 0.
+	 */
+	return (0);
+}
+
+
+ctf_membinfo_t *
+dt_mip_by_offset(dt_typefile_t *tf, ctf_id_t ctfid, uint64_t offs)
+{
+	ctf_file_t *ctfp;
+	dt_membinfo_helper_t mh;
+
+	memset(&mh, 0, sizeof(mh));
+	ctfp = dt_typefile_getctfp(tf);
+
+	mh.offs = offs;
+	mh.ctfp = ctfp;
+
+	if (ctf_member_iter(mh.ctfp, ctfid, dt_find_memboffs, &mh) == -1)
+		return (NULL);
+
+	return (mh.mip);
+}
