@@ -871,8 +871,11 @@ dt_infer_type(dt_ifg_node_t *n)
 			    dt_typefile_error(n->din_tf));
 
 		n->din_type = DIF_TYPE_CTF;
-		if (opcode == DIF_OP_SETX)
-			n->din_isnull = dt_setx_value(difo, instr) == 0;
+		if (opcode == DIF_OP_SETX) {
+			n->din_int = dt_setx_value(difo, instr);
+			n->din_isnull = n->din_int == 0;
+			n->din_hasint = 1;
+		}
 		return (n->din_type);
 
 	case DIF_OP_SETS:
