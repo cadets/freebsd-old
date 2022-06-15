@@ -91,6 +91,8 @@ typedef struct dt_ifg_node {
 	dt_list_t          din_usetxs;     /* usetx insn list defining the node */
 	int                din_relocated;  /* relocated or not? */
 	int                din_isnull;     /* can this node contain NULL? */
+	uint64_t           din_int;        /* integer value from setx */
+	int                din_hasint;     /* is there an int? */
 } dt_ifg_node_t;
 
 typedef struct dt_ifg_list {
