@@ -1586,9 +1586,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		return (n->din_type);
 
 	case DIF_OP_ALLOCS:
-		n->din_ctfid = 0;
-		n->din_tf = dt_typefile_kernel();
-		n->din_type = DIF_TYPE_STRING;
+		n->din_ctfid = CTF_ERR;
+		n->din_tf = NULL;
+		n->din_type = DIF_TYPE_BOTTOM;
 		n->din_mip = NULL;
 		n->din_sym = NULL;
 
