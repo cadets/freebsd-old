@@ -517,11 +517,12 @@ typedef struct dtrace_difv {
 	 * These variables are only used in the compiler/linker in order
 	 * to type-check the DIFOs and apply relocations where necessary.
 	 */
-	ctf_id_t dtdv_ctfid;            /* variable CTF identifier */
-	char *dtdv_sym;                 /* variable symbol name (if exists) */
-	struct dt_typefile *dtdv_tf;    /* variable's typefile */
-	struct dt_list *dtdv_stack;     /* expected stack (if applicable) */
-	dtrace_diftype_t dtdv_storedtype; /* variable type (see above) */
+	ctf_id_t dtdv_ctfid;		/* variable CTF identifier */
+	char *dtdv_sym;			/* variable symbol name (if exists) */
+	ctf_file_t *dtdv_ctfp;		/* variable ctfp */
+	struct dt_typefile *dtdv_tf;	/* variable's typefile */
+	struct dt_list *dtdv_stack; 	/* expected stack (if applicable) */
+	dtrace_diftype_t dtdv_storedtype;	/* variable type (see above) */
 	int dtdv_restore;		/* restore the stored type */
 #endif
 } dtrace_difv_t;
