@@ -650,6 +650,9 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 	if (k == CTF_K_STRUCT)
 		return (DTC_STRUCT);
 
+	if (k == CTF_K_UNION)
+		return (DTC_UNION);
+
 	if (k == CTF_K_FORWARD) {
 		ctf_file_t *parent, *current;
 		if (!follow)
@@ -832,12 +835,15 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	if (class1 == DTC_STRUCT && class2 == DTC_INT)
 		return (1);
 
+	if (class1 == DTC_UNION && class2 == DTC_INT)
+		return (1);
+
 	if (class1 == DTC_FORWARD && class2 == DTC_INT)
 		return (1);
 
 	if (class1 == DTC_INT &&
 	    (class2 == DTC_STRUCT || class2 == DTC_STRING ||
-	    class2 == DTC_FORWARD))
+	    class2 == DTC_FORWARD || class2 == DTC_UNION))
 		return (2);
 
 	/*
