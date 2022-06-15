@@ -567,6 +567,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dt_ifg_node_t *dr,
 	char buf[4096] = {0}, var_type[4096] = {0};
 	dtrace_difv_t *difovar;
 	int rv, which;
+	ctf_id_t stripped_kind, stripped_id, orig_id;
 
 	difovar = NULL;
 
@@ -694,7 +695,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dt_ifg_node_t *dr,
 			return (-1);
 		}
 
-		if (which & SUBTYPE_SND) {
+		if (which & SUBTYPE_FST) {
 			dif_var->dtdv_tf = dr->din_tf;
 			dif_var->dtdv_ctfid = dr->din_ctfid;
 			dif_var->dtdv_sym = dr->din_sym;
@@ -819,12 +820,60 @@ dt_typecheck_vardefs(dtrace_difo_t *difo, dt_list_t *defs, int *empty)
 			    "could not find variable (%u, %d, %d) in varlist",
 			    varid, scope, kind);
 
+
+		/* If the type we are comparing to is bottom, skip. */
+		if (type == DIF_TYPE_BOTTOM)
+			continue;
+
 		/*
 		 * The previously inferred variable type must match the
 		 * current type we inferred.
 		 */
-		if (var->dtdv_type.dtdt_kind != type)
+		if (var->dtdv_type.dtdt_kind != type) {
+			char t1[DT_TYPE_NAMELEN] = { 0 };
+			char t2[DT_TYPE_NAMELEN] = { 0 };
+
+			if (type == DIF_TYPE_CTF) {
+				if (dt_typefile_typename(node->din_tf,
+					node->din_ctfid, t1,
+					sizeof(t1)) != ((char *)t1))
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_infer_type_var(): failed at getting "
+					    "type name %ld: %s\n",
+					    node->din_ctfid,
+					    dt_typefile_error(node->din_tf));
+				sprintf(t1, "@%ld", node->din_ctfid);
+			} else if (type == DIF_TYPE_STRING)
+				strcpy(t1, "D string");
+			else if (type == DIF_TYPE_NONE)
+				strcpy(t1, "none");
+			else if (type == DIF_TYPE_BOTTOM)
+				strcpy(t1, "bottom");
+			else
+				strcpy(t1, "unknown");
+
+			if (var->dtdv_type.dtdt_kind == DIF_TYPE_CTF) {
+				if (dt_typefile_typename(var->dtdv_tf,
+					var->dtdv_ctfid, t2,
+					sizeof(t2)) != ((char *)t2))
+					dt_set_progerr(g_dtp, g_pgp,
+					    "dt_infer_type_var(): failed at getting "
+					    "type name %ld: %s\n",
+					    var->dtdv_ctfid,
+					    dt_typefile_error(var->dtdv_tf));
+				sprintf(t2, "@%ld", var->dtdv_ctfid);
+			} else if (var->dtdv_type.dtdt_kind == DIF_TYPE_STRING)
+				strcpy(t2, "D string");
+			else if (var->dtdv_type.dtdt_kind == DIF_TYPE_NONE)
+				strcpy(t2, "none");
+			else if (var->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM)
+				strcpy(t2, "bottom");
+			else
+				strcpy(t2, "unknown");
+
+			fprintf(stderr, "%s(): %s != %s\n", __func__, t1, t2);
 			return (NULL);
+		}
 
 		if (type == DIF_TYPE_CTF) {
 			/*
