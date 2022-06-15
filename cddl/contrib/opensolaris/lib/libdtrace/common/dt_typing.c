@@ -536,13 +536,33 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			}
 
-			/*
-			 * We don't have to sanity check these because we do it
-			 * in every base case of the recursive call.
-			 */
-			n->din_type = tc_n->din_type;
-			n->din_ctfid = tc_n->din_ctfid;
-			n->din_tf = tc_n->din_tf;
+			if (opcode == DIF_OP_ADD && other->din_hasint) {
+				mip = dt_mip_by_offset(tc_n->din_tf,
+				    tc_n->din_ctfid, other->din_int);
+				if (mip == NULL)
+					dt_set_progerr(g_dtp, g_pgp,
+					    "%s(%s, %zu@%p) nosym: could not "
+					    "find mip at %x\n",
+					    __func__, insname[opcode],
+					    n->din_uidx, n->din_difo,
+					    other->din_int);
+
+				n->din_type = DIF_TYPE_CTF;
+				n->din_ctfid = mip->ctm_type;
+				n->din_tf = tc_n->din_tf;
+				n->din_mip = NULL;
+				n->din_sym = NULL;
+			} else {
+				/*
+				 * We don't have to sanity check these because
+				 * we do it in every base case of the recursive
+				 * call.
+				 */
+				n->din_type = tc_n->din_type;
+				n->din_ctfid = tc_n->din_ctfid;
+				n->din_tf = tc_n->din_tf;
+				n->din_int = other->din_int;
+			}
 
 			if (other->din_type == DIF_TYPE_BOTTOM) {
 				other->din_type = tc_n->din_type;
