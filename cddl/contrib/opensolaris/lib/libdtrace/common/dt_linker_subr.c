@@ -37,6 +37,7 @@
 #include <dt_ifgnode.h>
 #include <dt_basic_block.h>
 #include <dt_typefile.h>
+#include <dt_module.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -282,12 +283,15 @@ dt_get_varinfo(dif_instr_t instr, uint16_t *varid, int *scope, int *kind)
 }
 
 void
-dt_insert_var_by_tup(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
-    uint8_t kind)
+dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
+    uint8_t scope, uint8_t kind)
 {
 	dt_var_entry_t *ve;
 	dtrace_difv_t *var;
 	dtrace_difv_t *difv;
+	ctf_file_t *d_ctfp;
+	dt_module_t *d_mod;
+	int needs_append = 0;
 
 	ve = NULL;
 	var = NULL;
@@ -305,8 +309,8 @@ dt_insert_var_by_tup(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 			break;
 	}
 
-	if (ve != NULL)
-		return;
+	if (ve == NULL)
+		var = NULL;
 
 	difv = dt_get_variable(difo, varid, scope, kind);
 	if (difv == NULL)
@@ -318,28 +322,55 @@ dt_insert_var_by_tup(dtrace_difo_t *difo, uint16_t varid, uint8_t scope,
 	 * copy the contents of the variable in the DIFO table
 	 * into the newly allocated region.
 	 */
-	var = malloc(sizeof(dtrace_difv_t));
-	if (var == NULL)
-		errx(EXIT_FAILURE, "failed to allocate a new variable");
+	if (var == NULL) {
+		var = malloc(sizeof(dtrace_difv_t));
+		if (var == NULL)
+			errx(EXIT_FAILURE, "failed to allocate a new variable");
+		memset(var, 0, sizeof(dtrace_difv_t));
+		var->dtdv_ctfid = CTF_ERR;
+		needs_append = 1;
+	}
+
+	if (var->dtdv_ctfid != CTF_ERR)
+		return;
 
 	memcpy(var, difv, sizeof(dtrace_difv_t));
 
-	var->dtdv_ctfid = CTF_ERR;
-	var->dtdv_sym = NULL;
-	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
-	var->dtdv_type.dtdt_size = 0;
-	var->dtdv_stack = NULL;
-	var->dtdv_tf = NULL;
+	d_mod = dt_module_lookup_by_name(dtp, "D");
+	assert(d_mod != NULL);
+	d_ctfp = dt_module_getctf(dtp, d_mod);
+	assert(d_ctfp != NULL);
 
-	ve = malloc(sizeof(dt_var_entry_t));
-	if (ve == NULL)
-		errx(EXIT_FAILURE,
-		    "failed to allocate a new varlist entry");
+	if (difv->dtdv_ctfp != d_ctfp) {
+		var->dtdv_ctfid = CTF_ERR;
+		var->dtdv_sym = NULL;
+		var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
+		var->dtdv_type.dtdt_size = 0;
+		var->dtdv_stack = NULL;
+		var->dtdv_tf = NULL;
+		var->dtdv_storedtype = difv->dtdv_storedtype;
+		var->dtdv_restore = difv->dtdv_restore;
+	} else {
+		var->dtdv_ctfid = difv->dtdv_ctfid;
+		var->dtdv_sym = NULL;
+		var->dtdv_type = difv->dtdv_type;
+		var->dtdv_stack = NULL;
+		var->dtdv_tf = dt_typefile_D();
+		var->dtdv_storedtype = difv->dtdv_storedtype;
+		var->dtdv_restore = difv->dtdv_restore;
+	}
 
-	memset(ve, 0, sizeof(dt_var_entry_t));
-	ve->dtve_var = var;
+	if (needs_append) {
+		ve = malloc(sizeof(dt_var_entry_t));
+		if (ve == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new varlist entry");
 
-	dt_list_append(&var_list, ve);
+		memset(ve, 0, sizeof(dt_var_entry_t));
+		ve->dtve_var = var;
+
+		dt_list_append(&var_list, ve);
+	}
 }
 
 int
@@ -351,10 +382,13 @@ dt_var_uninitialized(dtrace_difv_t *difv)
 }
 
 void
-dt_insert_var_by_difv(dtrace_difv_t *difv)
+dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 {
 	dt_var_entry_t *ve;
 	dtrace_difv_t *var;
+	ctf_file_t *d_ctfp;
+	dt_module_t *d_mod;
+	int needs_append = 0;
 
 	ve = NULL;
 	var = NULL;
@@ -373,42 +407,67 @@ dt_insert_var_by_difv(dtrace_difv_t *difv)
 			break;
 	}
 
-	if (ve != NULL)
-		return;
+	if (ve == NULL)
+		var = NULL;
 
 	/*
 	 * Allocate a new variable to be put into our list and
 	 * copy the contents of the variable in the DIFO table
 	 * into the newly allocated region.
 	 */
-	var = malloc(sizeof(dtrace_difv_t));
-	if (var == NULL)
-		errx(EXIT_FAILURE, "failed to allocate a new variable");
+	if (var == NULL) {
+		var = malloc(sizeof(dtrace_difv_t));
+		if (var == NULL)
+			errx(EXIT_FAILURE, "failed to allocate a new variable");
+		memset(var, 0, sizeof(dtrace_difv_t));
+		var->dtdv_ctfid = CTF_ERR;
+		needs_append = 1;
+	}
+
+	if (var->dtdv_ctfid != CTF_ERR)
+		return;
 
 	memcpy(var, difv, sizeof(dtrace_difv_t));
 
-	var->dtdv_ctfid = CTF_ERR;
-	var->dtdv_sym = NULL;
-	var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM;
-	var->dtdv_type.dtdt_size = 0;
-	var->dtdv_stack = NULL;
-	var->dtdv_tf = NULL;
-	var->dtdv_storedtype = difv->dtdv_type;
-	var->dtdv_restore = difv->dtdv_restore;
+	d_mod = dt_module_lookup_by_name(dtp, "D");
+	assert(d_mod != NULL);
+	d_ctfp = dt_module_getctf(dtp, d_mod);
+	assert(d_ctfp != NULL);
 
-	ve = malloc(sizeof(dt_var_entry_t));
-	if (ve == NULL)
-		errx(EXIT_FAILURE,
-		    "failed to allocate a new varlist entry");
+	if (difv->dtdv_ctfp != d_ctfp) {
+		var->dtdv_ctfid = CTF_ERR;
+		var->dtdv_sym = NULL;
+		var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM;
+		var->dtdv_type.dtdt_size = 0;
+		var->dtdv_stack = NULL;
+		var->dtdv_tf = NULL;
+		var->dtdv_storedtype = difv->dtdv_type;
+		var->dtdv_restore = difv->dtdv_restore;
+	} else {
+		var->dtdv_ctfid = difv->dtdv_ctfid;
+		var->dtdv_sym = NULL;
+		var->dtdv_type = difv->dtdv_type;
+		var->dtdv_stack = NULL;
+		var->dtdv_tf = dt_typefile_D();
+		var->dtdv_storedtype = difv->dtdv_type;
+		var->dtdv_restore = difv->dtdv_restore;
+	}
 
-	memset(ve, 0, sizeof(dt_var_entry_t));
-	ve->dtve_var = var;
+	if (needs_append) {
+		ve = malloc(sizeof(dt_var_entry_t));
+		if (ve == NULL)
+			errx(EXIT_FAILURE,
+			    "failed to allocate a new varlist entry");
 
-	dt_list_append(&var_list, ve);
+		memset(ve, 0, sizeof(dt_var_entry_t));
+		ve->dtve_var = var;
+
+		dt_list_append(&var_list, ve);
+	}
 }
 
 void
-dt_populate_varlist(dtrace_difo_t *difo)
+dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 {
 	dt_var_entry_t *ve;
 	dtrace_difv_t *var, *difv;
@@ -426,7 +485,7 @@ dt_populate_varlist(dtrace_difo_t *difo)
 
 	for (i = 0; i < difo->dtdo_varlen; i++) {
 		difv = &difo->dtdo_vartab[i];
-		dt_insert_var_by_difv(difv);
+		dt_insert_var_by_difv(dtp, difv);
 	}
 
 	for (i = 0; i < difo->dtdo_len; i++) {
@@ -437,36 +496,36 @@ dt_populate_varlist(dtrace_difo_t *difo)
 		case DIF_OP_STGS:
 		case DIF_OP_LDGS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_GLOBAL,
-			    DIFV_KIND_SCALAR);
+			dt_insert_var_by_tup(dtp, difo, varid,
+			    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDLS:
 		case DIF_OP_STLS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_LOCAL,
+			dt_insert_var_by_tup(dtp, difo, varid, DIFV_SCOPE_LOCAL,
 			    DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDTS:
 		case DIF_OP_STTS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_THREAD,
-			    DIFV_KIND_SCALAR);
+			dt_insert_var_by_tup(dtp, difo, varid,
+			    DIFV_SCOPE_THREAD, DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDGAA:
 		case DIF_OP_STGAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_GLOBAL,
-			    DIFV_KIND_ARRAY);
+			dt_insert_var_by_tup(dtp, difo, varid,
+			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 			break;
 
 		case DIF_OP_LDTAA:
 		case DIF_OP_STTAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(difo, varid, DIFV_SCOPE_THREAD,
-			    DIFV_KIND_ARRAY);
+			dt_insert_var_by_tup(dtp, difo, varid,
+			    DIFV_SCOPE_THREAD, DIFV_KIND_ARRAY);
 			break;
 
 		default:
