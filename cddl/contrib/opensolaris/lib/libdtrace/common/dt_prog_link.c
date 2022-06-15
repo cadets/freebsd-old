@@ -992,6 +992,65 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		    sizeof(dtrace_diftype_t) * DIF_VARIABLE_MAX);
 	}
 
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		sdp = stp->ds_desc;
+
+		if (sdp == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
+			return (dt_set_errno(dtp, EDT_NOSTMT));
+		}
+
+		ecbdesc = sdp->dtsd_ecbdesc;
+		if (ecbdesc == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
+			return (dt_set_errno(dtp, EDT_DIFINVAL));
+		}
+
+		pred = &ecbdesc->dted_pred;
+		assert(pred != NULL);
+
+		if (pred->dtpdd_difo != NULL)
+			dt_populate_varlist(dtp, pred->dtpdd_difo);
+
+		/*
+		 * Nothing to do if the action is missing
+		 */
+		if (sdp->dtsd_action == NULL)
+			continue;
+
+		/*
+		 * If we are in a state where we have the first action, but not
+		 * a last action we bail out. This should not happen.
+		 */
+		if (sdp->dtsd_action_last == NULL) {
+			for (i = 0; i < DIFV_NSCOPES; i++)
+				free(biggest_vartype[i]);
+			return (dt_set_errno(dtp, EDT_ACTLAST));
+		}
+
+		/*
+		 * We populate the variable list before we actually do a pass
+		 * to infer definitions or type-checking. The reason for this
+		 * is to do with the semantics of probes being concurrent, in
+		 * the sense that they are in fact in parallel composition with
+		 * each other, rather than having some sort of ordering. Even
+		 * though for now we simply adopt the D style of type checking
+		 * for variables (store before a load), we would also like for
+		 * this to type-check:
+		 *
+		 * foo { y = x; } bar { x = 1; }
+		 */
+		for (ad = sdp->dtsd_action;
+		     ad != sdp->dtsd_action_last->dtad_next;
+		     ad = ad->dtad_next) {
+			if (ad->dtad_difo == NULL)
+				continue;
+
+			dt_populate_varlist(dtp, ad->dtad_difo);
+		}
+	}
 	/*
 	 * Go over all the statements in a D program
 	 */
@@ -1020,8 +1079,6 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 					break;
 
 			if (edl == NULL) {
-				dt_populate_varlist(pred->dtpdd_difo);
-
 				rval = process_difo(dtp, pgp, NULL,
 				    pred->dtpdd_difo, ecbdesc, biggest_vartype);
 				if (rval != 0) {
@@ -1057,27 +1114,6 @@ dt_prog_apply_rel(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			for (i = 0; i < DIFV_NSCOPES; i++)
 				free(biggest_vartype[i]);
 			return (dt_set_errno(dtp, EDT_ACTLAST));
-		}
-
-		/*
-		 * We populate the variable list before we actually do a pass
-		 * to infer definitions or type-checking. The reason for this
-		 * is to do with the semantics of probes being concurrent, in
-		 * the sense that they are in fact in parallel composition with
-		 * each other, rather than having some sort of ordering. Even
-		 * though for now we simply adopt the D style of type checking
-		 * for variables (store before a load), we would also like for
-		 * this to type-check:
-		 *
-		 * foo { y = x; } bar { x = 1; }
-		 */
-		for (ad = sdp->dtsd_action;
-		     ad != sdp->dtsd_action_last->dtad_next;
-		     ad = ad->dtad_next) {
-			if (ad->dtad_difo == NULL)
-				continue;
-
-			dt_populate_varlist(ad->dtad_difo);
 		}
 
 		/*
