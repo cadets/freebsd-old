@@ -627,10 +627,13 @@ dt_infer_type(dt_ifg_node_t *n)
 					dt_set_progerr(g_dtp, g_pgp,
 					    "dt_infer_type(%s, %zu@%p): the type "
 					    "of the other node must be uint64_t"
-					    " if symnode->din_ctfid <:"
-					    " other->din_ctfid, but it is: %s",
+					    " if symnode->din_ctfid (%zu@%p) <:"
+					    " other->din_ctfid (%zu@%p), but it "
+					    "is: %s",
 					    insname[opcode], n->din_uidx,
-					    n->din_difo, buf);
+					    n->din_difo, symnode->din_uidx,
+					    symnode->din_difo, other->din_uidx,
+					    other->din_difo, buf);
 			}
 
 			/*
@@ -2028,10 +2031,10 @@ dt_prog_infer_types(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo)
 		    type == DIF_TYPE_CTF || type == DIF_TYPE_STRING ||
 		    type == DIF_TYPE_NONE || type == DIF_TYPE_BOTTOM);
 
-		if (type == -1) {
+		if (type == -1)
 			dt_set_progerr(g_dtp, g_pgp,
-			    "failed to infer a type for %zu\n", node->din_uidx);
-		}
+			    "failed to infer a type for %zu@%p\n",
+			    node->din_uidx, node->din_difo);
 
 		if (type == DIF_TYPE_CTF) {
 			if (node->din_tf == NULL)
