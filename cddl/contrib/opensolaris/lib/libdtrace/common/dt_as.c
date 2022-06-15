@@ -133,7 +133,9 @@ dt_copyvar(dt_idhash_t *dhp, dt_ident_t *idp, void *data)
 
 	dvp->dtdv_name = (uint_t)stroff;
 	dvp->dtdv_id = idp->di_id;
+	dvp->dtdv_ctfp = idp->di_ctfp;
 	dvp->dtdv_flags = 0;
+	dvp->dtdv_ctfid = idp->di_type;
 
 	dvp->dtdv_kind = (idp->di_kind == DT_IDENT_ARRAY) ?
 	    DIFV_KIND_ARRAY : DIFV_KIND_SCALAR;
