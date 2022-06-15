@@ -726,6 +726,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		n->din_type = dn1->din_type;
 		n->din_mip = dn1->din_mip;
 		n->din_sym = dn1->din_sym;
+
 		if (opcode == DIF_OP_MOV)
 			n->din_isnull = dn1->din_isnull;
 
