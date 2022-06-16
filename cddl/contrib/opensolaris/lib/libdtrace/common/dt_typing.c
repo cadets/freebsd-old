@@ -537,7 +537,7 @@ dt_infer_type(dt_ifg_node_t *n)
 			}
 
 			if (opcode == DIF_OP_ADD && other->din_hasint) {
-				mip = dt_mip_by_offset(tc_n->din_tf,
+				mip = dt_mip_by_offset(g_dtp, tc_n->din_tf,
 				    tc_n->din_ctfid, other->din_int);
 				if (mip == NULL)
 					dt_set_progerr(g_dtp, g_pgp,

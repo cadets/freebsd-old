@@ -893,9 +893,11 @@ dt_get_typename(dt_ifg_node_t *n, char *buf, size_t bufsize, const char *loc)
 }
 
 typedef struct {
+	dtrace_hdl_t *dtp;
 	ctf_file_t *ctfp;
 	ctf_membinfo_t *mip;
 	uint64_t offs;
+	ctf_id_t ctfid;
 } dt_membinfo_helper_t;
 
 static int
@@ -912,7 +914,7 @@ dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 		return (0);
 
 	/* if not matching, simply continue searching. */
-	if (off != mh->offs)
+	if (off / NBBY != mh->offs)
 		return (0);
 
 	/*
@@ -924,7 +926,7 @@ dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 		return (-1);
 
 	memset(mh->mip, 0, sizeof(ctf_membinfo_t));
-	if (ctf_member_info(mh->ctfp, ctfid, name, mh->mip) == CTF_ERR)
+	if (ctf_member_info(mh->ctfp, mh->ctfid, name, mh->mip) == CTF_ERR)
 		return (-1);
 
 	/*
@@ -933,9 +935,9 @@ dt_find_memboffs(const char *name, ctf_id_t ctfid, ulong_t off, void *arg)
 	return (0);
 }
 
-
 ctf_membinfo_t *
-dt_mip_by_offset(dt_typefile_t *tf, ctf_id_t ctfid, uint64_t offs)
+dt_mip_by_offset(dtrace_hdl_t *dtp, dt_typefile_t *tf, ctf_id_t ctfid,
+    uint64_t offs)
 {
 	ctf_file_t *ctfp;
 	dt_membinfo_helper_t mh;
@@ -945,6 +947,8 @@ dt_mip_by_offset(dt_typefile_t *tf, ctf_id_t ctfid, uint64_t offs)
 
 	mh.offs = offs;
 	mh.ctfp = ctfp;
+	mh.dtp = dtp;
+	mh.ctfid = ctfid;
 
 	if (ctf_member_iter(mh.ctfp, ctfid, dt_find_memboffs, &mh) == -1)
 		return (NULL);
