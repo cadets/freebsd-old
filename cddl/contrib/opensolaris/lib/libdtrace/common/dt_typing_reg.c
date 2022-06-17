@@ -149,27 +149,36 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 		if (onode == r0node)
 			continue;
 
-		if (type == DIF_TYPE_STRING) {
-			if (otype == DIF_TYPE_BOTTOM)
+		if (type == DIF_TYPE_STRING || otype == DIF_TYPE_STRING) {
+			dt_ifg_node_t *str_node, *other_node;
+			int string_type, other_type;
+
+			str_node = type == DIF_TYPE_STRING ? node : onode;
+			other_node = type == DIF_TYPE_STRING ? onode : node;
+
+			string_type = str_node->din_type;
+			other_type = other_node->din_type;
+
+			if (other_type == DIF_TYPE_BOTTOM)
 				continue;
 
-			if (otype ==  DIF_TYPE_STRING) {
+			if (other_type ==  DIF_TYPE_STRING) {
 				first_iter = 0;
 				continue;
 			}
 
-			if (otype == DIF_TYPE_CTF) {
+			if (other_type == DIF_TYPE_CTF) {
 				/*
 				 * Get the CTF type name
 				 */
-				if (dt_typefile_typename(onode->din_tf,
-				    onode->din_ctfid, buf2,
+				if (dt_typefile_typename(other_node->din_tf,
+				    other_node->din_ctfid, buf2,
 				    sizeof(buf2)) != ((char *)buf2))
 					dt_set_progerr(g_dtp, g_pgp,
 					    "dt_typecheck_regdefs(): failed at "
 					    "getting type name node %ld: %s",
-					    onode->din_ctfid,
-					    dt_typefile_error(onode->din_tf));
+					    other_node->din_ctfid,
+					    dt_typefile_error(other_node->din_tf));
 
 				if (strcmp(buf2, "const char *") == 0 ||
 				    strcmp(buf2, "char *") == 0) {
