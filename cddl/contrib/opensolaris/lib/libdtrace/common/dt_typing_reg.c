@@ -181,7 +181,8 @@ dt_typecheck_regdefs(dt_list_t *defs, int *empty)
 					    dt_typefile_error(other_node->din_tf));
 
 				if (strcmp(buf2, "const char *") == 0 ||
-				    strcmp(buf2, "char *") == 0) {
+				    strcmp(buf2, "char *") == 0 ||
+				    strcmp(buf2, "string") == 0) {
 					first_iter = 0;
 					continue;
 				}
