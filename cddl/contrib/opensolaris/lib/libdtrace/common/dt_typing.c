@@ -516,6 +516,8 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * we apply the first typing rule.
 		 */
 		if (dn1->din_sym == NULL && dn2->din_sym == NULL) {
+			ctf_id_t k;
+
 			/*
 			 * Check which type is "bigger".
 			 */
@@ -536,7 +538,10 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (-1);
 			}
 
-			if (opcode == DIF_OP_ADD && other->din_hasint) {
+			k = dt_typefile_typekind(tc_n->din_tf, tc_n->din_ctfid);
+			if (opcode == DIF_OP_ADD &&
+			    (k == CTF_K_STRUCT || k == CTF_K_UNION) &&
+			    other->din_hasint) {
 				mip = dt_mip_by_offset(g_dtp, tc_n->din_tf,
 				    tc_n->din_ctfid, other->din_int);
 				if (mip == NULL)
