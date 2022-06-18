@@ -238,7 +238,7 @@ dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data,
 		hm->dthm_table[idx].key = k;
 		hm->dthm_table[idx].keysize = es;
 	}
-	
+
 	return (0);
 }
 
@@ -275,8 +275,15 @@ dt_hashmap_delete(dt_hashmap_t *hm, void *e, size_t es)
 }
 
 void
-dt_hashmap_free(dt_hashmap_t *hm)
+dt_hashmap_free(dt_hashmap_t *hm, int free_managed)
 {
+	size_t i;
+
+	if (free_managed)
+		for (i = 0; i < hm->dthm_size; i++)
+			if (hm->dthm_table[i].key != NULL &&
+			    hm->dthm_table[i].key_ismanaged)
+				free(hm->dthm_table[i].key);
 
 	free(hm->dthm_table);
 	free(hm);

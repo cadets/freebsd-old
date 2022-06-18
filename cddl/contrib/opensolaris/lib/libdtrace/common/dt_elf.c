@@ -1630,8 +1630,8 @@ finish:
 		errx(EXIT_FAILURE, "elf_update(%p, ELF_C_WRITE) failed with %s",
 		    e, elf_errmsg(-1));
 
-	dt_hashmap_free(dtelf_state->s_ecbhash);
-	dt_hashmap_free(dtelf_state->s_acthash);
+	dt_hashmap_free(dtelf_state->s_ecbhash, 0);
+	dt_hashmap_free(dtelf_state->s_acthash, 0);
 	free(dtelf_state);
 	(void) elf_end(e);
 }
@@ -2591,7 +2591,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		 * handled in dtrace_close(), as we've created it with
 		 * dt_program_create().
 		 */
-		dt_hashmap_free(dtelf_state->s_ecbhash);
+		dt_hashmap_free(dtelf_state->s_ecbhash, 0);
 		free(dtelf_state);
 		elf_end(e);
 
@@ -2603,7 +2603,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	*err = dt_elf_get_options(dtp, e, eprog->dtep_options);
 	if (*err) {
-		dt_hashmap_free(dtelf_state->s_ecbhash);
+		dt_hashmap_free(dtelf_state->s_ecbhash, 0);
 		free(dtelf_state);
 		elf_end(e);
 
@@ -2630,7 +2630,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		memcpy(prog->dp_eprobes, eprog->dtep_eprobes,
 		    prog->dp_neprobes * sizeof(dtrace_probedesc_t));
 	}
-	dt_hashmap_free(dtelf_state->s_ecbhash);
+	dt_hashmap_free(dtelf_state->s_ecbhash, 0);
 	free(dtelf_state);
 	(void) elf_end(e);
 
