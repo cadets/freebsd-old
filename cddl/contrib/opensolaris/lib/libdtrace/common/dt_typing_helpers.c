@@ -49,6 +49,7 @@
 #include <dt_basic_block.h>
 #include <dt_ifgnode.h>
 #include <dt_typefile.h>
+#include <dt_hashmap.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,11 +135,10 @@ dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
 	return (kind);
 }
 
-int
-dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
+static int
+_dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *tf1, ctf_id_t id1,
     dt_typefile_t *tf2, ctf_id_t id2)
 {
-
 	size_t n_stars1, n_stars2;
 	ctf_id_t kind1, kind2;
 	void *memb1, *memb2;
@@ -268,7 +268,18 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 				return (-1);
 			}
 
-			if (dt_ctf_type_compare(tf1,
+			if (dt_hashmap_lookup(hm, memb1_name,
+			    strlen(memb1_name) + 1) != NULL)
+				goto next;
+
+			if (dt_hashmap_insert(hm, memb1_name,
+			    strlen(memb1_name) + 1, (void *)0x1, DTH_MANAGED)) {
+				fprintf(stderr,
+				    "%s(): failed to insert %s into hashmap\n",
+				    __func__, memb1_name);
+			}
+
+			if (_dt_ctf_type_compare(hm, tf1,
 			    dt_typefile_memb_ctfid(memb1), tf2,
 			    dt_typefile_memb_ctfid(memb2))) {
 				fprintf(stderr,
@@ -277,6 +288,7 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 				return (-1);
 			}
 
+next:
 			memb1 = dt_typefile_struct_next(s1);
 			memb2 = dt_typefile_struct_next(s2);
 		}
@@ -291,11 +303,28 @@ dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
 			    dt_typefile_stringof(tf2));
 			return (-1);
 		}
-
-		return (0);
 	}
 
 	return (0);
+}
+
+int
+dt_ctf_type_compare(dt_typefile_t *tf1, ctf_id_t id1,
+    dt_typefile_t *tf2, ctf_id_t id2)
+{
+	dt_hashmap_t *hm;
+	int rval;
+
+	rval = 0;
+
+	hm = dt_hashmap_create(1 << 12);
+	if (hm == NULL)
+		return (-1);
+
+	rval = _dt_ctf_type_compare(hm, tf1, id1, tf2, id2);
+	dt_hashmap_free(hm, 1);
+
+	return (rval);
 }
 
 static int
