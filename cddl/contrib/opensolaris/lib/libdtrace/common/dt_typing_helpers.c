@@ -74,7 +74,8 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 
 	*n_stars = 0;
 
-	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER)
+	if (kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER &&
+	    kind != CTF_K_ARRAY)
 		return (kind);
 
 	id = *orig_id;
@@ -96,6 +97,18 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 	}
 
 	assert(kind != CTF_K_TYPEDEF && kind != CTF_K_POINTER);
+	if (kind == CTF_K_ARRAY) {
+		ctf_arinfo_t *ai;
+
+		ai = dt_typefile_array_info(tf, id);
+		if (ai == NULL)
+			return (CTF_ERR);
+
+		id = ai->ctr_contents;
+		free(ai);
+		n_redirects++;
+	}
+
 	*n_stars = n_redirects;
 	*orig_id = id;
 
@@ -423,6 +436,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 
 	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
 	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+
 	/*
 	 * In case number of stars in a pointer didn't match.
 	 */
