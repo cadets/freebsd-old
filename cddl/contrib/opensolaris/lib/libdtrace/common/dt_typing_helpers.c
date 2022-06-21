@@ -214,8 +214,9 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	 */
 	if (kind1 == CTF_K_INTEGER && kind2 == CTF_K_INTEGER) {
 		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
-			fprintf(stderr, "%s and %s are incompatible integers\n",
-			    type1_name, type2_name);
+			fprintf(stderr,
+			    "%s(): %s and %s are incompatible integers\n",
+			    __func__, type1_name, type2_name);
 			return (-1);
 		}
 
@@ -226,8 +227,8 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	 * Names must match
 	 */
 	if (strcmp(type1_name, type2_name) != 0) {
-		fprintf(stderr, "subtyping not possible: %s != %s\n",
-		    type1_name, type2_name);
+		fprintf(stderr, "%s(): subtyping not possible: %s != %s\n",
+		    __func__, type1_name, type2_name);
 		return (-1);
 	}
 
@@ -235,7 +236,7 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	    kind1 == CTF_K_FORWARD) {
 		if (dt_typefile_compat(tf1, id1, tf2, id2) == 0) {
 			fprintf(stderr,
-			    "dt_typefile_compat() %s is not "
+			    "dt_typefile_compat(): %s is not "
 			    "compatible with %s\n",
 			    type1_name, type2_name);
 			return (-1);
@@ -527,8 +528,8 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	 * removed later.
 	 */
 	if (strcmp(type1_name, type2_name) != 0) {
-		fprintf(stderr, "subtyping not possible: %s != %s\n",
-		    type1_name, type2_name);
+		fprintf(stderr, "%s(): subtyping not possible: %s != %s\n",
+		    __func__, type1_name, type2_name);
 		return (-1);
 	}
 
