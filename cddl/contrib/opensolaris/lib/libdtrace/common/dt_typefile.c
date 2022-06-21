@@ -479,3 +479,26 @@ dt_typefile_getctfp(dt_typefile_t *tf)
 
 	return dt_module_getctf(tf->dtp, tf->modhdl);
 }
+
+ctf_arinfo_t *
+dt_typefile_array_info(dt_typefile_t *tf, ctf_id_t id)
+{
+	ctf_file_t *ctfp;
+	ctf_arinfo_t *ai;
+
+	ctfp = dt_typefile_getctfp(tf);
+	if (ctfp == NULL)
+		return (NULL);
+
+	ai = malloc(sizeof(ctf_arinfo_t));
+	if (ai == NULL)
+		return (NULL);
+
+	memset(ai, 0, sizeof(ctf_arinfo_t));
+	if (ctf_array_info(ctfp, id, ai) == CTF_ERR) {
+		free(ai);
+		return (NULL);
+	}
+
+	return (ai);
+}

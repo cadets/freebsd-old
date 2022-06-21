@@ -66,4 +66,6 @@ void *dt_typefile_buildup_struct(dt_typefile_t *, ctf_id_t);
 void *dt_typefile_struct_next(void *);
 ctf_id_t dt_typefile_memb_ctfid(void *);
 ctf_file_t *dt_typefile_getctfp(dt_typefile_t *);
+ctf_arinfo_t *dt_typefile_array_info(dt_typefile_t *, ctf_id_t);
+
 #endif

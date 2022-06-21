@@ -685,6 +685,20 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 	if (k == CTF_K_UNION)
 		return (DTC_UNION);
 
+	if (k == CTF_K_ARRAY) {
+		ctf_arinfo_t *ai;
+		ctf_id_t src_type;
+
+		ai = dt_typefile_array_info(tf, ot);
+		if (ai == NULL)
+			return (DTC_BOTTOM);
+
+		src_type = ai->ctr_contents;
+		free(ai);
+
+		return (dt_get_class(tf, src_type, 1));
+	}
+
 	if (k == CTF_K_FORWARD) {
 		ctf_file_t *parent, *current;
 		if (!follow)
