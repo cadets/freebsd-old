@@ -136,24 +136,50 @@ dt_type_strip_typedef(dt_typefile_t *tf, ctf_id_t *orig_id)
 }
 
 static int
-_dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *tf1, ctf_id_t id1,
-    dt_typefile_t *tf2, ctf_id_t id2)
+_dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
+    dt_typefile_t *_tf2, ctf_id_t _id2)
 {
+	dt_typefile_t *tf1, *tf2;
+	ctf_id_t id1, id2;
 	size_t n_stars1, n_stars2;
-	ctf_id_t kind1, kind2;
+	ctf_id_t kind1, kind2, tmp;
 	void *memb1, *memb2;
 	char type1_name[4096], type2_name[4096];
 	char memb1_name[4096], memb2_name[4096];
 	void *s1, *s2;
 
-	assert(tf1 != NULL);
-	assert(tf2 != NULL);
+	assert(_tf1 != NULL);
+	assert(_tf2 != NULL);
 
 	/*
 	 * If we're comparing the same type, it's just equal.
 	 */
-	if (tf1 == tf2 && id1 == id2)
+	if (_tf1 == _tf2 && _id1 == _id2)
 		return (0);
+
+	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
+	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
+
+	assert(kind1 != CTF_K_UNKNOWN);
+	assert(kind2 != CTF_K_UNKNOWN);
+
+	assert(kind1 != CTF_K_FUNCTION);
+	assert(kind2 != CTF_K_FUNCTION);
+
+	assert(kind1 != CTF_K_FLOAT);
+	assert(kind2 != CTF_K_FLOAT);
+
+	assert(kind1 < CTF_K_MAX);
+	assert(kind2 < CTF_K_MAX);
+
+	tf1 = kind1 == CTF_K_STRUCT ? _tf1 : _tf2;
+	tf2 = kind1 == CTF_K_STRUCT ? _tf2 : _tf1;
+	id1 = kind1 == CTF_K_STRUCT ? _id1 : _id2;
+	id2 = kind1 == CTF_K_STRUCT ? _id2 : _id1;
+
+	tmp = kind1;
+	kind1 = tmp == CTF_K_STRUCT ? tmp : kind2;
+	kind2 = tmp == CTF_K_STRUCT ? kind2 : tmp;
 
 	if (dt_typefile_typename(tf1, id1, type1_name, sizeof(type1_name)) !=
 	    (char *)type1_name) {
@@ -169,8 +195,6 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *tf1, ctf_id_t id1,
 		return (-1);
 	}
 
-	kind1 = dt_type_strip_ref(tf1, &id1, &n_stars1);
-	kind2 = dt_type_strip_ref(tf2, &id2, &n_stars2);
 
 	/*
 	 * Give integers some leeway.
@@ -185,18 +209,6 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *tf1, ctf_id_t id1,
 		return (0);
 	}
 
-	assert(kind1 != CTF_K_UNKNOWN);
-	assert(kind2 != CTF_K_UNKNOWN);
-
-	assert(kind1 != CTF_K_FUNCTION);
-	assert(kind2 != CTF_K_FUNCTION);
-
-	assert(kind1 != CTF_K_FLOAT);
-	assert(kind2 != CTF_K_FLOAT);
-
-	assert(kind1 < CTF_K_MAX);
-	assert(kind2 < CTF_K_MAX);
-
 	/*
 	 * Names must match
 	 */
@@ -205,8 +217,6 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *tf1, ctf_id_t id1,
 		    type1_name, type2_name);
 		return (-1);
 	}
-
-	assert(kind1 == kind2);
 
 	if (kind1 == CTF_K_UNION || kind1 == CTF_K_ENUM ||
 	    kind1 == CTF_K_FORWARD) {
@@ -507,13 +517,6 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		    type1_name, type2_name);
 		return (-1);
 	}
-
-	/*
-	 * Because we've identified that they are matching 1:1 in name, we
-	 * expect that they are going to be matching in CTF kind and a few other
-	 * things...
-	 */
-	assert(kind1 == kind2);
 
 	size1 = dt_typefile_typesize(tf1, id1);
 	size2 = dt_typefile_typesize(tf2, id2);
