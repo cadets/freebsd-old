@@ -106,7 +106,9 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 
 		id = ai->ctr_contents;
 		free(ai);
+
 		n_redirects++;
+		kind = dt_typefile_typekind(tf, id); /* update our kind */
 	}
 
 	*n_stars = n_redirects;
