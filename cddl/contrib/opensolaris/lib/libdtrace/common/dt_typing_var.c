@@ -689,7 +689,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dt_ifg_node_t *dr,
 		if (rv != 0) {
 			fprintf(stderr,
 			    "dt_infer_type_var(): type mismatch "
-			    "in STTS: %s != %s\n",
+			    "in variable store: %s != %s\n",
 			    var_type, buf);
 
 			return (-1);
