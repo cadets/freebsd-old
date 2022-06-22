@@ -404,6 +404,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	int isvoid1, isvoid2;
 	char memb1_name[4096], memb2_name[4096];
 	char type1_name[4096], type2_name[4096];
+	char r1_type_name[4096], r2_type_name[4096];
 	void *s1, *s2;
 
 	*which = SUBTYPE_NONE;
@@ -522,6 +523,20 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 		return (0);
 	}
 
+	if (dt_typefile_typename(tf1, id1, r1_type_name,
+	    sizeof(r1_type_name)) != (char *)r1_type_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf1));
+		return (-1);
+	}
+
+	if (dt_typefile_typename(tf2, id2, r2_type_name,
+	    sizeof(r2_type_name)) != (char *)r2_type_name) {
+		fprintf(stderr, "dt_typefile_typename() failed: %s\n",
+		    dt_typefile_error(tf2));
+		return (-1);
+	}
+
 	/*
 	 * Since this is C, we do a comparison by name first. If the names don't
 	 * match identically, we aren't really interested.
@@ -531,7 +546,7 @@ dt_type_subtype(dt_typefile_t *tf1, ctf_id_t id1, dt_typefile_t *tf2,
 	 * relaxed, but for now we require that the name matches. This is easily
 	 * removed later.
 	 */
-	if (strcmp(type1_name, type2_name) != 0) {
+	if (strcmp(r1_type_name, r2_type_name) != 0) {
 		fprintf(stderr, "%s(): subtyping not possible: %s != %s\n",
 		    __func__, type1_name, type2_name);
 		return (-1);
