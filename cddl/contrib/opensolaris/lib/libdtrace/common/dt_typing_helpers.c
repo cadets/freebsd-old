@@ -81,6 +81,7 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 	id = *orig_id;
 	n_redirects = 0;
 
+again:
 	while (kind == CTF_K_TYPEDEF || kind == CTF_K_POINTER) {
 		id = dt_typefile_reference(tf, id);
 		if (id == CTF_ERR) {
@@ -109,6 +110,7 @@ dt_type_strip_ref(dt_typefile_t *tf, ctf_id_t *orig_id, size_t *n_stars)
 
 		n_redirects++;
 		kind = dt_typefile_typekind(tf, id); /* update our kind */
+		goto again;
 	}
 
 	*n_stars = n_redirects;
