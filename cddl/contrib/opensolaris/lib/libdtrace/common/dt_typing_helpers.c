@@ -924,6 +924,11 @@ dt_type_compare(dt_ifg_node_t *dn1, dt_ifg_node_t *dn2)
 	if (class1 == DTC_FORWARD && class2 == DTC_INT)
 		return (1);
 
+	if ((class1 == DTC_ENUM && class2 == DTC_ENUM) ||
+	    (class1 == DTC_INT && class2 == DTC_ENUM)  ||
+	    (class1 == DTC_ENUM && class2 == DTC_INT))
+		return (1);
+
 	if (class1 == DTC_INT &&
 	    (class2 == DTC_STRUCT || class2 == DTC_STRING ||
 	    class2 == DTC_FORWARD || class2 == DTC_UNION))
