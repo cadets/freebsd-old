@@ -231,7 +231,7 @@ _dt_ctf_type_compare(dt_hashmap_t *hm, dt_typefile_t *_tf1, ctf_id_t _id1,
 	 * Names must match
 	 */
 	if (strcmp(type1_name, type2_name) != 0) {
-		fprintf(stderr, "%s(): subtyping not possible: %s != %s\n",
+		fprintf(stderr, "%s(): comparison not possible: %s != %s\n",
 		    __func__, type1_name, type2_name);
 		return (-1);
 	}
