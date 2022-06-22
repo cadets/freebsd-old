@@ -50,6 +50,7 @@
 #define DTC_STRING   2
 #define DTC_FORWARD  3
 #define DTC_UNION    4
+#define DTC_ENUM     5
 
 extern int dt_prog_infer_types(dtrace_hdl_t *, dtrace_prog_t *,
     dtrace_difo_t *);

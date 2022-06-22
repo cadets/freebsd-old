@@ -719,6 +719,9 @@ dt_get_class(dt_typefile_t *tf, ctf_id_t id, int follow)
 	if (k == CTF_K_UNION)
 		return (DTC_UNION);
 
+	if (k == CTF_K_ENUM)
+		return (DTC_ENUM);
+
 	if (k == CTF_K_ARRAY) {
 		ctf_arinfo_t *ai;
 		ctf_id_t src_type;
