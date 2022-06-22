@@ -681,8 +681,8 @@ dt_infer_type(dt_ifg_node_t *n)
 				return (n->din_type);
 			}
 
-			if ((c = dt_get_class(other->din_tf,
-			    other->din_ctfid, 1)) != DTC_STRUCT)
+			c = dt_get_class(other->din_tf, other->din_ctfid, 1);
+			if (c != DTC_STRUCT && c != DTC_UNION)
 				return (-1);
 
 			/*
