@@ -707,7 +707,7 @@ dt_infer_type_var(dtrace_hdl_t *dtp, dtrace_difo_t *difo, dt_ifg_node_t *dr,
 
 		if (dif_var->dtdv_sym != NULL) {
 			if (dr->din_sym && strcmp(
-				dif_var->dtdv_sym, dr->din_sym) != 0) {
+			    dif_var->dtdv_sym, dr->din_sym) != 0) {
 				fprintf(stderr,
 				    "dt_infer_type_var(): symbol name "
 				    "mismatch: %s != %s\n",

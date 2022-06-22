@@ -282,9 +282,12 @@ dt_usite_contains_reg(dt_ifg_node_t *n, dt_ifg_node_t *curnode, uint8_t rd,
 	case DIF_OP_STW:
 	case DIF_OP_STX:
 		_r1 = DIF_INSTR_R1(instr);
+		_r2 = DIF_INSTR_RD(instr);
 
 		if (check && _r1 == rd)
 			*r1 = 1;
+		if (check && _r2 == rd)
+			*r2 = 1;
 		break;
 
 	case DIF_OP_LDGA:

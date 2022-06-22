@@ -568,12 +568,6 @@ dt_infer_type(dt_ifg_node_t *n)
 				n->din_tf = tc_n->din_tf;
 				n->din_int = other->din_int;
 			}
-
-			if (other->din_type == DIF_TYPE_BOTTOM) {
-				other->din_type = tc_n->din_type;
-				other->din_ctfid = tc_n->din_ctfid;
-				other->din_tf = tc_n->din_tf;
-			}
 		} else {
 			if (dn1->din_sym == NULL) {
 				assert(dn2->din_sym != NULL);
@@ -1761,6 +1755,7 @@ dt_infer_type(dt_ifg_node_t *n)
 		assert(insid >= 0 && insid <= 3);
 
 		assert(dn1 != NULL);
+		assert(dn2 != NULL); /* the destination register source */
 
 		/*
 		 * If we reach a ST instruction, we need to make sure that we
@@ -1787,9 +1782,9 @@ dt_infer_type(dt_ifg_node_t *n)
 		 * have this as a source.
 		 */
 		if (dn1->din_sym == NULL) {
-			n->din_type = dn1->din_type;
-			n->din_ctfid = dn1->din_ctfid;
-			n->din_tf = dn1->din_tf;
+			n->din_type = dn2->din_type;
+			n->din_ctfid = dn2->din_ctfid;
+			n->din_tf = dn2->din_tf;
 			return (n->din_type);
 		}
 
@@ -1983,9 +1978,9 @@ dt_infer_type(dt_ifg_node_t *n)
 				    var_type, buf, dn1->din_uidx);
 		}
 
-		n->din_type = dn1->din_type;
-		n->din_ctfid = dn1->din_ctfid;
-		n->din_tf = dn1->din_tf;
+		n->din_type = dn2->din_type;
+		n->din_ctfid = dn2->din_ctfid;
+		n->din_tf = dn2->din_tf;
 		return (n->din_type);
 	} /* case DIF_OP_STX */
 	default:
