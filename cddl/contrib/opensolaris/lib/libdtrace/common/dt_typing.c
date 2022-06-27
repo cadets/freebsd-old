@@ -548,13 +548,13 @@ dt_infer_type(dt_ifg_node_t *n)
 				    sizeof(typename));
 				mip = dt_mip_by_offset(g_dtp, tc_n->din_tf,
 				    tc_n->din_ctfid, other->din_int);
-				if (mip == NULL)
-					dt_set_progerr(g_dtp, g_pgp,
-					    "%s(%s, %zu@%p) nosym: could not "
-					    "find mip at %x for %s\n",
-					    __func__, insname[opcode],
-					    n->din_uidx, n->din_difo,
-					    other->din_int, typename);
+				if (mip == NULL) {
+					n->din_type = tc_n->din_type;
+					n->din_ctfid = tc_n->din_ctfid;
+					n->din_tf = tc_n->din_tf;
+					n->din_int = other->din_int;
+					return (n->din_type);
+				}
 
 				n->din_type = DIF_TYPE_CTF;
 				n->din_ctfid = mip->ctm_type;
