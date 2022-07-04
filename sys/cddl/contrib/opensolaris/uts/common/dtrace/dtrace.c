@@ -11776,10 +11776,6 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 			break;
 		}
 
-		/* XXX: in case of hypertrace, patch it up. */
-		if (vt->dtdt_size != 0 && vt->dtdt_size > et->dtdt_size)
-			et->dtdt_size = vt->dtdt_size;
-
 		if (vt->dtdt_size != 0 && vt->dtdt_size != et->dtdt_size) {
 			char scope[32], kind[32];
 
