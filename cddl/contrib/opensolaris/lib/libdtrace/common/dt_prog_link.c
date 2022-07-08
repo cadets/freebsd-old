@@ -875,12 +875,7 @@ dt_prog_assemble(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, dtrace_difo_t *difo,
 		    var->dtdv_scope, var->dtdv_kind);
 		assert(vlvar != NULL);
 
-		if (vlvar->dtdv_type.dtdt_kind == DIF_TYPE_BOTTOM ||
-		    vlvar->dtdv_restore != 0)
-			var->dtdv_type = vlvar->dtdv_storedtype;
-		else
-			var->dtdv_type = vlvar->dtdv_type;
-
+		var->dtdv_type = vlvar->dtdv_type;
 		id = var->dtdv_id;
 		scope = var->dtdv_scope;
 

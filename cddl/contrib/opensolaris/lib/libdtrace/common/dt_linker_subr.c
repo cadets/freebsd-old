@@ -349,7 +349,6 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 		var->dtdv_stack = NULL;
 		var->dtdv_tf = NULL;
 		var->dtdv_storedtype = difv->dtdv_storedtype;
-		var->dtdv_restore = difv->dtdv_restore;
 	} else {
 		var->dtdv_ctfid = difv->dtdv_ctfid;
 		var->dtdv_sym = NULL;
@@ -357,7 +356,6 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 		var->dtdv_stack = NULL;
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_storedtype;
-		var->dtdv_restore = difv->dtdv_restore;
 	}
 
 	if (needs_append) {
@@ -442,7 +440,6 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 		var->dtdv_stack = NULL;
 		var->dtdv_tf = NULL;
 		var->dtdv_storedtype = difv->dtdv_type;
-		var->dtdv_restore = difv->dtdv_restore;
 	} else {
 		var->dtdv_ctfid = difv->dtdv_ctfid;
 		var->dtdv_sym = NULL;
@@ -450,7 +447,6 @@ dt_insert_var_by_difv(dtrace_hdl_t *dtp, dtrace_difv_t *difv)
 		var->dtdv_stack = NULL;
 		var->dtdv_tf = dt_typefile_D();
 		var->dtdv_storedtype = difv->dtdv_type;
-		var->dtdv_restore = difv->dtdv_restore;
 	}
 
 	if (needs_append) {

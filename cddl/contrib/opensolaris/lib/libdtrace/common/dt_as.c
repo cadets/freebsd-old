@@ -156,10 +156,6 @@ dt_copyvar(dt_idhash_t *dhp, dt_ident_t *idp, void *data)
 	dt_node_type_assign(&dn, idp->di_ctfp, idp->di_type, B_FALSE);
 	dt_node_diftype(pcb->pcb_hdl, &dn, &dvp->dtdv_type);
 
-	if (dt_module_lookup_by_ctf(pcb->pcb_hdl, idp->di_ctfp) ==
-	    dt_module_lookup_by_name(pcb->pcb_hdl, "D"))
-		dvp->dtdv_restore = 1;
-
 	idp->di_flags &= ~(DT_IDFLG_DIFR | DT_IDFLG_DIFW);
 	return (0);
 }
