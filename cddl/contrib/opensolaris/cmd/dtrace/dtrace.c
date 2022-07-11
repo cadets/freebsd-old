@@ -139,6 +139,7 @@ static int g_allow_root_srcident;
 static int g_unsafe;
 static int g_has_idents;
 static _Atomic int g_intr;
+static _Atomic int g_stop;
 static _Atomic int g_impatient;
 static _Atomic int g_newline;
 
@@ -1764,7 +1765,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 again:
 			pthread_mutex_lock(&g_pgpcondmtx);
 			pthread_mutex_lock(&g_pgplistmtx);
-			while (!atomic_load(&g_intr) &&
+			while (!atomic_load(&g_intr) && !atomic_load(&g_stop) &&
 			    ((pgpl = dt_list_next(&g_pgplist)) == NULL ||
 			    again == 1)) {
 				pthread_mutex_unlock(&g_pgplistmtx);
@@ -1775,7 +1776,8 @@ again:
 			pthread_mutex_unlock(&g_pgplistmtx);
 			pthread_mutex_unlock(&g_pgpcondmtx);
 
-			assert(pgpl != NULL || atomic_load(&g_intr));
+			assert(pgpl != NULL || atomic_load(&g_intr) ||
+			    atomic_load(&g_stop));
 
 			if (atomic_load(&g_intr))
 				break;
@@ -2260,6 +2262,11 @@ prochandler(struct ps_prochandle *P, const char *msg, void *arg)
 		} else {
 			notice("pid %d has exited\n", pid);
 		}
+
+		atomic_store(&g_stop, 1);
+		pthread_mutex_lock(&g_pgpcondmtx);
+		pthread_cond_signal(&g_pgpcond);
+		pthread_mutex_unlock(&g_pgpcondmtx);
 		g_pslive--;
 		break;
 
