@@ -466,6 +466,37 @@ sglist_append_mbuf(struct sglist *sg, struct mbuf *m0)
 	return (0);
 }
 
+int
+sglist_append_mbuf_with_id(struct sglist *sg, struct mbuf *m0, int *mbuf_fail)
+{
+	struct sgsave save;
+	struct mbuf *m;
+	int error;
+
+	*mbuf_fail = 0;
+	if (sg->sg_maxseg == 0)
+		return (EINVAL);
+
+	m = m0;
+	while (m && m->m_len <= 0)
+		m = m->m_next;
+
+	if (m == NULL)
+		return (0);
+
+	if (m->m_flags & M_PKTHDR) {
+		SGLIST_SAVE(sg, save);
+		error = sglist_append(sg, &m->m_pkthdr.mbufid, sizeof(mbufid_t));
+		if (error) {
+			SGLIST_RESTORE(sg, save);
+			return (error);
+		}
+	}
+
+	*mbuf_fail = 1;
+	return (sglist_append_mbuf(sg, m));
+}
+
 /*
  * Append the segments that describe a single mbuf to a scatter/gather
  * list.  If there are insufficient segments, then this fails with

@@ -41,6 +41,7 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/ddtrace.h>
 
+#ifdef MBUFID_CANONICAL
 void
 mbufid_assert_sanity(mbufid_t *mbufidp)
 {
@@ -50,6 +51,12 @@ mbufid_assert_sanity(mbufid_t *mbufidp)
 			("%s: mbufid magic number is %lx but should be %lx",
 			 __func__, mbufidp->mid_magic, MBUFID_MAGIC_NUMBER));
 }
+#else
+void
+mbufid_assert_sanity(mbufid_t *mbufidp __unused)
+{
+}
+#endif
 
 void
 mbufid_generate(mbufid_t *mbufidp)
@@ -77,6 +84,5 @@ mbufid_isvalid(mbufid_t *mbufidp)
 	 * some room to take some well known uuids that are not to be used,
 	 * precalculate their hashes (if possible) and check against that?
 	 */
-	return (msgid_isvalid(&mbufidp->mid_msgid) &&
-	    mbufidp->mid_hostid != 0);
+	return (msgid_isvalid(&mbufidp->mid_msgid));
 }

@@ -628,6 +628,11 @@ pci_vtnet_init(struct vmctx *ctx, struct pci_devinst *pi, nvlist_t *nvl)
 	sc->vsc_consts.vc_hv_caps |= VIRTIO_NET_F_MRG_RXBUF |
 	    netbe_get_cap(sc->vsc_be);
 
+	if (netbe_tagging_enabled(sc->vsc_be)) {
+		/* We support tagging */
+		sc->vsc_consts.vc_hv_caps |= VIRTIO_NET_F_TAGGING;
+	}
+
 	/* 
 	 * Since we do not actually support multiqueue,
 	 * set the maximum virtqueue pairs to 1. 

@@ -331,6 +331,7 @@ static struct virtio_feature_desc vtnet_feature_desc[] = {
 	{ VIRTIO_NET_F_MQ,			"Multiqueue"		},
 	{ VIRTIO_NET_F_CTRL_MAC_ADDR,		"CtrlMacAddr"		},
 	{ VIRTIO_NET_F_SPEED_DUPLEX,		"SpeedDuplex"		},
+	{ VIRTIO_NET_F_TAGGING,			"Packet Tagging"	},
 
 	{ 0, NULL }
 };
@@ -2496,6 +2497,7 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	struct sglist *sg;
 	struct mbuf *m;
 	int error;
+	int mbuf_fail = 0;
 
 	sc = txq->vtntx_sc;
 	vq = txq->vtntx_vq;
@@ -2510,8 +2512,8 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		goto fail;
 	}
 
-	error = sglist_append_mbuf(sg, m);
-	if (error) {
+	error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
+	if (error && mbuf_fail != 0) {
 		m = m_defrag(m, M_NOWAIT);
 		if (m == NULL)
 			goto fail;
@@ -2522,9 +2524,15 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		error = sglist_append_mbuf(sg, m);
 		if (error)
 			goto fail;
-	}
+	} else if (error && mbuf_fail == 0)
+		goto fail;
 
 	txhdr->vth_mbuf = m;
+	if (error) {
+		KASSERT(0,
+		    ("%s: cannot add tag to sglist error %d", __func__, error));
+		goto fail;
+	}
 	error = virtqueue_enqueue(vq, txhdr, sg, sg->sg_nseg, 0);
 
 	return (error);

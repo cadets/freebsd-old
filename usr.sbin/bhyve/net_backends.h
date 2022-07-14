@@ -51,6 +51,7 @@ ssize_t	netbe_recv(net_backend_t *be, const struct iovec *iov, int iovcnt);
 ssize_t	netbe_rx_discard(net_backend_t *be);
 void	netbe_rx_disable(net_backend_t *be);
 void	netbe_rx_enable(net_backend_t *be);
+int	netbe_tagging_enabled(net_backend_t *be);
 
 
 /*
@@ -79,6 +80,7 @@ void	netbe_rx_enable(net_backend_t *be);
 #define	VIRTIO_NET_F_GUEST_ANNOUNCE \
 				(1 << 21) /* guest can send gratuitous pkts */
 #define	VIRTIO_NET_F_MQ		(1 << 22) /* host supports multiple VQ pairs */
+#define VIRTIO_NET_F_TAGGING	(1 << 24) /* host supports tagging packets */
 
 /*
  * Fixed network header size

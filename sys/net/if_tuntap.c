@@ -1736,10 +1736,10 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 
 	while (m && uio->uio_resid > 0 && error == 0) {
 		if (tp->tun_flags & TUN_PROPAGATE_TAG) {
-			struct mbufid_info m_info;
-			memset(&m_info, 0, sizeof(m_info));
+			mbufid_t mid;
+			memset(&mid, 0, sizeof(mid));
 			len = min(uio->uio_resid,
-			    m->m_len + sizeof(struct mbufid_info));
+			    m->m_len + sizeof(mbufid_t));
 			if (len <= sizeof(msgid_t))
 				break;
 
@@ -1751,19 +1751,15 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 				   and the msgid itself. Should this not be true,
 				   we just say that it is not present and have
 				   some zeroes at the start. */
-				m_info.mi_has_data |= M_INFO_MSGID |
-				                      M_INFO_HOSTID;
-				memcpy(&m_info.mi_id, &m->m_pkthdr.mbufid,
+				memcpy(&mid, &m->m_pkthdr.mbufid,
 				    sizeof(mbufid_t));
-
-				mbufid_assert_sanity(&m->m_pkthdr.mbufid);
+				mbufid_assert_sanity(&mid);
 			}
-			error = uiomove((void *)&m_info,
-			    sizeof(struct mbufid_info), uio);
+			error = uiomove((void *)&mid, sizeof(mbufid_t), uio);
 		}
 
 		/* In case of mbufid propagation, this should just
-		   shrink by sizeof(struct mbufid_info) */
+		   shrink by sizeof(mbufid_t) */
 		len = min(uio->uio_resid, m->m_len);
 		/* Need this check because we don't always
 		   propagate msgids, it depends on the config */
@@ -1888,10 +1884,10 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 	struct tuntap_softc *tp;
 	struct ifnet	*ifp;
 	struct mbuf	*m;
-	struct mbufid_info       m_info;
 	uint32_t	mru;
 	int		align, vhdrlen, error;
 	bool		l2tun;
+	mbufid_t	mid;
 
 	tp = dev->si_drv1;
 	ifp = TUN2IFP(tp);
@@ -1904,7 +1900,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 		return (0);
 
 	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG)
-		uiomove(&m_info, sizeof(m_info), uio);
+		uiomove(&mid, sizeof(mid), uio);
 
 	l2tun = (tp->tun_flags & TUN_L2) != 0;
 	mru = l2tun ? TAPMRU : TUNMRU;
@@ -1941,7 +1937,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 	m->m_pkthdr.rcvif = ifp;
 
 	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG) {
-		memcpy(&m->m_pkthdr.mbufid, &m_info.mi_id, sizeof(mbufid_t));
+		memcpy(&m->m_pkthdr.mbufid, &mid, sizeof(mbufid_t));
 		mbufid_assert_sanity(&m->m_pkthdr.mbufid);
 	}
 

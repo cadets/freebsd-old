@@ -41,13 +41,4 @@ typedef struct mbufid {
 	uint8_t		__mid_pad[8];
 } mbufid_t;
 
-struct mbufid_info {
-	mbufid_t	mi_id;
-#define	M_INFO_MSGID	(1 << 0)
-#define	M_INFO_HOSTID	(1 << 1)
-	uint8_t		mi_has_data;
-#define	MBUFID_PAD 3
-	uint8_t		__mi_pad[MBUFID_PAD];
-} __packed;
-
 #endif
