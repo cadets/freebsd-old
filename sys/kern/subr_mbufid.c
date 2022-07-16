@@ -72,7 +72,7 @@ mbufid_generate(mbufid_t *mbufidp)
 
 	mbufidp->mid_magic = MBUFID_MAGIC_NUMBER;
 
-	SDT_PROBE1(ddtrace, , tag, gen, mbufidp);
+	SDT_PROBE1(ddtrace, , pkttag, gen, mbufidp);
 }
 
 int

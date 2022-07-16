@@ -2806,7 +2806,7 @@ soreceive_dgram(struct socket *so, struct sockaddr **psa, struct uio *uio,
 		AUDIT_RET_MBUFID(&m->m_pkthdr.mbufid);
 	}
 
-	SDT_PROBE1(ddtrace, , tag, recv, &m->m_pkthdr.mbufid);
+	SDT_PROBE1(ddtrace, , pkttag, recv, &m->m_pkthdr.mbufid);
 
 	while (m != NULL && uio->uio_resid > 0) {
 		len = uio->uio_resid;

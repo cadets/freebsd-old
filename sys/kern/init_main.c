@@ -110,8 +110,8 @@ __FBSDID("$FreeBSD$");
 
 SDT_PROVIDER_DEFINE(ddtrace);
 
-SDT_PROBE_DEFINE1(ddtrace, , tag, gen, "mbufid_t *");
-SDT_PROBE_DEFINE1(ddtrace, , tag, recv, "mbufid_t *");
+SDT_PROBE_DEFINE1(ddtrace, , pkttag, gen, "mbufid_t *");
+SDT_PROBE_DEFINE1(ddtrace, , pkttag, recv, "mbufid_t *");
 
 
 void mi_startup(void);				/* Should be elsewhere */
