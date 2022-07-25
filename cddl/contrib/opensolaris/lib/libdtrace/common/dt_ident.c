@@ -359,6 +359,9 @@ dt_idcook_args(dt_node_t *dnp, dt_ident_t *idp, int argc, dt_node_t *ap)
 		    "of a probe clause\n", idp->di_name);
 	}
 
+	if (dt_resolve(ap->dn_target, 0) != 0 && ap->dn_target[0] != '\0')
+		return;
+
 	if (prp == NULL) {
 		xyerror(D_ARGS_MULTI,
 		    "%s[ ] may not be referenced because probe description %s "

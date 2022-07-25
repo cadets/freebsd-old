@@ -58,6 +58,7 @@
 #include <dt_parser.h>
 #include <dt_provider.h>
 #include <dt_module.h>
+#include <dt_resolver.h>
 
 static void dt_cg_node(dt_node_t *, dt_irlist_t *, dt_regset_t *);
 
@@ -1324,7 +1325,9 @@ dt_cg_array_op(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 			dnp->dn_reg = -1;
 			return;
 		}
-		dnp->dn_args->dn_value = prp->pr_mapping[saved];
+		if (dt_resolve(dnp->dn_target, 0) == 0 ||
+		    dnp->dn_target[0] == '\0')
+			dnp->dn_args->dn_value = prp->pr_mapping[saved];
 	}
 
 	dt_cg_node(dnp->dn_args, dlp, drp);
@@ -1966,7 +1969,11 @@ dt_cg_node(dt_node_t *dnp, dt_irlist_t *dlp, dt_regset_t *drp)
 		 * potential return of CTF_ERR here, as it can occur in valid
 		 * scenarios.
 		 */
-		copied = ctf_type_copied(dnp->dn_ctfp, dnp->dn_type);
+		if (dt_resolve(dnp->dn_target, 0) == 0 ||
+		    dnp->dn_target[0] == '\0')
+			copied = ctf_type_copied(dnp->dn_ctfp, dnp->dn_type);
+		else
+			copied = 0;
 
 		if (copied == 1 || mod != dnp->dn_dtp->dt_ddefs) {
 			/*
