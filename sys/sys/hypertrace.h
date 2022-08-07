@@ -16,7 +16,7 @@
  * issues, we have to do it this way. It should be fixed, but for now we just
  * have to manually keep dtrace_id_t and hypertrace_id_t in sync.
  */
-typedef int hypertrace_id_t;
+typedef uint32_t hypertrace_id_t;
 
 /*
  * The arguments that we pass in from the guest to host to implement builtin

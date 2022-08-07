@@ -44,6 +44,7 @@
 #include <machine/cpufunc.h>
 
 #include <sys/types.h>
+#include <sys/hypertrace.h>
 
 /*
  * Arguments are only specified in this header file.
@@ -53,7 +54,7 @@
  */
 int	hypercall_prototype(void /* args */);
 int	hypercall_test(void /* args */);
-int	hypercall_dtrace_probe(int, uintptr_t, lwpid_t);
+int	hypercall_dtrace_probe(int, hypertrace_args_t *, lwpid_t);
 
 static __inline int
 bhyve_hypercalls_enabled(void)

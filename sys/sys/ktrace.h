@@ -48,6 +48,7 @@
  * flags (ORed in with operation)
  */
 #define KTRFLAG_DESCEND		4	/* perform op on all children too */
+#define	KTRFLAG_HYPERTRACE	8	/* trace using hypertrace */
 
 /*
  * ktrace record header

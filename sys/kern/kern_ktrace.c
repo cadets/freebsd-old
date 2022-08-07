@@ -42,6 +42,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/capsicum.h>
 #include <sys/systm.h>
 #include <sys/fcntl.h>
+#include <sys/hypertrace.h>
+#include <sys/jail.h>
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/lock.h>
@@ -62,6 +64,8 @@ __FBSDID("$FreeBSD$");
 #include <sys/sysent.h>
 #include <sys/syslog.h>
 #include <sys/sysproto.h>
+
+#include <machine/bhyve_hypercall.h>
 
 #include <security/mac/mac_framework.h>
 
@@ -130,6 +134,24 @@ static int data_lengths[] = {
 	[KTR_STRUCT_ARRAY] = sizeof(struct ktr_struct_array),
 };
 
+static hypertrace_id_t htr_probeids[] = {
+	[KTR_SYSCALL]      = 0xFFFFFFFE,
+	[KTR_SYSRET]       = 0xFFFFFFFD,
+	[KTR_NAMEI]        = 0xFFFFFFFC,
+	[KTR_GENIO]        = 0xFFFFFFFB,
+	[KTR_PSIG]         = 0xFFFFFFFA,
+	[KTR_CSW]          = 0xFFFFFFF9,
+	[KTR_USER]         = 0xFFFFFFF8,
+	[KTR_STRUCT]       = 0xFFFFFFF7,
+	[KTR_SYSCTL]       = 0xFFFFFFF6,
+	[KTR_PROCCTOR]     = 0xFFFFFFF5,
+	[KTR_PROCDTOR]     = 0xFFFFFFF4,
+	[KTR_CAPFAIL]      = 0xFFFFFFF3,
+	[KTR_FAULT]        = 0xFFFFFFF2,
+	[KTR_FAULTEND]     = 0xFFFFFFF1,
+	[KTR_STRUCT_ARRAY] = 0xFFFFFFF0
+};
+
 static STAILQ_HEAD(, ktr_request) ktr_free;
 
 static SYSCTL_NODE(_kern, OID_AUTO, ktrace, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
@@ -174,11 +196,13 @@ static void ktr_freerequest(struct ktr_request *req);
 static void ktr_freerequest_locked(struct ktr_request *req);
 static void ktr_writerequest(struct thread *td, struct ktr_request *req);
 static int ktrcanset(struct thread *,struct proc *);
-static int ktrsetchildren(struct thread *, struct proc *, int, int,
+static int ktrsetchildren(struct thread *, struct proc *, int, int, int,
     struct ktr_io_params *);
-static int ktrops(struct thread *, struct proc *, int, int,
+static int ktrops(struct thread *, struct proc *, int, int, int,
     struct ktr_io_params *);
 static void ktrprocctor_entered(struct thread *, struct proc *);
+static int ktr_hypertrace_enabled(struct proc *);
+static void ktr_hypertracereq(struct thread *, struct ktr_request *);
 
 /*
  * ktrace itself generates events, such as context switches, which we do not
@@ -1006,6 +1030,7 @@ sys_ktrace(struct thread *td, struct ktrace_args *uap)
 	int facs = uap->facs & ~KTRFAC_ROOT;
 	int ops = KTROP(uap->ops);
 	int descend = uap->ops & KTRFLAG_DESCEND;
+	int hypertrace = uap->ops & KTRFLAG_HYPERTRACE;
 	int ret = 0;
 	int flags, error = 0;
 	struct nameidata nd;
@@ -1047,6 +1072,7 @@ restart:
 		FOREACH_PROC_IN_SYSTEM(p) {
 			old_kiop = NULL;
 			PROC_LOCK(p);
+			p->p_ktrhypertrace = 0;
 			if (p->p_ktrioparms != NULL &&
 			    p->p_ktrioparms->vp == vp) {
 				if (ktrcanset(td, p)) {
@@ -1094,9 +1120,11 @@ restart:
 		LIST_FOREACH(p, &pg->pg_members, p_pglist) {
 			PROC_LOCK(p);
 			if (descend)
-				ret |= ktrsetchildren(td, p, ops, facs, kiop);
+				ret |= ktrsetchildren(
+				    td, p, ops, facs, hypertrace, kiop);
 			else
-				ret |= ktrops(td, p, ops, facs, kiop);
+				ret |= ktrops(
+				    td, p, ops, facs, hypertrace, kiop);
 		}
 	} else {
 		/*
@@ -1109,9 +1137,10 @@ restart:
 			goto done;
 		}
 		if (descend)
-			ret |= ktrsetchildren(td, p, ops, facs, kiop);
+			ret |= ktrsetchildren(
+			    td, p, ops, facs, hypertrace, kiop);
 		else
-			ret |= ktrops(td, p, ops, facs, kiop);
+			ret |= ktrops(td, p, ops, facs, hypertrace, kiop);
 	}
 	sx_sunlock(&proctree_lock);
 	if (!ret)
@@ -1166,7 +1195,7 @@ sys_utrace(struct thread *td, struct utrace_args *uap)
 
 #ifdef KTRACE
 static int
-ktrops(struct thread *td, struct proc *p, int ops, int facs,
+ktrops(struct thread *td, struct proc *p, int ops, int facs, int hypertrace,
     struct ktr_io_params *new_kiop)
 {
 	struct ktr_io_params *old_kiop;
@@ -1197,13 +1226,14 @@ ktrops(struct thread *td, struct proc *p, int ops, int facs,
 	old_kiop = NULL;
 	mtx_lock(&ktrace_mtx);
 	if (ops == KTROP_SET) {
-		if (p->p_ktrioparms != NULL &&
-		    p->p_ktrioparms->vp != new_kiop->vp) {
+		if (!hypertrace &&
+		    (p->p_ktrioparms != NULL &&
+		    p->p_ktrioparms->vp != new_kiop->vp)) {
 			/* if trace file already in use, relinquish below */
 			old_kiop = ktr_io_params_rele(p->p_ktrioparms);
 			p->p_ktrioparms = NULL;
 		}
-		if (p->p_ktrioparms == NULL) {
+		if (!hypertrace && p->p_ktrioparms == NULL) {
 			p->p_ktrioparms = new_kiop;
 			ktr_io_params_ref(new_kiop);
 		}
@@ -1219,15 +1249,18 @@ ktrops(struct thread *td, struct proc *p, int ops, int facs,
 	mtx_unlock(&ktrace_mtx);
 	if ((p->p_traceflag & KTRFAC_MASK) != 0)
 		ktrprocctor_entered(td, p);
+	if (hypertrace)
+		p->p_ktrhypertrace = 1;
 	PROC_UNLOCK(p);
-	ktr_io_params_free(old_kiop);
+	if (!hypertrace)
+		ktr_io_params_free(old_kiop);
 
 	return (1);
 }
 
 static int
 ktrsetchildren(struct thread *td, struct proc *top, int ops, int facs,
-    struct ktr_io_params *new_kiop)
+    int hypertrace, struct ktr_io_params *new_kiop)
 {
 	struct proc *p;
 	int ret = 0;
@@ -1236,7 +1269,7 @@ ktrsetchildren(struct thread *td, struct proc *top, int ops, int facs,
 	PROC_LOCK_ASSERT(p, MA_OWNED);
 	sx_assert(&proctree_lock, SX_LOCKED);
 	for (;;) {
-		ret |= ktrops(td, p, ops, facs, new_kiop);
+		ret |= ktrops(td, p, ops, facs, hypertrace, new_kiop);
 		/*
 		 * If this process has children, descend to them next,
 		 * otherwise do any siblings, and if done with this level,
@@ -1275,11 +1308,23 @@ ktr_writerequest(struct thread *td, struct ktr_request *req)
 
 	p = td->td_proc;
 
+	mtx_lock(&ktrace_mtx);
+	if (ktr_hypertrace_enabled(p)) {
+		/*
+		 * If we are performing a hypercall into hypertrace, that means
+		 * that we aren't really interested in the ktrace.out log that
+		 * will be produced under this block. Therefore, we just exit
+		 * out once we've completed the hypercall.
+		 */
+		mtx_unlock(&ktrace_mtx);
+		ktr_hypertracereq(td, req);
+		return;
+	}
+
 	/*
 	 * We reference the kiop for use in I/O in case ktrace is
 	 * disabled on the process as we write out the request.
 	 */
-	mtx_lock(&ktrace_mtx);
 	kiop = p->p_ktrioparms;
 
 	/*
@@ -1387,6 +1432,215 @@ ktrcanset(struct thread *td, struct proc *targetp)
 		return (0);
 
 	return (1);
+}
+
+/*
+ * Returns information on whether hypertrace is currently enabled or not for a
+ * given thread.
+ */
+static int
+ktr_hypertrace_enabled(struct proc *p)
+{
+
+	KASSERT(mtx_owned(&ktrace_mtx),
+	    ("%s(): called without owning ktrace_mtx", __func__));
+	return (p->p_ktrhypertrace);
+}
+
+static hypertrace_args_t *
+ktr_extract_hypertrace_args(
+    struct thread *td, struct ktr_request *req, hypertrace_args_t *args)
+{
+	struct ktr_header *kth;
+
+	/*
+	 * Nonsense.
+	 */
+	if (args == NULL)
+		return (NULL);
+
+	kth = &req->ktr_header;
+	memset(args, 0, sizeof(hypertrace_args_t));
+
+	/*
+	 * Initialize generic hypertrace arguments (global vars for the most
+	 * part).
+	 */
+	args->htr_curthread = td;
+	args->htr_tid = td->td_tid;
+	args->htr_errno = td->td_errno;
+	args->htr_curcpu = curcpu;
+	args->htr_jid = td->td_ucred->cr_prison->pr_id;
+	args->htr_jailname = td->td_ucred->cr_prison->pr_name;
+	args->htr_execname = kth->ktr_comm;
+	args->htr_execargs = curproc->p_args->ar_args;
+	args->htr_execargs_len = curproc->p_args->ar_length;
+	if (curproc->p_pid != proc0.p_pid)
+		args->htr_ppid = curproc->p_pptr->p_pid;
+
+	if (td->td_ucred) {
+		args->htr_uid = td->td_ucred->cr_uid;
+		args->htr_gid = td->td_ucred->cr_gid;
+	}
+
+	switch (kth->ktr_type) {
+	case KTR_SYSCALL: {
+		struct ktr_syscall *ktp;
+		int i;
+		register_t *regs = req->ktr_buffer;
+
+		ktp = &req->ktr_data.ktr_syscall;
+		args->htr_args[0] = ktp->ktr_code;
+		if (ktp->ktr_narg > 8)
+			return (NULL);
+
+		for (i = 0; i < ktp->ktr_narg; i++)
+			args->htr_args[i + 1] = regs[i];
+		break;
+	}
+
+	case KTR_SYSRET: {
+		struct ktr_sysret *ktp;
+
+		ktp = &req->ktr_data.ktr_sysret;
+		args->htr_args[0] = ktp->ktr_code;
+		args->htr_args[1] = ktp->ktr_error;
+		args->htr_args[2] = ((ktp->ktr_error == 0) ?
+		    ktp->ktr_retval : 0);
+		break;
+	}
+
+	case KTR_NAMEI: {
+		args->htr_args[0] = kth->ktr_len;
+		args->htr_args[1] = (uintptr_t)req->ktr_buffer; /* path */
+		break;
+	}
+
+	case KTR_GENIO: {
+		struct ktr_genio *ktg;
+
+		ktg = &req->ktr_data.ktr_genio;
+		args->htr_args[0] = ktg->ktr_fd;
+		args->htr_args[1] = ktg->ktr_rw;
+		args->htr_args[2] = kth->ktr_len;
+		args->htr_args[3] = (uintptr_t)req->ktr_buffer;
+		break;
+	}
+
+	case KTR_PSIG: {
+		struct ktr_psig *kp;
+
+		kp = &req->ktr_data.ktr_psig;
+		args->htr_args[0] = kp->signo;
+		args->htr_args[1] = (uintptr_t)kp->action;
+		args->htr_args[2] = (uintptr_t)&kp->mask;
+		args->htr_args[3] = kp->code;
+		break;
+	}
+
+	case KTR_CSW: {
+		struct ktr_csw *kc;
+
+		kc = &req->ktr_data.ktr_csw;
+		args->htr_args[0] = kc->out;
+		args->htr_args[1] = kc->user;
+		break;
+	}
+
+	case KTR_USER:
+	case KTR_STRUCT:
+	case KTR_SYSCTL:
+		args->htr_args[0] = kth->ktr_len;
+		args->htr_args[1] = (uintptr_t)req->ktr_buffer;
+
+	case KTR_PROCCTOR: {
+		struct ktr_proc_ctor *ktp;
+
+		ktp = &req->ktr_data.ktr_proc_ctor;
+		args->htr_args[0] = ktp->sv_flags;
+		break;
+	}
+
+	/* no args */
+	case KTR_PROCDTOR:
+		break;
+
+	case KTR_CAPFAIL: {
+		struct ktr_cap_fail *kcf;
+
+		kcf = &req->ktr_data.ktr_cap_fail;
+		args->htr_args[0] = kcf->cap_type;
+		args->htr_args[1] = (uintptr_t)&kcf->cap_needed;
+		args->htr_args[2] = (uintptr_t)&kcf->cap_held;
+		break;
+	}
+
+	case KTR_FAULT: {
+		struct ktr_fault *kf;
+
+		kf = &req->ktr_data.ktr_fault;
+		args->htr_args[0] = kf->vaddr;
+		args->htr_args[1] = kf->type;
+		break;
+	}
+
+	case KTR_FAULTEND: {
+		struct ktr_faultend *kf;
+
+		kf = &req->ktr_data.ktr_faultend;
+		args->htr_args[0] = kf->result;
+		break;
+	}
+
+	case KTR_STRUCT_ARRAY: {
+		struct ktr_struct_array *ksa;
+
+		ksa = &req->ktr_data.ktr_struct_array;
+		args->htr_args[0] = ksa->struct_size;
+		args->htr_args[1] = (uintptr_t)req->ktr_buffer;
+		args->htr_args[2] = kth->ktr_len;
+		break;
+	}
+
+	default:
+		return (NULL);
+	}
+
+	return (args);
+}
+
+static void
+ktr_hypertracereq(struct thread *td, struct ktr_request *req)
+{
+	struct ktr_header *kth;
+	hypertrace_args_t args;
+	int htr_probeid;
+
+	/*
+	 * If we can't hypercall at all, there is no point to doing any of this.
+	 */
+	if (!bhyve_hypercalls_enabled())
+		return;
+
+	kth = &req->ktr_header;
+	KASSERT(((u_short)kth->ktr_type & ~KTR_DROP) < nitems(data_lengths),
+	    ("data_lengths array overflow"));
+
+	/*
+	 * Meaningless record.
+	 */
+	if (kth->ktr_type == 0)
+		return;
+	htr_probeid = htr_probeids[kth->ktr_type];
+
+	/*
+	 * If we fail to extract the arguments, simply exit.
+	 */
+	if (ktr_extract_hypertrace_args(td, req, &args) != &args)
+		return;
+
+	hypercall_dtrace_probe(htr_probeid, &args, td->td_tid);
+
 }
 
 #endif /* KTRACE */

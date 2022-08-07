@@ -7944,8 +7944,8 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				}
 
 				hypercall_dtrace_probe(
-				    mstate->dtms_probe->dtpr_id,
-				    (uintptr_t)&htr_args, curthread->td_tid);
+				    mstate->dtms_probe->dtpr_id, &htr_args,
+				    curthread->td_tid);
 			}
 			
 			break;

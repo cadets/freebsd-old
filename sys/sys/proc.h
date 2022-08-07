@@ -723,6 +723,7 @@ struct proc {
 	uint64_t	p_prev_runtime;	/* (c) Resource usage accounting. */
 	struct racct	*p_racct;	/* (b) Resource accounting. */
 	int		p_throttled;	/* (c) Flag for racct pcpu throttling */
+	int		p_ktrhypertrace;	/* (*) ktrace specific data */
 	/*
 	 * An orphan is the child that has been re-parented to the
 	 * debugger as a result of attaching to it.  Need to keep
