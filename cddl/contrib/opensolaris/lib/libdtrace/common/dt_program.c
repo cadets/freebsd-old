@@ -792,7 +792,7 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 	dt_verictx_t *ctx = _ctx;
 	dtrace_hdl_t *dtp;
 	dtrace_difv_t *difv, *curdifo_var;
-	dtrace_difo_t *difo;
+	dtrace_difo_t *difo = NULL;
 	dtrace_diftype_t *rtype;
 	dtrace_optval_t strsize = 0;
 
@@ -858,8 +858,8 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 
 		case DIF_OP_ULOAD:
 			opnew = DIF_INSTR_OP(inew);
-			if (i + 1 < difo->dtdo_len)
-				inext = difo->dtdo_buf[i + 1];
+			if (i + 1 < dbase->dtdo_len)
+				inext = dbase->dtdo_buf[i + 1];
 
 			opnext = DIF_INSTR_OP(inext);
 			if (opnew != DIF_OP_LDSB && opnew != DIF_OP_LDSH &&
@@ -880,8 +880,8 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 
 		case DIF_OP_UULOAD:
 			opnew = DIF_INSTR_OP(inew);
-			if (i + 1 < difo->dtdo_len)
-				inext = difo->dtdo_buf[i + 1];
+			if (i + 1 < dbase->dtdo_len)
+				inext = dbase->dtdo_buf[i + 1];
 
 			opnext = DIF_INSTR_OP(inext);
 			if (opnew != DIF_OP_ULDSB && opnew != DIF_OP_ULDSH &&
@@ -966,6 +966,10 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 		default:
 			if (ibase != inew) {
 				opnew = DIF_INSTR_OP(inew);
+				fprintf(stderr, "Base program:\n");
+				dt_dis(dbase, stderr);
+				fprintf(stderr, "New program:\n");
+				dt_dis(dnew, stderr);
 				fprintf(stderr,
 				    "ibase and inew aren't "
 				    "the same (%x != %x)\n"
@@ -1001,6 +1005,8 @@ dt_verictx_alloc(dtrace_hdl_t *dtp)
 	 */
 	ctx->difovec = dt_alloc(dtp,
 	    sizeof(dtrace_difo_t *) * VERICTX_DEFAULT_VECSIZE);
+	memset(
+	    ctx->difovec, 0, sizeof(dtrace_difo_t *) * VERICTX_DEFAULT_VECSIZE);
 	ctx->num_difos = 0;
 	ctx->difovec_size = VERICTX_DEFAULT_VECSIZE;
 	return (ctx);
