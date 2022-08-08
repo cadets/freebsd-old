@@ -621,6 +621,13 @@ vtnet_config_change(device_t dev)
 }
 
 static int
+vtnet_tagging_enabled(struct vtnet_softc *sc)
+{
+
+	return (sc->vtnet_features & VIRTIO_NET_F_TAGGING);
+}
+
+static int
 vtnet_negotiate_features(struct vtnet_softc *sc)
 {
 	device_t dev;
@@ -754,6 +761,9 @@ vtnet_setup_features(struct vtnet_softc *sc)
 		sc->vtnet_rx_nsegs = VTNET_RX_SEGS_LRO_NOMRG;
 	else
 		sc->vtnet_rx_nsegs = VTNET_RX_SEGS_HDR_SEPARATE;
+
+	if (vtnet_tagging_enabled(sc))
+		sc->vtnet_rx_nsegs++;
 
 	/*
 	 * Favor "hardware" LRO if negotiated, but support software LRO as
@@ -1675,7 +1685,7 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 {
 	struct vtnet_softc *sc;
 	struct sglist *sg;
-	int header_inlined, error;
+	int header_inlined, error, mbuf_fail;
 
 	sc = rxq->vtnrx_sc;
 	sg = rxq->vtnrx_sg;
@@ -1688,8 +1698,17 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 	header_inlined = vtnet_modern(sc) ||
 	    (sc->vtnet_flags & VTNET_FLAG_MRG_RXBUFS) != 0; /* TODO: ANY_LAYOUT */
 
+	/*
+	 * We should have the M_PKTHDR flag set correctly here even though we
+	 * are in the RX queue, because the buffer allocator sets the M_PKTHDR
+	 * flag for the very first mbuf that we enqueue in the chain.
+	 */
 	if (header_inlined)
-		error = sglist_append_mbuf(sg, m);
+		if (vtnet_tagging_enabled(sc) && m->m_flags & M_PKTHDR) {
+			error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
+		} else {
+			error = sglist_append_mbuf(sg, m);
+		}
 	else {
 		struct vtnet_rx_header *rxhdr =
 		    mtod(m, struct vtnet_rx_header *);
@@ -1704,12 +1723,20 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 		if (error)
 			return (error);
 
-		if (m->m_next != NULL)
-			error = sglist_append_mbuf(sg, m->m_next);
+		if (m->m_next != NULL) {
+			if (vtnet_tagging_enabled(sc) &&
+			    m->m_flags & M_PKTHDR) {
+				error = sglist_append_mbuf_with_id(
+				    sg, m->m_next, &mbuf_fail);
+			} else {
+				error = sglist_append_mbuf(sg, m->m_next);
+			}
+		}
 	}
 
-	if (error)
+	if (error) {
 		return (error);
+	}
 
 	return (virtqueue_enqueue(rxq->vtnrx_vq, m, sg, 0, sg->sg_nseg));
 }
@@ -2065,7 +2092,6 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		if (m == NULL)
 			break;
 		deq++;
-
 		if (len < sc->vtnet_hdr_size + ETHER_HDR_LEN) {
 			rxq->vtnrx_stats.vrxs_ierrors++;
 			vtnet_rxq_discard_buf(rxq, m);
@@ -2505,6 +2531,7 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 	m = *m_head;
 
 	sglist_reset(sg);
+
 	error = sglist_append(sg, &txhdr->vth_uhdr, sc->vtnet_hdr_size);
 	if (error != 0 || sg->sg_nseg != 1) {
 		KASSERT(0, ("%s: cannot add header to sglist error %d nseg %d",
@@ -3287,7 +3314,8 @@ vtnet_init_rx_queues(struct vtnet_softc *sc)
 		VTNET_RXQ_UNLOCK(rxq);
 
 		if (error) {
-			device_printf(dev, "cannot populate Rx queue %d\n", i);
+			device_printf(
+			    dev, "cannot populate Rx queue %d: %d\n", i, error);
 			return (error);
 		}
 	}

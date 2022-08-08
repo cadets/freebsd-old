@@ -52,6 +52,8 @@ ssize_t	netbe_rx_discard(net_backend_t *be);
 void	netbe_rx_disable(net_backend_t *be);
 void	netbe_rx_enable(net_backend_t *be);
 int	netbe_tagging_enabled(net_backend_t *be);
+int	netbe_tagging_supported(net_backend_t *be);
+int	netbe_tagging_enable(net_backend_t *be);
 
 
 /*

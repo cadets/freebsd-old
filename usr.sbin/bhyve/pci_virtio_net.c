@@ -628,7 +628,7 @@ pci_vtnet_init(struct vmctx *ctx, struct pci_devinst *pi, nvlist_t *nvl)
 	sc->vsc_consts.vc_hv_caps |= VIRTIO_NET_F_MRG_RXBUF |
 	    netbe_get_cap(sc->vsc_be);
 
-	if (netbe_tagging_enabled(sc->vsc_be)) {
+	if (netbe_tagging_supported(sc->vsc_be)) {
 		/* We support tagging */
 		sc->vsc_consts.vc_hv_caps |= VIRTIO_NET_F_TAGGING;
 	}
@@ -738,6 +738,9 @@ pci_vtnet_neg_features(void *vsc, uint64_t negotiated_features)
 	netbe_set_cap(sc->vsc_be, negotiated_features, sc->vhdrlen);
 	sc->be_vhdrlen = netbe_get_vnet_hdr_len(sc->vsc_be);
 	assert(sc->be_vhdrlen == 0 || sc->be_vhdrlen == sc->vhdrlen);
+
+	if (sc->vsc_features & VIRTIO_NET_F_TAGGING)
+		netbe_tagging_enable(sc->vsc_be);
 
 	pthread_mutex_lock(&sc->rx_mtx);
 	sc->features_negotiated = true;

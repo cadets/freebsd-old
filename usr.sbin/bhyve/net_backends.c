@@ -153,6 +153,16 @@ struct net_backend {
 	int (*set_cap)(struct net_backend *be, uint64_t features,
 	    unsigned int vnet_hdr_len);
 
+	/*
+	 * Figure out if a particular backend supports packet tagging.
+	 */
+	int (*tagging_supported)(struct net_backend *be);
+
+	/*
+	 * Ask a particular backend to enable its packet tagging.
+	 */
+	int (*tagging_enable)(struct net_backend *be);
+
 	struct pci_vtnet_softc *sc;
 	int fd;
 
@@ -194,21 +204,6 @@ struct tap_priv {
 	char bbuf[1 << 16];
 	ssize_t bbuflen;
 };
-
-static int
-tap_tagging_enable(struct net_backend *be)
-{
-	int flag = 1;
-
-#ifdef TAPSTAGGING
-	be->tagging_enabled = 1;
-	return (ioctl(be->fd, TAPSTAGGING, &flag));
-#else
-	be->tagging_enabled = 0;
-	return (0);
-#endif
-}
-
 
 static void
 tap_cleanup(struct net_backend *be)
@@ -278,10 +273,6 @@ tap_init(struct net_backend *be, const char *devname,
 		WPRINTF(("Could not register event"));
 		goto error;
 	}
-
-	if (tap_tagging_enable(be) == -1)
-		errx(EX_OSERR, "Unable to enable tagging on tap interface");
-
 
 	return (0);
 
@@ -388,6 +379,30 @@ tap_set_cap(struct net_backend *be, uint64_t features,
 	return ((features || vnet_hdr_len) ? -1 : 0);
 }
 
+static int
+tap_tagging_supported(struct net_backend *be)
+{
+#ifdef TAPSTAGGING
+	return (1);
+#else
+	return (0);
+#endif
+}
+
+static int
+tap_tagging_enable(struct net_backend *be)
+{
+	int flag = 1;
+
+#ifdef TAPSTAGGING
+	be->tagging_enabled = 1;
+	return (ioctl(be->fd, TAPSTAGGING, &flag));
+#else
+	be->tagging_enabled = 0;
+	return (0);
+#endif
+}
+
 static struct net_backend tap_backend = {
 	.prefix = "tap",
 	.priv_size = sizeof(struct tap_priv),
@@ -400,6 +415,8 @@ static struct net_backend tap_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 /* A clone of the tap backend, with a different prefix. */
@@ -415,6 +432,8 @@ static struct net_backend vmnet_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, tap_backend);
@@ -567,6 +586,8 @@ static struct net_backend ng_backend = {
 	.recv_disable = tap_recv_disable,
 	.get_cap = tap_get_cap,
 	.set_cap = tap_set_cap,
+	.tagging_supported = tap_tagging_supported,
+	.tagging_enable = tap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, ng_backend);
@@ -891,6 +912,20 @@ netmap_recv_disable(struct net_backend *be)
 	mevent_disable(priv->mevp);
 }
 
+static int
+netmap_tagging_supported(struct net_backend *be)
+{
+
+	return (0);
+}
+
+static int
+netmap_tagging_enable(struct net_backend *be)
+{
+
+	return (-1);
+}
+
 static struct net_backend netmap_backend = {
 	.prefix = "netmap",
 	.priv_size = sizeof(struct netmap_priv),
@@ -903,6 +938,8 @@ static struct net_backend netmap_backend = {
 	.recv_disable = netmap_recv_disable,
 	.get_cap = netmap_get_cap,
 	.set_cap = netmap_set_cap,
+	.tagging_supported = netmap_tagging_supported,
+	.tagging_enable = netmap_tagging_enable,
 };
 
 /* A clone of the netmap backend, with a different prefix. */
@@ -918,6 +955,8 @@ static struct net_backend vale_backend = {
 	.recv_disable = netmap_recv_disable,
 	.get_cap = netmap_get_cap,
 	.set_cap = netmap_set_cap,
+	.tagging_supported = netmap_tagging_supported,
+	.tagging_enable = netmap_tagging_enable,
 };
 
 DATA_SET(net_backend_set, netmap_backend);
@@ -1073,6 +1112,20 @@ netbe_tagging_enabled(struct net_backend *be)
 {
 
 	return (be->tagging_enabled);
+}
+
+int
+netbe_tagging_supported(struct net_backend *be)
+{
+
+	return (be->tagging_supported(be));
+}
+
+int
+netbe_tagging_enable(struct net_backend *be)
+{
+
+	return (be->tagging_enable(be));
 }
 
 /*
