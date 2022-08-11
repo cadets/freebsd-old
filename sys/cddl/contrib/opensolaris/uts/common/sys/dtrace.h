@@ -122,7 +122,7 @@ typedef int model_t;
 #define	DTRACE_NAMELEN		64
 #define DTRACE_FULLNAMELEN                                               \
     (DTRACE_TARGETNAMELEN + DTRACE_PROVNAMELEN + DTRACE_MODNAMELEN +     \
-     DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 4)
+     DTRACE_FUNCNAMELEN + DTRACE_NAMELEN + 5)
 #define DTRACE_ARGTYPELEN 128
 
 typedef uint32_t dtrace_id_t;		/* probe identifier */
