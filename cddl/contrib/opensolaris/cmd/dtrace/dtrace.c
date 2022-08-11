@@ -1615,6 +1615,8 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 				atomic_store(&g_impatient, 1);
 			fprintf(stderr, "failed to augment tracing: %s",
 			    strerror(errno));
+		} else {
+			notice("augmented with probes from %u\n", pgp->dp_vmid);
 		}
 	}
 
@@ -2085,7 +2087,7 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 		fatal("failed to open %s with %s", progpath, strerror(errno));
 
 	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
-		dfatal("failed to parse the ELF file %s", dcp->dc_arg);
+		fatal("failed to parse the ELF file %s", dcp->dc_arg);
 
 	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);
