@@ -783,8 +783,8 @@ dtrace_program_header(dtrace_hdl_t *dtp, FILE *out, const char *fname)
 }
 
 int
-dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
-    dtrace_difo_t *dnew)
+dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase, dtrace_difo_t *dnew,
+    char *base_target, char *new_target)
 {
 	size_t i, j;
 	dif_instr_t ibase, inew, inext;
@@ -967,8 +967,10 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase,
 			if (ibase != inew) {
 				opnew = DIF_INSTR_OP(inew);
 				fprintf(stderr, "Base program:\n");
+				fprintf(stderr, "%s ==>\n", base_target);
 				dt_dis(dbase, stderr);
 				fprintf(stderr, "New program:\n");
+				fprintf(stderr, "%s ==>\n", new_target);
 				dt_dis(dnew, stderr);
 				fprintf(stderr,
 				    "ibase and inew aren't "
@@ -1061,9 +1063,11 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 	dt_stmt_t *sbase, *snew;
 	dtrace_stmtdesc_t *sdbase, *sdnew;
 	dtrace_actdesc_t *adbase, *adnew;
-	dtrace_ecbdesc_t *enew;
-	dtrace_probedesc_t *pdnew;
+	dtrace_ecbdesc_t *enew, *edp_new, *edp_base;
+	dtrace_probedesc_t *pdnew, *descp_new, *descp_base;
 	static const char testbuf[DT_PROG_IDENTLEN];
+	char target_base[DTRACE_FULLNAMELEN] = { 0 };
+	char target_new[DTRACE_FULLNAMELEN] = { 0 };
 	dt_verictx_t *ctx = _ctx;
 	dtrace_hdl_t *dtp;
 	int self_ref;
@@ -1112,14 +1116,13 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 
 	/*
 	 * Iterate through all the statements of both programs and verify
+
 	 * that they match up, or if they are relocations that they are
 	 * applied correctly.
 	 */
 	for (sbase = dt_list_next(&pbase->dp_stmts),
 	    snew = dt_list_next(&pnew->dp_stmts);
-	    sbase && snew;
-	    sbase = dt_list_next(sbase),
-	    snew = dt_list_next(snew)) {
+	    sbase && snew; sbase = dt_list_next(sbase)) {
 		sdbase = sbase->ds_desc;
 		sdnew = snew->ds_desc;
 
@@ -1129,6 +1132,22 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			return (1);
 		}
 
+		edp_base = sdbase->dtsd_ecbdesc;
+		edp_new = sdnew->dtsd_ecbdesc;
+		descp_base = &edp_base->dted_probe;
+		descp_new = &edp_new->dted_probe;
+
+		sprintf(target_base, "%s:%s:%s:%s:%s", descp_base->dtpd_target,
+		    descp_base->dtpd_provider, descp_base->dtpd_mod,
+		    descp_base->dtpd_func, descp_base->dtpd_name);
+
+		sprintf(target_new, "%s:%s:%s:%s:%s", descp_new->dtpd_target,
+		    descp_new->dtpd_provider, descp_new->dtpd_mod,
+		    descp_new->dtpd_func, descp_new->dtpd_name);
+
+		if (strcmp(target_base, target_new) != 0)
+			continue;
+
 		/*
 		 * TODO(dstolfa): Some deduplication would be nice here.
 		 */
@@ -1137,10 +1156,12 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			adbase = sdbase->dtsd_action;
 			adnew = sdnew->dtsd_action;
 
+
 			if (adbase && adnew && adbase->dtad_difo &&
 			    adnew->dtad_difo) {
 				if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
-					adnew->dtad_difo))
+				    adnew->dtad_difo, target_base,
+				    target_new))
 					return (1);
 
 				dt_verictx_add(ctx, adnew->dtad_difo);
@@ -1156,7 +1177,8 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			if (adbase && adnew && adbase->dtad_difo &&
 			    adnew->dtad_difo) {
 				if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
-					adnew->dtad_difo))
+				    adnew->dtad_difo, target_base,
+				    target_new))
 					return (1);
 
 				dt_verictx_add(ctx, adnew->dtad_difo);
@@ -1176,6 +1198,7 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			sdnew->dtsd_fmtdata = dt_printf_dup(
 			    sdbase->dtsd_fmtdata);
 		assert(sdnew != NULL);
+		snew = dt_list_next(snew);
 	}
 
 	return (0);
