@@ -1025,8 +1025,10 @@ dt_ident_cook(dt_node_t *dnp, dt_ident_t *idp, dt_node_t **pargp)
 	for (argp = args; argp != NULL; argp = argp->dn_list)
 		argc++;
 
+#if 0
 	if (dt_ident_builtin(dnp) || dt_resolve(dnp->dn_target, 0) == 0 ||
 	    dnp->dn_target[0] == '\0')
+#endif
 		idp->di_ops->di_cook(dnp, idp, argc, args);
 
 	if (idp->di_flags & DT_IDFLG_USER)
