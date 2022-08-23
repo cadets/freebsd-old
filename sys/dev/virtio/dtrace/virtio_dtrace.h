@@ -56,6 +56,7 @@
 #define	VIRTIO_DTRACE_STOP		0x0A /* Start tracing */
 #define	VIRTIO_DTRACE_KILL		0x0B /* Kill a DTrace process */
 #define	VIRTIO_DTRACE_CLEANUP_DTRACED	0x0C /* Clean up dtraced state. */
+#define	VIRTIO_DTRACE_NODE_ID		0x0D /* Negotiate DTrace node ID */
 
 int virtio_dtrace_enqueue(dtt_entry_t *);
 

@@ -87,6 +87,7 @@ __FBSDID("$FreeBSD$");
 #define	VTDTR_DEVICE_STOP		0x0A /* Stop tracing */
 #define	VTDTR_DEVICE_KILL		0x0B /* Kill a DTrace process */
 #define	VTDTR_DEVICE_CLEANUP_DTRACED	0x0C /* Clean up dtraced state */
+#define	VTDTR_DEVICE_NODE_ID		0x0D /* Negotiate DTrace node ID */
 
 #define PCI_VTDTR_MAXELFLEN		2048ul
 
@@ -111,12 +112,17 @@ struct pci_vtdtr_control {
 			pid_t pvc_pid; /* kill a dtrace process */
 		} kill;
 
+		struct {
+			uint16_t pvc_node_id;
+		} node_id;
+
 #define	pvc_identifier	uctrl.elf.pvc_identifier
 #define	pvc_elflen	uctrl.elf.pvc_elflen
 #define	pvc_elfhasmore	uctrl.elf.pvc_elfhasmore
 #define	pvc_totalelflen	uctrl.elf.pvc_totalelflen
 #define	pvc_elf		uctrl.elf.pvc_elf
 #define	pvc_pid		uctrl.kill.pvc_pid
+#define pvc_node_id	uctrl.node_id.pvc_node_id
 	} uctrl;
 };
 
@@ -246,6 +252,43 @@ gen_filename(void)
 	}
 
 	return (filename);
+}
+
+static void
+pci_vtdtr_node_id(struct pci_vtdtr_softc *sc)
+{
+	struct pci_vtdtr_ctrl_entry *ctrl_entry;
+	struct pci_vtdtr_control *ctrl;
+	struct vmctx *ctx = sc->vsd_vmctx;
+
+	ctrl_entry = malloc(sizeof(struct pci_vtdtr_ctrl_entry));
+	if (ctrl_entry == NULL) {
+		fprintf(stderr, "failed to malloc new ctrl entry\n");
+		return;
+	}
+	memset(ctrl_entry, 0, sizeof(struct pci_vtdtr_ctrl_entry));
+
+	ctrl = malloc(sizeof(struct pci_vtdtr_control));
+	if (ctrl == NULL) {
+		fprintf(stderr, "failed to malloc new control event\n");
+		free(ctrl_entry);
+		return;
+	}
+
+	memset(ctrl, 0, sizeof(struct pci_vtdtr_control));
+
+	ctrl->pvc_event = VTDTR_DEVICE_NODE_ID;
+	ctrl->pvc_node_id = vm_get_vmid(ctx);
+
+	ctrl_entry->ctrl = ctrl;
+
+	pthread_mutex_lock(&sc->vsd_ctrlq->mtx);
+	pci_vtdtr_cq_enqueue(sc->vsd_ctrlq, ctrl_entry);
+	pthread_mutex_unlock(&sc->vsd_ctrlq->mtx);
+
+	pthread_mutex_lock(&sc->vsd_condmtx);
+	pthread_cond_signal(&sc->vsd_cond);
+	pthread_mutex_unlock(&sc->vsd_condmtx);
 }
 
 static int
@@ -392,6 +435,12 @@ pci_vtdtr_control_rx(struct pci_vtdtr_softc *sc, struct iovec *iov, int niov)
 		WPRINTF(("Warning: VTDTR_DEVICE_KILL received on the host "
 			 "for pid %d\n",
 		    ctrl->pvc_pid));
+		break;
+
+	case VTDTR_DEVICE_NODE_ID:
+		sc->vsd_ready = 0;
+		retval = 0;
+		pci_vtdtr_node_id(sc);
 		break;
 
 	default:

@@ -40,6 +40,7 @@
 #include <sys/queue.h>
 #include <sys/sema.h>
 #include <sys/sglist.h>
+#include <sys/smp.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/taskqueue.h>
@@ -87,12 +88,17 @@ struct virtio_dtrace_control {
 			pid_t vd_pid;
 		} kill;
 
+		struct {
+			uint16_t vd_node_id;
+		} node_id;
+
 #define vd_identifier	uctrl.elf.vd_identifier
 #define	vd_elflen	uctrl.elf.vd_elflen
 #define	vd_elfhasmore	uctrl.elf.vd_elfhasmore
 #define	vd_totalelflen	uctrl.elf.vd_totalelflen
 #define	vd_elf		uctrl.elf.vd_elf
 #define	vd_pid		uctrl.kill.vd_pid
+#define vd_node_id	uctrl.node_id.vd_node_id
 	} uctrl;
 };
 
@@ -167,6 +173,7 @@ static MALLOC_DEFINE(M_VTDTR, "vtdtr", "VirtIO DTrace memory");
 static struct vtdtr_softc *gsc = NULL;
 static struct virtio_dtrace_control eof_ctrl;
 static struct virtio_dtrace_control ready_ctrl;
+static struct virtio_dtrace_control query_node_id_ctrl;
 
 SYSCTL_NODE(_dev, OID_AUTO, vtdtr, CTLFLAG_RD, NULL, NULL);
 
@@ -211,6 +218,7 @@ static int vtdtr_vq_enable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_vq_disable_intr(struct virtio_dtrace_queue *);
 static void vtdtr_rxq_tq_intr(void *, int);
 static void vtdtr_notify_ready(struct vtdtr_softc *);
+static void vtdtr_query_node_id(struct vtdtr_softc *);
 static void vtdtr_rxq_vq_intr(void *);
 static void vtdtr_txq_vq_intr(void *);
 static int vtdtr_init_txq(struct vtdtr_softc *, int);
@@ -271,6 +279,7 @@ vtdtr_modevent(module_t mod, int type, void *unused)
 	case MOD_LOAD:
 		eof_ctrl.vd_event = VIRTIO_DTRACE_EOF;
 		ready_ctrl.vd_event = VIRTIO_DTRACE_DEVICE_READY;
+		query_node_id_ctrl.vd_event = VIRTIO_DTRACE_NODE_ID;
 		error = 0;
 		break;
 	case MOD_QUIESCE:
@@ -399,6 +408,7 @@ vtdtr_attach(device_t dev)
 	vtdtr_start_taskqueues(sc);
 	sc->vtdtr_ready = 0;
 	vtdtr_notify_ready(sc);
+	vtdtr_query_node_id(sc);
 
 	kthread_add(vtdtr_run, sc, NULL, &sc->vtdtr_commtd,
 	    0, 0, NULL, "vtdtr_communicator");
@@ -645,6 +655,11 @@ vtdtr_queue_enqueue_ctrl(struct virtio_dtrace_queue *q,
 	return (error);
 }
 
+static void
+vtdtr_sync_fn(void *arg __unused)
+{
+}
+
 /*
  * Used for identification of the event type we need to process and delegating
  * it to the according functions.
@@ -710,6 +725,15 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		if (dtt_queue_enqueue(&e))
 			device_printf(dev, "dtt_queue_enqueue() failed\n");
+		break;
+
+	case VIRTIO_DTRACE_NODE_ID:
+		debug_printf(dev, "VIRTIO_DTRACE_NODE_ID\n");
+
+		sc->vtdtr_ready = 0;
+		dtrace_node_id = ctrl->vd_node_id;
+		smp_rendezvous_cpus(all_cpus, smp_no_rendezvous_barrier,
+		    vtdtr_sync_fn, smp_no_rendezvous_barrier, NULL);
 		break;
 
 	case VIRTIO_DTRACE_EOF:
@@ -886,6 +910,19 @@ vtdtr_notify_ready(struct vtdtr_softc *sc)
 	sc->vtdtr_ready = 1;
 
 	vtdtr_fill_desc(q, &ready_ctrl);
+	vtdtr_poll(q);
+}
+
+static void
+vtdtr_query_node_id(struct vtdtr_softc *sc)
+{
+	struct virtio_dtrace_queue *q;
+	device_t dev;
+
+	dev = sc->vtdtr_dev;
+	q = &sc->vtdtr_txq;
+
+	vtdtr_fill_desc(q, &query_node_id_ctrl);
 	vtdtr_poll(q);
 }
 
