@@ -25,30 +25,28 @@
  * $FreeBSD$
  */
 
-#include <dt_linker_subr.h>
-
 #include <sys/types.h>
 #include <sys/dtrace.h>
 
-#include <dtrace.h>
-#include <dt_impl.h>
-#include <dt_program.h>
-#include <dt_list.h>
-#include <dt_ifgnode.h>
+#include <assert.h>
 #include <dt_basic_block.h>
-#include <dt_typefile.h>
+#include <dt_ifgnode.h>
+#include <dt_impl.h>
+#include <dt_linker_subr.h>
+#include <dt_list.h>
 #include <dt_module.h>
-
+#include <dt_program.h>
+#include <dt_typefile.h>
+#include <dtrace.h>
+#include <err.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <err.h>
-#include <assert.h>
-#include <stddef.h>
 
 int
 dt_subr_clobbers(uint16_t subr)
 {
-	switch(subr) {
+	switch (subr) {
 	case DIF_SUBR_BCOPY:
 	case DIF_SUBR_COPYOUT:
 	case DIF_SUBR_COPYOUTSTR:
@@ -139,8 +137,7 @@ dt_clobbers_reg(dif_instr_t instr, uint8_t r)
 int
 dt_var_is_builtin(uint16_t var)
 {
-	if (var == DIF_VAR_ARGS || var == DIF_VAR_REGS ||
-	    var == DIF_VAR_UREGS)
+	if (var == DIF_VAR_ARGS || var == DIF_VAR_REGS || var == DIF_VAR_UREGS)
 		return (1);
 
 	if (var >= DIF_VAR_CURTHREAD && var <= DIF_VAR_MAX)
@@ -211,7 +208,6 @@ dt_get_variable(dtrace_difo_t *difo, uint16_t varid, int scope, int kind)
 		if (var->dtdv_scope == scope && var->dtdv_kind == kind &&
 		    var->dtdv_id == varid)
 			return (var);
-
 	}
 
 	return (NULL);
@@ -344,7 +340,8 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 	if (difv->dtdv_ctfp != d_ctfp) {
 		var->dtdv_ctfid = CTF_ERR;
 		var->dtdv_sym = NULL;
-		var->dtdv_type.dtdt_kind = DIF_TYPE_BOTTOM; /* can be anything */
+		var->dtdv_type.dtdt_kind =
+		    DIF_TYPE_BOTTOM; /* can be anything */
 		var->dtdv_type.dtdt_size = 0;
 		var->dtdv_stack = NULL;
 		var->dtdv_tf = NULL;
@@ -537,6 +534,7 @@ dt_get_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len, dt_ifg_node_t *n)
 	dt_bb_entry_t *bb_l;
 	dt_basic_block_t *bb;
 	ssize_t i;
+	int equal;
 
 	sl = NULL;
 
@@ -544,16 +542,12 @@ dt_get_stack(dt_basic_block_t **bb_path, ssize_t bb_path_len, dt_ifg_node_t *n)
 		return (NULL);
 
 	for (sl = dt_list_next(&n->din_stacklist); sl; sl = dt_list_next(sl)) {
-		int equal;
-
 		equal = 1;
-		for (i = 0; i < bb_path_len; i++) {
-			for (bb_l = dt_list_next(&sl->dsl_identifier); bb_l;
-			     bb_l = dt_list_next(bb_l)) {
-				bb = bb_l->dtbe_bb;
-				if (bb != bb_path[i])
-					equal = 0;
-			}
+		for (i = 0, bb_l = dt_list_next(&sl->dsl_identifier);
+		     i < bb_path_len && bb_l; i++, bb_l = dt_list_next(bb_l)) {
+			bb = bb_l->dtbe_bb;
+			if (bb != bb_path[i])
+				equal = 0;
 		}
 
 		if (equal != 0)
