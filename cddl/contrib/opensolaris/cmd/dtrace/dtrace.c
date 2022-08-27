@@ -1596,6 +1596,11 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		}
 	}
 
+	/*
+	 * Dump actions if we ask for verbose output.
+	 */
+	if (g_verbose)
+		dtrace_dump_actions(pgp);
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
 			if (atomic_fetch_add(&g_intr, 1))
@@ -2133,6 +2138,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		fatal("unexpected string in -Y: %s", hostorguest);
 
 	prog_exec = link_elf(dcp, progpath);
+	if (g_verbose)
+		dtrace_dump_actions(dcp->dc_prog);
 
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
