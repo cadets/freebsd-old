@@ -732,6 +732,8 @@ vtdtr_ctrl_process_event(struct vtdtr_softc *sc,
 
 		sc->vtdtr_ready = 0;
 		dtrace_node_id = ctrl->vd_node_id;
+		device_printf(
+		    dev, "STATUS: Set DTrace node ID to %lu\n", dtrace_node_id);
 		smp_rendezvous_cpus(all_cpus, smp_no_rendezvous_barrier,
 		    vtdtr_sync_fn, smp_no_rendezvous_barrier, NULL);
 		break;
