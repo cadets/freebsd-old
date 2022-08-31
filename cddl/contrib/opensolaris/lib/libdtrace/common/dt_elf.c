@@ -829,7 +829,7 @@ dt_elf_new_ecbdesc(Elf *e, dtrace_stmtdesc_t *stmt)
 }
 
 static size_t
-dt_elf_new_id_name(const char *name)
+dt_elf_new_string(const char *name)
 {
 	size_t offset, len, osize;
 	int needs_realloc;
@@ -960,7 +960,7 @@ dt_elf_new_stmt(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_stmt_t *pstmt)
 
 		memset(eaid, 0, sizeof(dt_elf_ident_t));
 
-		eaid->edi_name = dt_elf_new_id_name(aid->di_name);
+		eaid->edi_name = dt_elf_new_string(aid->di_name);
 		eaid->edi_id = aid->di_id;
 		eaid->edi_kind = aid->di_kind;
 		eaid->edi_flags = aid->di_flags;
