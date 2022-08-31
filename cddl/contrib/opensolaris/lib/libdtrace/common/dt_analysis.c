@@ -268,7 +268,22 @@ dump_action(dtrace_actdesc_t *ap)
 	}
 }
 
-int
+void
+dtrace_dump_actions_ecbdesc(dtrace_ecbdesc_t *edp)
+{
+	dtrace_probedesc_t *descp;
+	dtrace_actdesc_t *ap;
+
+	for (ap = edp->dted_action; ap; ap = ap->dtad_next) {
+		descp = &edp->dted_probe;
+		fprintf(stderr, "%s:%s:%s:%s:%s ==>\n", descp->dtpd_target,
+		    descp->dtpd_provider, descp->dtpd_mod, descp->dtpd_func,
+		    descp->dtpd_name);
+		dump_action(ap);
+	}
+}
+
+void
 dtrace_dump_actions(dtrace_prog_t *pgp)
 {
 	dtrace_actdesc_t *ap, *ad_last;
@@ -295,7 +310,6 @@ dtrace_dump_actions(dtrace_prog_t *pgp)
 
 		fprintf(stderr, "\n");
 	}
-	return (0);
 }
 
 const char *
