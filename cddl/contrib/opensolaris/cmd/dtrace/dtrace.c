@@ -487,6 +487,30 @@ installsighands(void)
 }
 
 static void
+dump_ecbs(dtrace_prog_t *pgp)
+{
+	dtrace_ecbdesc_t *edp;
+	dtrace_stmtdesc_t *sdp;
+	dt_stmt_t *stp;
+
+	fprintf(stderr, "DTrace: Dumping ECBs...\n");
+	fprintf(stderr,
+	    "=================================================================="
+	    "\n");
+	for (stp = dt_list_next(&pgp->dp_stmts); stp;
+	     stp = dt_list_next(stp)) {
+		sdp = stp->ds_desc;
+		edp = sdp->dtsd_ecbdesc;
+		fprintf(stderr, "DTrace: ECB %p:\n", edp);
+		dtrace_dump_actions_ecbdesc(edp);
+		fprintf(stderr, "\n");
+	}
+	fprintf(stderr,
+	    "=================================================================="
+	    "\n");
+}
+
+static void
 dof_prune(const char *fname)
 {
 	struct stat sbuf;
@@ -1572,8 +1596,6 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 		    pgp->dp_vmid, gpgp_resp->dp_vmid);
 	}
 
-	//dtrace_dump_actions(pgp);
-
 	if (pgp->dp_vmid != 0) {
 		/*
 		 * If no probes were enabled for this program, we don't need to
@@ -1601,6 +1623,9 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 	 */
 	if (g_verbose)
 		dtrace_dump_actions(pgp);
+	if (g_verbose > 1)
+		dump_ecbs(pgp);
+
 	if (n_pgps == 0) {
 		if (dtrace_program_exec(g_dtp, pgp, &dpi) == -1) {
 			if (atomic_fetch_add(&g_intr, 1))
@@ -1737,6 +1762,8 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (tmpfd == -1)
 			fatal("failed to mkstemp()");
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
+		if (g_verbose > 1)
+			dump_ecbs(dcp->dc_prog);
 
 		dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
 
