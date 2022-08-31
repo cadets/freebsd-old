@@ -201,7 +201,7 @@ typedef struct dt_elf_opt {
  * dt_elf_ident_t: A serialised version of a dt_ident_t data structure.
  *                 Currently only used for aggregation data.
  *
- * edi_name:  An offset in the identifier name string table that represents
+ * edi_name:  An offset in the string table that represents
  *            the name of the identifier (e.g. an aggregation name).
  * edi_kind:  Identifier kind, as represented in dt_ident.h
  * edi_flags: Identifier flags, as represented in dt_ident.h
@@ -217,6 +217,51 @@ typedef struct dt_elf_ident {
 	dt_elf_attribute_t	edi_attr;
 	uint_t			edi_vers;
 } dt_elf_ident_t;
+
+
+/*
+ * dt_elf_pfargv_t: A serialised version of a dt_pfargv_t structure.
+ *
+ * epfv_format: An offset in the string table that represents the format string.
+ * epfv_argv:   A reference to an ELF section containing the arguments list.
+ * epfv_argc:   Number of argument descriptors.
+ * epfv_flags:  Flags used for validation.
+ */
+typedef struct dt_elf_pfargv {
+	size_t			epfv_format;
+	dt_elf_ref_t		epfv_argv;
+	uint32_t		epfv_argc;
+	uint32_t		epfv_flags;
+} dt_elf_pfargv_t;
+
+/*
+ * dt_elf_pfargd_t: A serialised version of a dt_pfargd data structure.
+ *
+ * epfd_prefix:   An offset in the string table that represents the prefix
+ *                pointer.
+ * epfd_preflen:  Prefix length.
+ * epfd_fmt:      Output format name to use.
+ * epfd_flags:    Format flags.
+ * epfd_width:    Field width.
+ * epfd_dynwidth: Dynamic field width.
+ * epfd_prec:     Field precision.
+ * epfd_conv:     Reference to the ELF section containing the conversion
+ *                specification.
+ * epfd_rec:      Reference to the ELF section containing the current record.
+ * epfd_next:     Reference to the ELF section containing the next entry.
+ */
+typedef struct dt_elf_pfargd {
+	size_t			epfd_prefix;
+	size_t			epfd_preflen;
+	char			epfd_fmt[8];
+	uint32_t		epfd_flags;
+	int			epfd_width;
+	int			epfd_dynwidth;
+	int			epfd_prec;
+	dt_elf_ref_t		epfd_conv;
+	dt_elf_ref_t		epfd_rec;
+	dt_elf_ref_t		epfd_next;
+} dt_elf_pfargd_t;
 
 extern dt_elf_opt_t dtelf_ctopts[];
 extern dt_elf_opt_t dtelf_rtopts[];
