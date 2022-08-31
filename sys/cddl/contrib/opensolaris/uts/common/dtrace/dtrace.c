@@ -15348,9 +15348,13 @@ dtrace_dof_sect(dof_hdr_t *dof, uint32_t type, dof_secidx_t i)
 {
 	dof_sec_t *sec = (dof_sec_t *)(uintptr_t)
 	    ((uintptr_t)dof + dof->dofh_secoff + i * dof->dofh_secsize);
+	char errmsg[256] = { 0 };
 
 	if (i >= dof->dofh_secnum) {
-		dtrace_dof_error(dof, "referenced section index is invalid");
+		sprintf(errmsg,
+		    "referenced section index is invalid (type %u, %d >= %d)",
+		    type, i, dof->dofh_secnum);
+		dtrace_dof_error(dof, errmsg);
 		return (NULL);
 	}
 
