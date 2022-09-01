@@ -247,7 +247,6 @@ typedef struct dt_elf_pfargv {
  * epfd_prec:     Field precision.
  * epfd_conv:     Reference to the ELF section containing the conversion
  *                specification.
- * epfd_rec:      Reference to the ELF section containing the current record.
  * epfd_next:     Reference to the ELF section containing the next entry.
  */
 typedef struct dt_elf_pfargd {
@@ -259,7 +258,6 @@ typedef struct dt_elf_pfargd {
 	int			epfd_dynwidth;
 	int			epfd_prec;
 	dt_elf_ref_t		epfd_conv;
-	dt_elf_ref_t		epfd_rec;
 	dt_elf_ref_t		epfd_next;
 } dt_elf_pfargd_t;
 

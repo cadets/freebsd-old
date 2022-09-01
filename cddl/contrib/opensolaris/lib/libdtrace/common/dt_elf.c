@@ -938,8 +938,8 @@ dt_elf_epfd(Elf *e, dt_pfargd_t *pfd)
 	epfd->epfd_width = pfd->pfd_width;
 	epfd->epfd_dynwidth = pfd->pfd_dynwidth;
 	epfd->epfd_prec = pfd->pfd_prec;
-	epfd->epfd_conv = 0; /* TODO */
-	epfd->epfd_rec = 0;  /* TODO */
+	/* TODO: this has to do with type conversion (%s, %d, ...) */
+	epfd->epfd_conv = 0;
 	epfd->epfd_next = dt_elf_epfd(e, pfd->pfd_next);
 
 	data->d_buf = epfd;
