@@ -1973,11 +1973,8 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	    el != NULL; el = dt_list_next(el)) {
 		act = el->act;
 
-		if (el->eact_ndx == fst) {
-			if (edp)
-				edp->dted_action = act;
+		if (el->eact_ndx == fst)
 			stmt->dtsd_action = act;
-		}
 
 		if (act->dtad_patched == 0) {
 			act->dtad_uarg = (uintptr_t)stmt;
@@ -2250,7 +2247,6 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
 	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
 	stmt->dtsd_fmtdata = dt_elf_get_fmtdata(dtp, e, estmt->dtes_fmtdata);
-	fprintf(stderr, "got fmtdata = %p\n", stmt->dtsd_fmtdata);
 	stmt->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
 
 	stp = malloc(sizeof(dt_stmt_t));
@@ -2314,14 +2310,14 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_stmt_t *estmt,
 	return (ad);
 }
 
-static void
-dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
+static dtrace_actdesc_t *
+dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt, dtrace_actdesc_t *prev)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
 	dt_elf_actdesc_t *ead;
 	dt_elf_ref_t fst, actref;
-	dtrace_actdesc_t *prev = NULL;
+	dtrace_actdesc_t *_prev = NULL;
 
 	fst = estmt->dtes_action;
 
@@ -2337,8 +2333,11 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 		assert(data->d_buf != NULL);
 
 		ead = data->d_buf;
-		prev = dt_elf_alloc_action(e, scn, estmt, prev);
+		_prev = dt_elf_alloc_action(e, scn, estmt, prev);
+		prev = _prev ? _prev : prev;
 	}
+
+	return (prev);
 }
 
 static void
@@ -2349,6 +2348,7 @@ dt_elf_get_stmts(
 	Elf_Data *data;
 	dt_elf_stmt_t *estmt;
 	dt_elf_ref_t scnref;
+	dtrace_actdesc_t *last = NULL, *_last = NULL;
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
 		if ((scn = elf_getscn(e, scnref)) == NULL)
@@ -2362,7 +2362,8 @@ dt_elf_get_stmts(
 		assert(data->d_buf != NULL);
 		estmt = data->d_buf;
 
-		dt_elf_alloc_actions(e, estmt);
+		_last = dt_elf_alloc_actions(e, estmt, last);
+		last = _last ? _last : last;
 		dt_elf_add_stmt(dtp, e, prog, estmt, scnref);
 	}
 }
