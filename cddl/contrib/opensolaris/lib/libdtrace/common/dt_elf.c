@@ -2218,11 +2218,6 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 					if (ap == prev)
 						retval = 1;
 
-					/*
-					 * Do not free the action here because
-					 * we will need to prune the action list
-					 * after the return of this function.
-					 */
 					dt_list_delete(
 					    &dtelf_state->s_actions, rm_el);
 
