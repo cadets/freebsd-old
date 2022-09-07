@@ -41,7 +41,7 @@ dt_resolve(const char *target, uint32_t flags)
 	 */
 	if (flags == 0)
 		flags = resolve_flags;
-	
+
 	if (DT_RESOLVER_HOSTNAME(flags) != 0) {
 		if (gethostname(curtarget, MAXHOSTNAMELEN) != 0)
 			errx(EXIT_FAILURE, "failed to get hostname");

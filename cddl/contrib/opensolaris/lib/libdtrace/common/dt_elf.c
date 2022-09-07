@@ -107,6 +107,7 @@ typedef struct dt_elf_state {
 	size_t			s_idname_offset;
 	uint32_t		s_rflags;
 	int			s_rslv;
+	dtrace_actdesc_t	*s_fstact;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -2134,16 +2135,16 @@ dt_elf_in_actlist(dtrace_actdesc_t *find)
 	return (NULL);
 }
 
-static void
+static dtrace_actdesc_t *
 dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
-    dt_elf_stmt_t *estmt, dt_elf_ref_t sscn)
+    dt_elf_stmt_t *estmt, dt_elf_ref_t sscn, dtrace_actdesc_t *prev)
 {
 	dtrace_stmtdesc_t *stmt;
 	dt_stmt_t *stp;
 	dtrace_actdesc_t *ap, *nextap, *prevap;
 	dt_elf_eact_list_t *el, *rm_el;
 	const char *target;
-
+	int retval = 0;
 
 	stmt = NULL;
 	stp = NULL;
@@ -2193,6 +2194,7 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 		 */
 		for (el = dt_list_next(&dtelf_state->s_actions);
 		    el != NULL; el = dt_list_next(el)) {
+			dtrace_actdesc_t *_ap, *_next, *_prev = NULL;
 			ap = el->act;
 			if (ap == NULL)
 				continue;
@@ -2212,12 +2214,39 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 
 
 					rm_el->act = NULL;
-					free(ap);
+
+					if (ap == prev)
+						retval = 1;
+
+					/*
+					 * Do not free the action here because
+					 * we will need to prune the action list
+					 * after the return of this function.
+					 */
 					dt_list_delete(
 					    &dtelf_state->s_actions, rm_el);
 
 					ap = nextap;
 				}
+
+				for (_ap = dtelf_state->s_fstact; _ap;
+				     _ap = _next) {
+					_next = _ap->dtad_next;
+					if (_prev && _ap->dtad_uarg == sscn) {
+						_prev->dtad_next = _next;
+						free(_ap);
+						_ap = _prev;
+					} else if (_prev == NULL &&
+					    _ap->dtad_uarg == sscn) {
+						assert(_ap ==
+						    dtelf_state->s_fstact);
+						dtelf_state->s_fstact = NULL;
+						free(_ap);
+					}
+					_prev = _ap;
+				}
+
+				assert(ap == _ap);
 
 				/*
 				 * If this is not the first action, we simply
@@ -2235,12 +2264,12 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 				 * anything further.
 				 */
 				if (ap == NULL)
-					return;
+					return (NULL);
 			}
 
 			prevap = ap;
 		}
-		return;
+		return (ap);
 	}
 
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
@@ -2257,6 +2286,7 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 
 	stp->ds_desc = stmt;
 	dt_list_append(&prog->dp_stmts, stp);
+	return (prev);
 }
 
 static dtrace_actdesc_t *
@@ -2306,6 +2336,8 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_stmt_t *estmt,
 
 	if (prev)
 		prev->dtad_next = ad;
+	else
+		dtelf_state->s_fstact = ad;
 
 	return (ad);
 }
@@ -2349,6 +2381,7 @@ dt_elf_get_stmts(
 	dt_elf_stmt_t *estmt;
 	dt_elf_ref_t scnref;
 	dtrace_actdesc_t *last = NULL, *_last = NULL;
+	int rval;
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
 		if ((scn = elf_getscn(e, scnref)) == NULL)
@@ -2363,8 +2396,7 @@ dt_elf_get_stmts(
 		estmt = data->d_buf;
 
 		_last = dt_elf_alloc_actions(e, estmt, last);
-		last = _last ? _last : last;
-		dt_elf_add_stmt(dtp, e, prog, estmt, scnref);
+		last = dt_elf_add_stmt(dtp, e, prog, estmt, scnref, _last);
 	}
 }
 
