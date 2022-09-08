@@ -13,6 +13,7 @@ PACKAGE=	bhyve
 MAN=	bhyve.8
 
 BHYVE_SYSDIR?=${SRCTOP}
+BHYVE_SRCDIR?=${.CURDIR}
 
 SRCS=	\
 	atkbdc.c		\
@@ -149,5 +150,11 @@ CFLAGS+=-DGDB_LOG
 .endif
 
 WARNS?=	2
+
+OBJS:=bhyve_provider.o ${OBJS}
+DTRACE_OBJS=${SRCS:C/\.c/.o/}
+
+beforelinking:
+	dtrace -G -s ${BHYVE_SRCDIR}/bhyve_provider.d ${DTRACE_OBJS}
 
 .include <bsd.prog.mk>

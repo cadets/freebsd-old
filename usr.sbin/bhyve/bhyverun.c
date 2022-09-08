@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2011 NetApp, Inc.
+ * Copyright (c) 2022 Domagoj Stolfa <ds815@cam.ac.uk>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -93,6 +94,7 @@ __FBSDID("$FreeBSD$");
 #include "debug.h"
 #include "fwctl.h"
 #include "gdb.h"
+#include "globals.h"
 #include "ioapic.h"
 #include "kernemu_dev.h"
 #include "mem.h"
@@ -114,6 +116,8 @@ __FBSDID("$FreeBSD$");
 
 #define MB		(1024UL * 1024)
 #define GB		(1024UL * MB)
+
+char *g_vmname = NULL;
 
 static const char * const vmx_exit_reason_desc[] = {
 	[EXIT_REASON_EXCEPTION] = "Exception or non-maskable interrupt (NMI)",
@@ -1075,6 +1079,11 @@ do_open(const char *vmname)
 
 	if (lpc_bootrom())
 		romboot = true;
+
+	/*
+	 * Populate our vmname for use in DTrace probes.
+	 */
+	g_vmname = (char *)vmname;
 
 	error = vm_create(vmname);
 	if (error) {

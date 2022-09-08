@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
  * Copyright (c) 2019 Vincenzo Maffione <vmaffione@FreeBSD.org>
+ * Copyright (c) 2022 Domagoj Stolfa <ds815@cam.ac.uk>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -77,8 +78,11 @@ __FBSDID("$FreeBSD$");
 #include <netgraph.h>
 #endif
 
+#include <sys/sdt.h>
+
 #include "config.h"
 #include "debug.h"
+#include "globals.h"
 #include "iov.h"
 #include "mevent.h"
 #include "net_backends.h"
@@ -287,6 +291,17 @@ error:
 static ssize_t
 tap_send(struct net_backend *be, const struct iovec *iov, int iovcnt)
 {
+	mbufid_t *mbufidp = NULL;
+
+	if (be->tagging_enabled) {
+		if (iovcnt > 0)
+			mbufidp = iov[0].iov_base;
+		else
+			mbufidp = (mbufid_t *)0xFEEDFACE;
+
+		DTRACE_PROBE2(netbe, tap__send, g_vmname, mbufidp);
+	}
+
 	return (writev(be->fd, iov, iovcnt));
 }
 
@@ -325,8 +340,20 @@ tap_recv(struct net_backend *be, const struct iovec *iov, int iovcnt)
 {
 	struct tap_priv *priv = (struct tap_priv *)be->opaque;
 	ssize_t ret;
+	mbufid_t *mbufidp = NULL;
 
 	if (priv->bbuflen > 0) {
+		/*
+		 * If we have a buffer, the mbufid will be at the start of the
+		 * buffer so we can just call the DTrace probe with the pointer
+		 * to the buffer and assume that the script will simply access
+		 * sizeof(mbufid_t) bytes of it.
+		 */
+		if (be->tagging_enabled) {
+			mbufidp = (mbufid_t *)priv->bbuf;
+			DTRACE_PROBE2(netbe, tap__recv, g_vmname, mbufidp);
+		}
+
 		/*
 		 * A packet is available in the bounce buffer, so
 		 * we read it from there.
@@ -343,6 +370,12 @@ tap_recv(struct net_backend *be, const struct iovec *iov, int iovcnt)
 	ret = readv(be->fd, iov, iovcnt);
 	if (ret < 0 && errno == EWOULDBLOCK) {
 		return (0);
+	}
+
+	if (be->tagging_enabled) {
+		assert(iovcnt > 1);
+		mbufidp = iov[1].iov_base;
+		DTRACE_PROBE2(netbe, tap__recv, g_vmname, mbufidp);
 	}
 
 	return (ret);
