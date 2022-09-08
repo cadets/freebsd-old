@@ -112,7 +112,7 @@ SDT_PROVIDER_DEFINE(ddtrace);
 
 SDT_PROBE_DEFINE1(ddtrace, , pkttag, gen, "mbufid_t *");
 SDT_PROBE_DEFINE1(ddtrace, , pkttag, recv, "mbufid_t *");
-
+SDT_PROBE_DEFINE1(ddtrace, , tap, send, "mbufid_t *");
 
 void mi_startup(void);				/* Should be elsewhere */
 

@@ -35,5 +35,6 @@ SDT_PROVIDER_DECLARE(ddtrace);
 
 SDT_PROBE_DECLARE(ddtrace, , pkttag, gen);
 SDT_PROBE_DECLARE(ddtrace, , pkttag, recv);
+SDT_PROBE_DECLARE(ddtrace, , tap, send);
 
 #endif
