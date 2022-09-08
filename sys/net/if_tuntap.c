@@ -1741,7 +1741,7 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 			memset(&mid, 0, sizeof(mid));
 			len = min(uio->uio_resid,
 			    m->m_len + sizeof(mbufid_t));
-			if (len <= sizeof(msgid_t))
+			if (len <= sizeof(mbufid_t))
 				break;
 
 			if (m->m_flags & M_PKTHDR) {
