@@ -76,6 +76,7 @@
 #include <sys/malloc.h>
 #include <sys/random.h>
 #include <sys/ctype.h>
+#include <sys/ddtrace.h>
 
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -1939,6 +1940,7 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG) {
 		memcpy(&m->m_pkthdr.mbufid, &mid, sizeof(mbufid_t));
 		mbufid_assert_sanity(&m->m_pkthdr.mbufid);
+		SDT_PROBE1(ddtrace, , tap, send, &mid);
 	}
 
 #ifdef MAC
