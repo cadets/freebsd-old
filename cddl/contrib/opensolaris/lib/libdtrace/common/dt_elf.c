@@ -2835,7 +2835,6 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	if (prog == NULL)
 		errx(EXIT_FAILURE, "failed to malloc prog");
 
-	memset(prog, 0, sizeof(dtrace_prog_t));
 	prog->dp_dofversion = eprog->dtep_dofversion;
 
 	dt_elf_get_stmts(dtp, e, prog, eprog->dtep_first_stmt);
