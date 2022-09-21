@@ -80,7 +80,8 @@ struct dtrace_prog {
 	int dp_relocated;		/* has the program been relocated? */
 	uint32_t dp_neprobes;		/* number of enabled probes */
 	dtrace_probedesc_t *dp_eprobes;	/* enabled probe array */
-	uint16_t dp_vmid;		/* origin vm of the program */
+	char *dp_vmname;		/* origin vm name of the program */
+	uint16_t dp_vmid;		/* origin vm id of the program */
 	pid_t dp_pid;			/* pid of the current dtrace instance */
 };
 

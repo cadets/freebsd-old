@@ -56,6 +56,10 @@
 #include <dt_program.h>
 #include <dt_provider.h>
 
+#if defined(__amd64__) || defined(__i386__)
+#include <amd64/include/vmm.h>
+#endif
+
 #define VERICTX_DEFAULT_VECSIZE 256 /* We expect around 256 DIFOs by default. */
 
 typedef struct dt_verictx {
@@ -101,6 +105,13 @@ dt_program_create(dtrace_hdl_t *dtp)
 	 * Default to host
 	 */
 	pgp->dp_vmid = 0;
+	pgp->dp_vmname = dt_zalloc(dtp, VM_MAX_NAMELEN);
+	if (pgp->dp_vmname == NULL) {
+		dt_list_delete(&dtp->dt_programs, pgp);
+		free(pgp);
+		dt_set_errno(dtp, EDT_NOMEM);
+		return (NULL);
+	}
 
 	/*
 	 * We don't want to set this by default.
@@ -135,6 +146,9 @@ dt_program_destroy(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 	if (pgp->dp_xrefs)
 		dt_free(dtp, pgp->dp_xrefs);
+
+	if (pgp->dp_vmname)
+		dt_free(dtp, pgp->dp_vmname);
 
 	dt_list_delete(&dtp->dt_programs, pgp);
 	dt_free(dtp, pgp);
@@ -1233,10 +1247,10 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_ecbdesc_t *newecb, *curecb;
 	dtrace_actdesc_t *newact, *curact;
 	dtrace_difo_t *difo;
-	dtrace_probedesc_t newpdesc = { 0 };
+	dtrace_probedesc_t newpdesc = { 0 }, *pdp;
 	dt_list_t ppds = { 0 };
 	dt_ppd_t *ppd;
-	int process, has_immstack;
+	int process;
 
 	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
@@ -1247,9 +1261,23 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		curstmtdesc = stmt->ds_desc;
 		assert(curstmtdesc != NULL);
 		curecb = curstmtdesc->dtsd_ecbdesc;
+		pdp = &curecb->dted_probe;
 
-		newpdesc = curecb->dted_probe;
+		newpdesc = *pdp;
 		newpdesc.dtpd_vmid = 0;
+
+		/*
+		 * Correct the ERROR probe's target forcefully.
+		 */
+		if (strcmp(pdp->dtpd_provider, "dtrace") == 0 &&
+		    strcmp(pdp->dtpd_name, "ERROR") == 0) {
+			if (pgp->dp_vmname == NULL) {
+				dt_program_destroy(dtp, newpgp);
+				return (NULL);
+			}
+
+			strcpy(pdp->dtpd_target, pgp->dp_vmname);
+		}
 
 		process = 1;
 		for (ppd = dt_list_next(&ppds); ppd; ppd = dt_list_next(ppd)) {
@@ -1282,13 +1310,9 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		if (newstmtdesc == NULL)
 			abort();
 
-		has_immstack = 0;
-		for (curact = curstmtdesc->dtsd_action;
-		     curstmtdesc->dtsd_action_last &&
-		     curact != curstmtdesc->dtsd_action_last->dtad_next;
+		for (curact = curstmtdesc->dtsd_action; curact != NULL;
 		     curact = curact->dtad_next) {
 			if (curact->dtad_kind == DTRACEACT_IMMSTACK) {
-				has_immstack = 1;
 				newact = dtrace_stmt_action(dtp, newstmtdesc);
 				if (newact == NULL)
 					abort();

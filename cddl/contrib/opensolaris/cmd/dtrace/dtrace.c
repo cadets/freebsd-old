@@ -1017,7 +1017,7 @@ listen_dtraced(void *arg)
 	int novm = 0;
 	size_t elflen;
 	char *elf;
-	size_t *size;
+	size_t *sizep, size;
 	dtrace_prog_t *newprog;
 	dtrace_prog_t *hostpgp, *guestpgp;
 	int fd;
@@ -1044,7 +1044,8 @@ listen_dtraced(void *arg)
 	rx_sockfd = 0;
 	elflen = 0;
 	elf = NULL;
-	size = NULL;
+	sizep = NULL;
+	size = 0;
 	newprog = NULL;
 	fd = 0;
 	err = 0;
@@ -1158,18 +1159,19 @@ listen_dtraced(void *arg)
 		 * 8-byte aligned
 		 */
 		assert(((uintptr_t)elf & 7) == 0);
-		size = (uint64_t *)elf;
+		sizep = (uint64_t *)elf;
 
 		elf += sizeof(uint64_t);
 
+		size = *sizep;
 		name = elf;
-		elf += *size;
+		elf += size;
 
-		if (*size > VM_MAX_NAMELEN)
+		if (size > VM_MAX_NAMELEN)
 			dabort("size (%zu) > VM_MAX_NAMELEN (%zu)",
-			    *size, VM_MAX_NAMELEN);
+			    size, VM_MAX_NAMELEN);
 
-		memcpy(vm_name, name, *size);
+		memcpy(vm_name, name, size);
 
 process_prog:
 		fd = mkstemp(template);
@@ -1180,7 +1182,7 @@ process_prog:
 
 		lentowrite = novm ?
 		    elflen :
-		    (elflen - *size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
+		    (elflen - size - sizeof(uint64_t) - sizeof(uint16_t) - 6);
 		if (write(fd, elf, lentowrite) < 0)
 			dabort("failed to write to a temporary file");
 
@@ -1238,6 +1240,7 @@ process_prog:
 		__dt_bench_snapshot_time(bench);
 
 		newprog->dp_vmid = vmid;
+		memcpy(newprog->dp_vmname, vm_name, size);
 
 		/*
 		 * srcident only is not sufficient here, as it's an one-to-many
