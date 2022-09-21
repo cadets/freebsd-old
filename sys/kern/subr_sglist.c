@@ -486,7 +486,8 @@ sglist_append_mbuf_with_id(struct sglist *sg, struct mbuf *m0, int *mbuf_fail)
 
 	if (m->m_flags & M_PKTHDR) {
 		SGLIST_SAVE(sg, save);
-		error = sglist_append(sg, &m->m_pkthdr.mbufid, sizeof(mbufid_t));
+		error = sglist_append(sg, &m->m_pkthdr.mbufid,
+		    sizeof(mbufid_t));
 		if (error) {
 			SGLIST_RESTORE(sg, save);
 			return (error);
