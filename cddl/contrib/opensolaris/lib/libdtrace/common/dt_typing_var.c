@@ -411,6 +411,20 @@ dt_builtin_type(dt_ifg_node_t *n, uint16_t var, uint8_t idx)
 
 		n->din_type = DIF_TYPE_CTF;
 		break;
+
+	case DIF_VAR_HHOSTID:
+	case DIF_VAR_HOSTID:
+		n->din_tf = dt_typefile_kernel();
+		assert(n->din_tf != NULL);
+
+		n->din_ctfid = dt_typefile_ctfid(n->din_tf, "hostid_t");
+		if (n->din_ctfid == CTF_ERR)
+			dt_set_progerr(g_dtp, g_pgp,
+			    "failed te got type hostid_t: %s",
+			    dt_typefile_error(n->din_tf));
+		n->din_type = DIF_TYPE_CTF;
+		break;
+
 	default:
 		dt_set_progerr(g_dtp, g_pgp, "variable %x does not exist", var);
 	}

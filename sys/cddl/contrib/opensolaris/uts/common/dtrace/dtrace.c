@@ -4219,6 +4219,20 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 		retval.dttr_vmhdl = NULL;
 		return (retval);
 
+	case DIF_VAR_HOSTID:
+		if (mstate->dtms_probe->dtpr_vmid == 0)
+			retval.dttr_value = dtrace_node_id;
+		else
+			retval.dttr_value = hypertrace_getns(
+			    mstate->dtms_vmhdl);
+		retval.dttr_vmhdl = NULL;
+		return (retval);
+
+	case DIF_VAR_HHOSTID:
+		retval.dttr_value = dtrace_node_id;
+		retval.dttr_vmhdl = NULL;
+		return (retval);
+
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return (nullretval);

@@ -299,6 +299,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	&dt_idops_func, "file_t *(int)" },
 { "gid", DT_IDENT_SCALAR, 0, DIF_VAR_GID, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "gid_t" },
+{ "hostid", DT_IDENT_SCALAR, 0, DIF_VAR_HOSTID, DT_ATTR_STABCMN, DT_VERS_1_13,
+	&dt_idops_type, "hostid_t" },
 { "id", DT_IDENT_SCALAR, 0, DIF_VAR_ID, DT_ATTR_STABCMN, DT_VERS_1_0,
 	&dt_idops_type, "uint_t" },
 { "index", DT_IDENT_FUNC, 0, DIF_SUBR_INDEX, DT_ATTR_STABCMN, DT_VERS_1_1,
@@ -596,6 +598,8 @@ static const dt_ident_t _dtrace_globals[] = {
 	DT_ATTR_STABCMN, DT_VERS_1_13, &dt_idops_type, "string" },
 { "hgid", DT_IDENT_SCALAR, 0, DIF_VAR_HGID, DT_ATTR_STABCMN, DT_VERS_1_13,
 	&dt_idops_type, "gid_t" },
+{ "hhostid", DT_IDENT_SCALAR, 0, DIF_VAR_HOSTID, DT_ATTR_STABCMN, DT_VERS_1_13,
+	&dt_idops_type, "hostid_t" },
 #ifdef __FreeBSD__
 { "hjailname", DT_IDENT_SCALAR, 0, DIF_VAR_HJAILNAME,
 	DT_ATTR_STABCMN, DT_VERS_1_13, &dt_idops_type, "string" },

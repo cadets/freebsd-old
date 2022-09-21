@@ -1007,8 +1007,8 @@ dt_ident_builtin(dt_node_t *dnp)
 	    strcmp(s, "ppid") == 0 || strcmp(s, "uid") == 0 ||
 	    strcmp(s, "gid") == 0 || strcmp(s, "errno") == 0 ||
 	    strcmp(s, "jid") == 0 || strcmp(s, "jailname") == 0 ||
-	    strcmp(s, "vmname") == 0 || dnp->dn_kind == DT_NODE_FUNC ||
-	    dnp->dn_kind == DT_NODE_DFUNC);
+	    strcmp(s, "vmname") == 0 || strcmp(s, "hostid") == 0 ||
+	    dnp->dn_kind == DT_NODE_FUNC || dnp->dn_kind == DT_NODE_DFUNC);
 }
 
 dtrace_attribute_t
