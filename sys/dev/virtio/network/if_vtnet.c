@@ -77,6 +77,7 @@ __FBSDID("$FreeBSD$");
 #include <machine/resource.h>
 #include <sys/bus.h>
 #include <sys/rman.h>
+#include <sys/sdt.h>
 
 #include <dev/virtio/virtio.h>
 #include <dev/virtio/virtqueue.h>
@@ -90,6 +91,11 @@ __FBSDID("$FreeBSD$");
 #if defined(INET) || defined(INET6)
 #include <machine/in_cksum.h>
 #endif
+
+SDT_PROVIDER_DEFINE(vtnet);
+SDT_PROBE_DEFINE1(vtnet, if_vtnet, rxq, enqueue, "struct mbufid_t *");
+SDT_PROBE_DEFINE1(vtnet, if_vtnet, , receive, "struct mbufid_t *");
+SDT_PROBE_DEFINE1(vtnet, if_vtnet, txq, enqueue, "struct mbufid_t *");
 
 static int	vtnet_modevent(module_t, int, void *);
 
@@ -1705,6 +1711,8 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 	 */
 	if (header_inlined)
 		if (vtnet_tagging_enabled(sc) && m->m_flags & M_PKTHDR) {
+			SDT_PROBE1(vtnet, if_vtnet, rxq, enqueue,
+			    &m->m_pkthdr.mbufid);
 			error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
 		} else {
 			error = sglist_append_mbuf(sg, m);
@@ -1725,7 +1733,9 @@ vtnet_rxq_enqueue_buf(struct vtnet_rxq *rxq, struct mbuf *m)
 
 		if (m->m_next != NULL) {
 			if (vtnet_tagging_enabled(sc) &&
-			    m->m_flags & M_PKTHDR) {
+			    m->m_next->m_flags & M_PKTHDR) {
+				SDT_PROBE1(vtnet, if_vtnet, rxq, enqueue,
+				    &m->m_next->m_pkthdr.mbufid);
 				error = sglist_append_mbuf_with_id(
 				    sg, m->m_next, &mbuf_fail);
 			} else {
@@ -2091,6 +2101,7 @@ vtnet_rxq_eof(struct vtnet_rxq *rxq)
 		m = virtqueue_dequeue(vq, &len);
 		if (m == NULL)
 			break;
+		SDT_PROBE1(vtnet, if_vtnet, , receive, &m->m_pkthdr.mbufid);
 		deq++;
 		if (len < sc->vtnet_hdr_size + ETHER_HDR_LEN) {
 			rxq->vtnrx_stats.vrxs_ierrors++;
@@ -2539,6 +2550,8 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		goto fail;
 	}
 
+	if (m->m_flags & M_PKTHDR)
+		SDT_PROBE1(vtnet, if_vtnet, txq, enqueue, &m->m_pkthdr.mbufid);
 	error = sglist_append_mbuf_with_id(sg, m, &mbuf_fail);
 	if (error && mbuf_fail != 0) {
 		m = m_defrag(m, M_NOWAIT);
@@ -2561,7 +2574,6 @@ vtnet_txq_enqueue_buf(struct vtnet_txq *txq, struct mbuf **m_head,
 		goto fail;
 	}
 	error = virtqueue_enqueue(vq, txhdr, sg, sg->sg_nseg, 0);
-
 	return (error);
 
 fail:
