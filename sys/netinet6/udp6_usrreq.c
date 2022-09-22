@@ -405,7 +405,7 @@ skip_checksum:
 						    last, ip6, last, uh);
 					else
 						UDP_PROBE(receive, NULL, last,
-						    ip6, last, uh);
+						    ip6, last, uh, NULL);
 					if (udp6_append(last, n, off,
 					    fromsa)) {
 						INP_RUNLOCK(inp);
@@ -443,7 +443,7 @@ skip_checksum:
 		if (nxt == IPPROTO_UDPLITE)
 			UDPLITE_PROBE(receive, NULL, last, ip6, last, uh);
 		else
-			UDP_PROBE(receive, NULL, last, ip6, last, uh);
+			UDP_PROBE(receive, NULL, last, ip6, last, uh, NULL);
 		if (udp6_append(last, m, off, fromsa) == 0)
 			INP_RUNLOCK(last);
 		*mp = NULL;
@@ -504,7 +504,7 @@ skip_checksum:
 		if (nxt == IPPROTO_UDPLITE)
 			UDPLITE_PROBE(receive, NULL, NULL, ip6, NULL, uh);
 		else
-			UDP_PROBE(receive, NULL, NULL, ip6, NULL, uh);
+			UDP_PROBE(receive, NULL, NULL, ip6, NULL, uh, NULL);
 		UDPSTAT_INC(udps_noport);
 		if (m->m_flags & M_MCAST) {
 			printf("UDP6: M_MCAST is set in a unicast packet.\n");
@@ -530,7 +530,7 @@ skip_checksum:
 	if (nxt == IPPROTO_UDPLITE)
 		UDPLITE_PROBE(receive, NULL, inp, ip6, inp, uh);
 	else
-		UDP_PROBE(receive, NULL, inp, ip6, inp, uh);
+		UDP_PROBE(receive, NULL, inp, ip6, inp, uh, NULL);
 	if (udp6_append(inp, m, off, fromsa) == 0)
 		INP_RUNLOCK(inp);
 	*mp = NULL;
@@ -966,7 +966,7 @@ udp6_output(struct socket *so, int flags_arg, struct mbuf *m,
 	if (nxt == IPPROTO_UDPLITE)
 		UDPLITE_PROBE(send, NULL, inp, ip6, inp, udp6);
 	else
-		UDP_PROBE(send, NULL, inp, ip6, inp, udp6);
+		UDP_PROBE(send, NULL, inp, ip6, inp, udp6, &m->m_pkthdr.mbufid);
 	error = ip6_output(m, optp,
 	    INP_WLOCKED(inp) ? &inp->inp_route6 : NULL, flags,
 	    inp->in6p_moptions, NULL, inp);

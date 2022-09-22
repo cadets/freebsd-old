@@ -32,8 +32,8 @@
 
 #define	IP_PROBE(probe, arg0, arg1, arg2, arg3, arg4, arg5)		\
 	SDT_PROBE6(ip, , , probe, arg0, arg1, arg2, arg3, arg4, arg5)
-#define	UDP_PROBE(probe, arg0, arg1, arg2, arg3, arg4)			\
-	SDT_PROBE5(udp, , , probe, arg0, arg1, arg2, arg3, arg4)
+#define	UDP_PROBE(probe, arg0, arg1, arg2, arg3, arg4, arg5)		\
+	SDT_PROBE6(udp, , , probe, arg0, arg1, arg2, arg3, arg4, arg5)
 #define	UDPLITE_PROBE(probe, arg0, arg1, arg2, arg3, arg4)		\
 	SDT_PROBE5(udplite, , , probe, arg0, arg1, arg2, arg3, arg4)
 #define	TCP_PROBE1(probe, arg0)						\

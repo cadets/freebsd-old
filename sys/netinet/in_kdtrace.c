@@ -150,12 +150,13 @@ SDT_PROBE_DEFINE5_XLATE(udp, , , receive,
     "struct inpcb *", "udpsinfo_t *",
     "struct udphdr *", "udpinfo_t *");
 
-SDT_PROBE_DEFINE5_XLATE(udp, , , send,
+SDT_PROBE_DEFINE6_XLATE(udp, , , send,
     "void *", "pktinfo_t *",
     "struct inpcb *", "csinfo_t *",
     "uint8_t *", "ipinfo_t *",
     "struct inpcb *", "udpsinfo_t *",
-    "struct udphdr *", "udpinfo_t *");
+    "struct udphdr *", "udpinfo_t *",
+    "mbufid_t *", "mbufid_t *");
 
 SDT_PROBE_DEFINE5_XLATE(udplite, , , receive,
     "void *", "pktinfo_t *",
