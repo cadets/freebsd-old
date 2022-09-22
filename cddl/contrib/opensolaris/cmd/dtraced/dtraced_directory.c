@@ -744,7 +744,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			if (argv[2] == NULL)
 				abort();
 
-			argv[3] = strdup("-q");
+			argv[3] = strdup("-v");
 			if (argv[3] == NULL)
 				abort();
 
@@ -840,7 +840,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 	char fullpath[MAXPATHLEN] = { 0 };
 	int status = 0;
 	pid_t pid;
-	char *argv[4];
+	char *argv[5];
 	char fullarg[MAXPATHLEN*2 + 1] = { 0 };
 	size_t offset;
 	__cleanup(freep) char *dirpath = NULL;
@@ -923,18 +923,22 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		if (argv[0] == NULL)
 			abort();
 
-		argv[1] = strdup("-Y");
+		argv[1] = strdup("-v");
 		if (argv[1] == NULL)
+			abort();
+
+		argv[2] = strdup("-Y");
+		if (argv[2] == NULL)
 			abort();
 
 		strcpy(fullarg, fullpath);
 		offset = strlen(fullarg);
 		strcpy(fullarg + offset, ",host");
-		argv[2] = strdup(fullarg);
-		if (argv[2] == NULL)
+		argv[3] = strdup(fullarg);
+		if (argv[3] == NULL)
 			abort();
 
-		argv[3] = NULL;
+		argv[4] = NULL;
 		execve("/usr/sbin/dtrace", argv, NULL);
 		exit(EXIT_FAILURE);
 	}
