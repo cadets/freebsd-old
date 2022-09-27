@@ -102,19 +102,9 @@ map_insert(hypertrace_map_t *map, hypertrace_probe_t *probe)
 		size_t osize;
 
 		osize = nprobes * sizeof(dtrace_probe_t *);
+		nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
 
-		if (osize << 1 > id - 1)
-			nsize = osize << 1;
-		else
-			nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
-
-		if (nsize == 0) {
-			ASSERT(osize == 0);
-			ASSERT(map->probes[vmid] == NULL);
-			nsize = MAP_BUCKETSIZE * sizeof(dtrace_probe_t *);
-		}
-
-		ASSERT(nsize > id - 1);
+		ASSERT((nsize / sizeof(dtrace_probe_t *)) > id - 1);
 		new_probes = kmem_zalloc(nsize, KM_SLEEP);
 
 		if (map->probes[vmid] == NULL) {

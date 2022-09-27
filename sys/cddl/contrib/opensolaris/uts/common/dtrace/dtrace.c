@@ -10647,22 +10647,13 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 
 	if (id - 1 >= dtrace_nvprobes[vmid] &&
 	    id - 1 <= DTRACE_SENSIBLE_PROBELIMIT) {
-		size_t osize = dtrace_nvprobes[vmid] *
-		    sizeof (dtrace_probe_t *);
+		size_t osize;
 		size_t nsize;
 
-		if ((osize << 1) > (id - 1))
-			nsize = osize << 1;
-		else
-			nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
+		osize = dtrace_nvprobes[vmid] * sizeof(dtrace_probe_t *);
+		nsize = dtrace_nextpow2(id) * sizeof(dtrace_probe_t *);
 
-		if (nsize == 0) {
-			ASSERT(osize == 0);
-			ASSERT(dtrace_vprobes[vmid] == NULL);
-			nsize = sizeof (dtrace_probe_t *);
-		}
-
-		ASSERT(nsize > id - 1);
+		ASSERT((nsize / sizeof(dtrace_probe_t *)) > id - 1);
 		probes = kmem_zalloc(nsize, KM_SLEEP);
 
 		if (dtrace_vprobes[vmid] == NULL) {
