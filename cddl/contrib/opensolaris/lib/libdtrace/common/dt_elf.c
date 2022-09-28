@@ -1898,7 +1898,7 @@ dt_elf_ecb_find(dt_elf_ref_t ecbref, int *found)
 		return (NULL);
 
 	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
-	ecb->dted_refcnt++;
+	dt_ecbdesc_hold(ecb);
 	return (ecb);
 }
 
