@@ -365,7 +365,7 @@ dt_augment_tracing(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	return (0);
 }
 
-static void
+void
 dt_ecbdesc_hold(dtrace_ecbdesc_t *edp)
 {
 	edp->dted_refcnt++;
