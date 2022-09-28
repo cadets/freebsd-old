@@ -1624,8 +1624,16 @@ process_new_pgp(dtrace_prog_t *pgp, dtrace_prog_t *gpgp_resp)
 	/*
 	 * Dump actions if we ask for verbose output.
 	 */
-	if (g_verbose)
+	if (g_verbose) {
+		fprintf(stderr, "Processing new program from: %s\n", pgp->dp_vmname);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
 		dtrace_dump_actions(pgp);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
 	if (g_verbose > 1)
 		dump_ecbs(pgp);
 
@@ -1765,6 +1773,17 @@ exec_prog(const dtrace_cmd_t *dcp)
 		if (tmpfd == -1)
 			fatal("failed to mkstemp()");
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
+
+		if (g_verbose) {
+			fprintf(stderr, "Initial program:\n");
+			fprintf(stderr,
+			    "=================================================================="
+			    "\n");
+			dtrace_dump_actions(dcp->dc_prog);
+			fprintf(stderr,
+			    "=================================================================="
+			    "\n");
+		}
 		if (g_verbose > 1)
 			dump_ecbs(dcp->dc_prog);
 
@@ -2168,14 +2187,30 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		fatal("unexpected string in -Y: %s", hostorguest);
 
 	prog_exec = link_elf(dcp, progpath);
-	if (g_verbose)
+	if (g_verbose) {
+		fprintf(stderr, "Unrelocated program:\n");
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
 		dtrace_dump_actions(dcp->dc_prog);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
 
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
-	if (g_verbose)
+	if (g_verbose) {
+		fprintf(stderr, "Relocated program:\n");
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
 		dtrace_dump_actions(dcp->dc_prog);
+		fprintf(stderr,
+		    "=================================================================="
+		    "\n");
+	}
 
 	if ((prog_exec == DT_PROG_EXEC && g_allow_root_srcident) ||
 	    (prog_exec == DT_PROG_EXEC && g_has_idents)) {
