@@ -40,6 +40,8 @@
 #ifndef _DT_HASHMAP_H_
 #define _DT_HASHMAP_H_
 
+#define DT_HASHSIZE_DEFAULT (1 << 16)
+
 #define DTH_MANAGED (1 << 1)
 
 typedef struct {

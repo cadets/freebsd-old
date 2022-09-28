@@ -139,8 +139,6 @@ char sec_strtab[] =
 
 #define	DTELF_PROG_SECIDX	  2
 
-static const size_t DEFAULT_HASHMAP_SIZE = (1 << 16);
-
 static dt_elf_state_t *dtelf_state;
 
 dt_elf_opt_t dtelf_ctopts[] = {
@@ -1513,8 +1511,8 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
-	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
-	dtelf_state->s_acthash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
+	dtelf_state->s_ecbhash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	dtelf_state->s_acthash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
 
 	/*
 	 * Initialise the identifier name string table.
@@ -2633,7 +2631,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
-	dtelf_state->s_ecbhash = dt_hashmap_create(DEFAULT_HASHMAP_SIZE);
+	dtelf_state->s_ecbhash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
 	dtelf_state->s_rslv = rslv;
 
 	off = lseek(fd, 0, SEEK_SET);
