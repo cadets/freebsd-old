@@ -670,6 +670,7 @@ extern void *dt_zalloc(dtrace_hdl_t *, size_t);
 extern void *dt_alloc(dtrace_hdl_t *, size_t);
 extern void dt_free(dtrace_hdl_t *, void *);
 extern void dt_difo_free(dtrace_hdl_t *, dtrace_difo_t *);
+extern dtrace_difo_t *dt_difo_dup(dtrace_hdl_t *, dtrace_difo_t *);
 
 extern int dt_gmatch(const char *, const char *);
 extern char *dt_basename(char *);

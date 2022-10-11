@@ -799,6 +799,117 @@ dt_difo_free(dtrace_hdl_t *dtp, dtrace_difo_t *dp)
 	dt_free(dtp, dp);
 }
 
+dtrace_difo_t *
+dt_difo_dup(dtrace_hdl_t *dtp, dtrace_difo_t *dp)
+{
+	dtrace_difo_t *ndp;
+
+	if (dp == NULL)
+		return (NULL);
+
+	ndp = dt_zalloc(dtp, sizeof(dtrace_difo_t));
+	if (ndp == NULL)
+		goto cleanup;
+
+	memcpy(ndp, dp, sizeof(dtrace_difo_t));
+	ndp->dtdo_buf = NULL;
+	ndp->dtdo_inttab = NULL;
+	ndp->dtdo_strtab = NULL;
+	ndp->dtdo_vartab = NULL;
+	ndp->dtdo_kreltab = NULL;
+	ndp->dtdo_ureltab = NULL;
+	ndp->dtdo_xlmtab = NULL;
+
+	if (dp->dtdo_len == 0)
+		goto cleanup;
+
+	ndp->dtdo_buf = dt_alloc(dtp, dp->dtdo_len * sizeof(dif_instr_t));
+	if (ndp->dtdo_buf == NULL)
+		goto cleanup;
+
+	if (dp->dtdo_intlen > 0) {
+		ndp->dtdo_inttab = dt_alloc(dtp,
+		    dp->dtdo_intlen * sizeof(uint64_t));
+		if (ndp->dtdo_inttab == NULL)
+			goto cleanup;
+	}
+
+	if (dp->dtdo_strlen > 0) {
+		ndp->dtdo_strtab = dt_alloc(dtp, dp->dtdo_strlen);
+		if (ndp->dtdo_strtab == NULL)
+			goto cleanup;
+	}
+
+	if (dp->dtdo_varlen > 0) {
+		ndp->dtdo_vartab = dt_alloc(dtp,
+		    dp->dtdo_varlen * sizeof(dtrace_difv_t));
+		if (ndp->dtdo_vartab == NULL)
+			goto cleanup;
+	}
+
+	if (dp->dtdo_krelen > 0) {
+		ndp->dtdo_kreltab = dt_alloc(dtp,
+		    dp->dtdo_krelen * sizeof(dof_relodesc_t));
+		if (ndp->dtdo_kreltab == NULL)
+			goto cleanup;
+	}
+
+	if (dp->dtdo_urelen > 0) {
+		ndp->dtdo_ureltab = dt_alloc(dtp,
+		    dp->dtdo_urelen * sizeof(dof_relodesc_t));
+		if (ndp->dtdo_ureltab == NULL)
+			goto cleanup;
+	}
+
+	if (dp->dtdo_xlmlen > 0) {
+		ndp->dtdo_xlmtab = dt_alloc(dtp,
+		    dp->dtdo_xlmlen * sizeof(struct dt_node *));
+		if (ndp->dtdo_xlmtab == NULL)
+			goto cleanup;
+	}
+
+	memcpy(ndp->dtdo_buf, dp->dtdo_buf, dp->dtdo_len * sizeof(dif_instr_t));
+	if (dp->dtdo_intlen > 0)
+		memcpy(ndp->dtdo_inttab, dp->dtdo_inttab,
+		    dp->dtdo_intlen * sizeof(uint64_t));
+	if (dp->dtdo_strlen > 0)
+		memcpy(ndp->dtdo_strtab, dp->dtdo_strtab, dp->dtdo_strlen);
+	if (dp->dtdo_varlen > 0)
+		memcpy(ndp->dtdo_vartab, dp->dtdo_vartab,
+		    dp->dtdo_varlen * sizeof(dtrace_difv_t));
+	if (dp->dtdo_krelen > 0)
+		memcpy(ndp->dtdo_kreltab, dp->dtdo_kreltab,
+		    dp->dtdo_krelen * sizeof(dof_relodesc_t));
+	if (dp->dtdo_urelen > 0)
+		memcpy(ndp->dtdo_ureltab, dp->dtdo_ureltab,
+		    dp->dtdo_urelen * sizeof(dof_relodesc_t));
+	if (dp->dtdo_xlmlen > 0)
+		memcpy(ndp->dtdo_xlmtab, dp->dtdo_xlmtab,
+		    dp->dtdo_xlmlen * sizeof(struct dt_node *));
+
+	return (ndp);
+
+cleanup:
+	if (ndp->dtdo_buf)
+		dt_free(dtp, ndp->dtdo_buf);
+	if (ndp->dtdo_inttab)
+		dt_free(dtp, ndp->dtdo_inttab);
+	if (ndp->dtdo_strtab)
+		dt_free(dtp, ndp->dtdo_strtab);
+	if (ndp->dtdo_vartab)
+		dt_free(dtp, ndp->dtdo_vartab);
+	if (ndp->dtdo_kreltab)
+		dt_free(dtp, ndp->dtdo_kreltab);
+	if (ndp->dtdo_ureltab)
+		dt_free(dtp, ndp->dtdo_ureltab);
+	if (ndp->dtdo_xlmtab)
+		dt_free(dtp, ndp->dtdo_xlmtab);
+	if (ndp)
+		dt_free(dtp, ndp);
+
+	return (NULL);
+}
+
 /*
  * dt_gmatch() is similar to gmatch(3GEN) and dtrace(7D) globbing, but also
  * implements the behavior that an empty pattern matches any string.

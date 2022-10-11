@@ -50,6 +50,7 @@
 #include <alloca.h>
 #endif
 
+#include <dt_hashmap.h>
 #include <dt_impl.h>
 #include <dt_linker_subr.h>
 #include <dt_printf.h>
@@ -1238,6 +1239,161 @@ typedef struct {
 	dtrace_probedesc_t *pdesc;
 } dt_ppd_t;
 
+static dt_stmt_t *
+dt_vprog_get_memorized(dt_hashmap_t *hm, dtrace_probedesc_t *pdp)
+{
+	dt_stmt_t *stp;
+
+	/* +1 for the NULL terminator just in case */
+	char fullname[DTRACE_FULLNAMELEN + 1] = { 0 };
+
+	sprintf(fullname, "%s:%s:%s:%s:%s", pdp->dtpd_target,
+	    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+
+	/*
+	 * Get the original statement description for this probe description.
+	 */
+	stp = dt_hashmap_lookup(hm, fullname, DTRACE_FULLNAMELEN + 1);
+	if (stp == NULL)
+		return (NULL);
+
+	return (stp);
+}
+
+static int
+dt_vprog_memorize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dt_stmt_t *stp,
+    dtrace_probedesc_t *pdp)
+{
+	int rval;
+
+	/* +1 for the NULL terminator just in case */
+	char fullname[DTRACE_FULLNAMELEN + 1] = { 0 };
+
+	if (hm == NULL || stp == NULL)
+		return (-1);
+
+	sprintf(fullname, "%s:%s:%s:%s:%s", pdp->dtpd_target,
+	    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func, pdp->dtpd_name);
+
+	rval = dt_hashmap_insert(hm, fullname, DTRACE_FULLNAMELEN + 1, stp,
+	    DTH_MANAGED);
+	if (rval)
+		return (dt_set_errno(dtp, EDT_NOMEM));
+
+	return (rval);
+}
+
+static dt_stmt_t *
+dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
+    dt_stmt_t *ostp, dt_stmt_t *stp)
+{
+	dtrace_stmtdesc_t *sdp, *osdp, *nsdp;
+	dtrace_actdesc_t *ap, *nap, *next;
+	dt_stmt_t *nstp, *r;
+
+	if (dtp == NULL || pgp == NULL || ostp == NULL || stp == NULL)
+		return (NULL);
+
+	if (ostp == stp)
+		return (stp);
+
+	sdp = stp->ds_desc;
+	osdp = ostp->ds_desc;
+	nsdp = NULL;
+
+	nsdp = dtrace_stmt_create(dtp, osdp->dtsd_ecbdesc);
+	if (nsdp == NULL)
+		return (NULL);
+
+	for (ap = sdp->dtsd_action; ap != sdp->dtsd_action_last->dtad_next;
+	     ap = next) {
+		next = ap->dtad_next;
+		/*
+		 * Assert that we have the expected actions.
+		 */
+		assert(ap->dtad_kind == DTRACEACT_DIFEXPR ||
+		    ap->dtad_kind == DTRACEACT_IMMSTACK);
+
+		/*
+		 * The only relevant bits to us are the DIFO, as it can contain
+		 * a hypercall or some additional helpers, the arg as it gives
+		 * us a number of frames, kind as it specifies our action kind
+		 * and whether or not it's an action that returns.
+		 */
+		nap = dtrace_stmt_action(dtp, nsdp);
+		if (nap == NULL) {
+			for (ap = nsdp->dtsd_action; ap; ap = next) {
+				next = ap->dtad_next;
+				dt_free(dtp, ap);
+			}
+			dt_free(dtp, nsdp);
+			return (NULL);
+		}
+
+		nap->dtad_kind = ap->dtad_kind;
+		nap->dtad_return = ap->dtad_return;
+		nap->dtad_difo = dt_difo_dup(dtp, ap->dtad_difo);
+
+		/*
+		 * TODO: FIXME: Proper cleanup.
+		 */
+		if (nap->dtad_difo == NULL)
+			abort();
+		nap->dtad_arg = ap->dtad_arg;
+	}
+
+	/*
+	 * Destroy the current statement, we don't need it.
+	 */
+	dtrace_stmt_destroy(dtp, sdp);
+	nstp = dt_zalloc(dtp, sizeof(dt_stmt_t));
+	if (nstp == NULL)
+		abort();
+
+	r = dt_list_next(stp);
+
+	dt_list_delete(&pgp->dp_stmts, stp);
+	dt_list_insert(&pgp->dp_stmts, ostp, nstp);
+
+	nstp->ds_desc = nsdp;
+	dt_free(dtp, stp);
+
+	return (r);
+}
+
+static int
+dt_vprog_squash(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
+{
+	dt_stmt_t *stp, *ostp;
+	dtrace_probedesc_t *pdp;
+	dtrace_ecbdesc_t *edp;
+	dtrace_stmtdesc_t *sdp;
+	dt_hashmap_t *hm;
+	int rval;
+
+	hm = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	if (hm == NULL)
+		return (0);
+
+	for (stp = dt_list_next(&pgp->dp_stmts); stp; stp = dt_list_next(stp)) {
+		sdp = stp->ds_desc;
+		edp = sdp->dtsd_ecbdesc;
+		pdp = &edp->dted_probe;
+		ostp = dt_vprog_get_memorized(hm, pdp);
+		if (ostp != NULL) {
+			stp = dt_vprog_reorganize(dtp, hm, pgp, ostp, stp);
+			assert(stp != NULL);
+		} else {
+			rval = dt_vprog_memorize(dtp, hm, stp, pdp);
+			if (rval)
+				return (rval);
+		}
+	}
+
+	dt_hashmap_free(hm, 1);
+	return (0);
+}
+
 static dtrace_prog_t *
 dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
@@ -1279,29 +1435,6 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			strcpy(pdp->dtpd_target, pgp->dp_vmname);
 		}
 
-		process = 1;
-		for (ppd = dt_list_next(&ppds); ppd; ppd = dt_list_next(ppd)) {
-			if (memcmp(ppd->pdesc, &newpdesc,
-			    sizeof(dtrace_probedesc_t)) == 0) {
-				process = 0;
-				break;
-			}
-		}
-
-		if (process == 0)
-			continue;
-
-		ppd = malloc(sizeof(dt_ppd_t));
-		if (ppd == NULL)
-			abort();
-
-		ppd->pdesc = malloc(sizeof(dtrace_probedesc_t));
-		if (ppd->pdesc == NULL)
-			abort();
-
-		memcpy(ppd->pdesc, &newpdesc, sizeof(dtrace_probedesc_t));
-		dt_list_append(&ppds, ppd);
-
 		newecb = dt_ecbdesc_create(dtp, &newpdesc);
 		if (newecb == NULL)
 			abort();
@@ -1310,7 +1443,8 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		if (newstmtdesc == NULL)
 			abort();
 
-		for (curact = curstmtdesc->dtsd_action; curact != NULL;
+		for (curact = curstmtdesc->dtsd_action; curact != NULL &&
+		     curact != curstmtdesc->dtsd_action_last->dtad_next;
 		     curact = curact->dtad_next) {
 			if (curact->dtad_kind == DTRACEACT_IMMSTACK) {
 				newact = dtrace_stmt_action(dtp, newstmtdesc);
@@ -1318,6 +1452,10 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 					abort();
 				curact->dtad_kind = DTRACEACT_PRINTIMMSTACK;
 				newact->dtad_kind = DTRACEACT_IMMSTACK;
+				/*
+				 * Ensure we have the number of frames.
+				 */
+				newact->dtad_arg = curact->dtad_arg;
 				newact->dtad_return = 0;
 			}
 		}
@@ -1349,11 +1487,11 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 	newpgp->dp_rflags = pgp->dp_rflags;
 
-	while (ppd = dt_list_next(&ppds)) {
-		dt_list_delete(&ppds, ppd);
-		free(ppd->pdesc);
-		free(ppd);
+	if (dt_vprog_squash(dtp, newpgp)) {
+		dt_free(dtp, newpgp);
+		return (NULL);
 	}
+
 	return (newpgp);
 }
 
