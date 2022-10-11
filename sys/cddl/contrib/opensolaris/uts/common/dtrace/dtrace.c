@@ -10675,7 +10675,10 @@ _dtrace_vprobe_create(dtrace_vmid_t vmid, dtrace_id_t _id,
 			    sizeof(dtrace_probe_t *);
 		}
 
-		ASSERT(id - 1 < dtrace_nvprobes[vmid]);
+		if (id - 1 >= dtrace_nvprobes[vmid])
+			dtrace_panic(
+			    "id - 1 (%d) >= dtrace_nvprobes[%u] (%d)\n", id - 1,
+			    vmid, dtrace_nvprobes[vmid]);
 	}
 
 	ASSERT(dtrace_vprobes[vmid][id - 1] == NULL);
