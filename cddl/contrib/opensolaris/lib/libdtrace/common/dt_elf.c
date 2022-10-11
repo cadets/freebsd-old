@@ -1790,11 +1790,10 @@ dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
 		    elf_errmsg(-1), __func__);
 
-	assert(data->d_buf != NULL);
-
 	if (data->d_size == 0)
 		return (NULL);
 
+	assert(data->d_buf != NULL);
 	table = malloc(data->d_size);
 	if (table == NULL)
 		errx(EXIT_FAILURE, "failed to malloc table");
