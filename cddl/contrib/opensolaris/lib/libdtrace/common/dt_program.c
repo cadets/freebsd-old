@@ -1290,6 +1290,7 @@ dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
 	dtrace_stmtdesc_t *sdp, *osdp, *nsdp;
 	dtrace_actdesc_t *ap, *nap, *next;
 	dt_stmt_t *nstp, *r;
+	int alloc_fail;
 
 	if (dtp == NULL || pgp == NULL || ostp == NULL || stp == NULL)
 		return (NULL);
@@ -1332,13 +1333,16 @@ dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
 
 		nap->dtad_kind = ap->dtad_kind;
 		nap->dtad_return = ap->dtad_return;
-		nap->dtad_difo = dt_difo_dup(dtp, ap->dtad_difo);
+		nap->dtad_difo = dt_difo_dup(dtp, ap->dtad_difo, &alloc_fail);
 
 		/*
 		 * TODO: FIXME: Proper cleanup.
 		 */
-		if (nap->dtad_difo == NULL)
+		if (alloc_fail != 0 && nap->dtad_difo == NULL) {
+			fprintf(stderr, "%s(%u): allocation failed: %s\n",
+			    __func__, __LINE__, strerror(errno));
 			abort();
+		}
 		nap->dtad_arg = ap->dtad_arg;
 	}
 
@@ -1388,6 +1392,9 @@ dt_vprog_squash(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 			if (rval)
 				return (rval);
 		}
+
+		if (stp == NULL)
+			break;
 	}
 
 	dt_hashmap_free(hm, 1);
@@ -1461,13 +1468,19 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 		}
 
 		newact = dtrace_stmt_action(dtp, newstmtdesc);
-		if (newact == NULL)
+		if (newact == NULL) {
+			fprintf(stderr, "%s(%u): allocation failed: %s\n",
+			    __func__, __LINE__, strerror(errno));
 			abort();
+		}
 
 		newact->dtad_difo = malloc(sizeof(dtrace_difo_t));
 		difo = newact->dtad_difo;
-		if (difo == NULL)
+		if (difo == NULL) {
+			fprintf(stderr, "%s(%u): allocation failed: %s\n",
+			    __func__, __LINE__, strerror(errno));
 			abort();
+		}
 
 		memset(difo, 0, sizeof(dtrace_difo_t));
 

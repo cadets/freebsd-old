@@ -800,16 +800,20 @@ dt_difo_free(dtrace_hdl_t *dtp, dtrace_difo_t *dp)
 }
 
 dtrace_difo_t *
-dt_difo_dup(dtrace_hdl_t *dtp, dtrace_difo_t *dp)
+dt_difo_dup(dtrace_hdl_t *dtp, dtrace_difo_t *dp, int *alloc_fail)
 {
 	dtrace_difo_t *ndp;
+
+	*alloc_fail = 0;
 
 	if (dp == NULL)
 		return (NULL);
 
 	ndp = dt_zalloc(dtp, sizeof(dtrace_difo_t));
-	if (ndp == NULL)
+	if (ndp == NULL) {
+		*alloc_fail = 1;
 		goto cleanup;
+	}
 
 	memcpy(ndp, dp, sizeof(dtrace_difo_t));
 	ndp->dtdo_buf = NULL;
@@ -824,48 +828,62 @@ dt_difo_dup(dtrace_hdl_t *dtp, dtrace_difo_t *dp)
 		goto cleanup;
 
 	ndp->dtdo_buf = dt_alloc(dtp, dp->dtdo_len * sizeof(dif_instr_t));
-	if (ndp->dtdo_buf == NULL)
+	if (ndp->dtdo_buf == NULL) {
+		*alloc_fail = 1;
 		goto cleanup;
+	}
 
 	if (dp->dtdo_intlen > 0) {
 		ndp->dtdo_inttab = dt_alloc(dtp,
 		    dp->dtdo_intlen * sizeof(uint64_t));
-		if (ndp->dtdo_inttab == NULL)
+		if (ndp->dtdo_inttab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	if (dp->dtdo_strlen > 0) {
 		ndp->dtdo_strtab = dt_alloc(dtp, dp->dtdo_strlen);
-		if (ndp->dtdo_strtab == NULL)
+		if (ndp->dtdo_strtab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	if (dp->dtdo_varlen > 0) {
 		ndp->dtdo_vartab = dt_alloc(dtp,
 		    dp->dtdo_varlen * sizeof(dtrace_difv_t));
-		if (ndp->dtdo_vartab == NULL)
+		if (ndp->dtdo_vartab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	if (dp->dtdo_krelen > 0) {
 		ndp->dtdo_kreltab = dt_alloc(dtp,
 		    dp->dtdo_krelen * sizeof(dof_relodesc_t));
-		if (ndp->dtdo_kreltab == NULL)
+		if (ndp->dtdo_kreltab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	if (dp->dtdo_urelen > 0) {
 		ndp->dtdo_ureltab = dt_alloc(dtp,
 		    dp->dtdo_urelen * sizeof(dof_relodesc_t));
-		if (ndp->dtdo_ureltab == NULL)
+		if (ndp->dtdo_ureltab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	if (dp->dtdo_xlmlen > 0) {
 		ndp->dtdo_xlmtab = dt_alloc(dtp,
 		    dp->dtdo_xlmlen * sizeof(struct dt_node *));
-		if (ndp->dtdo_xlmtab == NULL)
+		if (ndp->dtdo_xlmtab == NULL) {
+			*alloc_fail = 1;
 			goto cleanup;
+		}
 	}
 
 	memcpy(ndp->dtdo_buf, dp->dtdo_buf, dp->dtdo_len * sizeof(dif_instr_t));
