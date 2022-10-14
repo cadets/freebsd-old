@@ -301,8 +301,14 @@ dtrace_dump_actions(dtrace_prog_t *pgp)
 		    descp->dtpd_provider, descp->dtpd_mod,
 		    descp->dtpd_func, descp->dtpd_name);
 
+		if (edp->dted_pred.dtpdd_difo != NULL) {
+			fprintf(stderr, "\nPredicate:\n");
+			dt_dis(edp->dted_pred.dtpdd_difo, stderr);
+		}
+
 		ad_last = sdp->dtsd_action_last;
 		assert(ad_last != NULL);
+		fprintf(stderr, "\nActions:\n");
 		for (ap = sdp->dtsd_action;
 		     ad_last && ap != ad_last->dtad_next;
 		     ap = ap->dtad_next)
