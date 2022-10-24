@@ -719,10 +719,6 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 		if (data->d_buf == NULL)
 			errx(EXIT_FAILURE, "data->d_buf must not be NULL.");
 
-		if (dtelf_state->s_eadprev != NULL &&
-		    dtelf_state->s_eadprev != data->d_buf)
-			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
-
 		dtelf_state->s_eadprev = data->d_buf;
 
 		/*
@@ -2137,7 +2133,7 @@ dt_elf_in_actlist(dtrace_actdesc_t *find)
 	return (NULL);
 }
 
-static dtrace_actdesc_t *
+static void
 dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
     dt_elf_stmt_t *estmt, dt_elf_ref_t sscn, dtrace_actdesc_t *prev)
 {
@@ -2261,12 +2257,11 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 				 * anything further.
 				 */
 				if (ap == NULL)
-					return (NULL);
+					return;
 			}
 
 			prevap = ap;
 		}
-		return (ap);
 	}
 
 	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
@@ -2283,7 +2278,6 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 
 	stp->ds_desc = stmt;
 	dt_list_append(&prog->dp_stmts, stp);
-	return (prev);
 }
 
 static dtrace_actdesc_t *
@@ -2340,14 +2334,13 @@ dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_stmt_t *estmt,
 }
 
 static dtrace_actdesc_t *
-dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt, dtrace_actdesc_t *prev)
+dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
 	dt_elf_actdesc_t *ead;
 	dt_elf_ref_t fst, actref;
-	dtrace_actdesc_t *_prev = NULL;
-
+	dtrace_actdesc_t *prev = NULL;
 	fst = estmt->dtes_action;
 
 	for (actref = fst; actref != 0; actref = ead->dtea_next) {
@@ -2362,8 +2355,7 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt, dtrace_actdesc_t *prev)
 		assert(data->d_buf != NULL);
 
 		ead = data->d_buf;
-		_prev = dt_elf_alloc_action(e, scn, estmt, prev);
-		prev = _prev ? _prev : prev;
+		prev = dt_elf_alloc_action(e, scn, estmt, prev);
 	}
 
 	return (prev);
@@ -2377,7 +2369,7 @@ dt_elf_get_stmts(
 	Elf_Data *data;
 	dt_elf_stmt_t *estmt;
 	dt_elf_ref_t scnref;
-	dtrace_actdesc_t *last = NULL, *_last = NULL;
+	dtrace_actdesc_t *last = NULL;
 	int rval;
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
@@ -2392,8 +2384,8 @@ dt_elf_get_stmts(
 		assert(data->d_buf != NULL);
 		estmt = data->d_buf;
 
-		_last = dt_elf_alloc_actions(e, estmt, last);
-		last = dt_elf_add_stmt(dtp, e, prog, estmt, scnref, _last);
+		last = dt_elf_alloc_actions(e, estmt);
+		dt_elf_add_stmt(dtp, e, prog, estmt, scnref, last);
 	}
 }
 
