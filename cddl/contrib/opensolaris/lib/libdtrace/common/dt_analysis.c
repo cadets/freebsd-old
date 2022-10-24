@@ -273,12 +273,20 @@ dtrace_dump_actions_ecbdesc(dtrace_ecbdesc_t *edp)
 {
 	dtrace_probedesc_t *descp;
 	dtrace_actdesc_t *ap;
+	dtrace_difo_t *pred;
 
 	for (ap = edp->dted_action; ap; ap = ap->dtad_next) {
 		descp = &edp->dted_probe;
+		pred = edp->dted_pred.dtpdd_difo;
 		fprintf(stderr, "%s:%s:%s:%s:%s ==>\n", descp->dtpd_target,
 		    descp->dtpd_provider, descp->dtpd_mod, descp->dtpd_func,
 		    descp->dtpd_name);
+		if (pred) {
+			fprintf(stderr, "Predicate:\n");
+			dt_dis(pred, stderr);
+		}
+
+		fprintf(stderr, "Actions:\n");
 		dump_action(ap);
 	}
 }
@@ -317,6 +325,31 @@ dtrace_dump_actions(dtrace_prog_t *pgp)
 		fprintf(stderr, "\n");
 	}
 }
+
+void
+dtrace_dump_ecbs(dtrace_prog_t *pgp)
+{
+	dtrace_ecbdesc_t *edp;
+	dtrace_stmtdesc_t *sdp;
+	dt_stmt_t *stp;
+
+	fprintf(stderr, "DTrace: Dumping ECBs...\n");
+	fprintf(stderr,
+	    "=================================================================="
+	    "\n");
+	for (stp = dt_list_next(&pgp->dp_stmts); stp;
+	     stp = dt_list_next(stp)) {
+		sdp = stp->ds_desc;
+		edp = sdp->dtsd_ecbdesc;
+		fprintf(stderr, "DTrace: ECB %p:\n", edp);
+		dtrace_dump_actions_ecbdesc(edp);
+		fprintf(stderr, "\n");
+	}
+	fprintf(stderr,
+	    "=================================================================="
+	    "\n");
+}
+
 
 const char *
 dtrace_get_varname(uint32_t var)

@@ -248,6 +248,7 @@ extern bool dtrace_analyze_program_modref(dtrace_prog_t *,
 
 extern void dtrace_dump_actions_ecbdesc(dtrace_ecbdesc_t *);
 extern void dtrace_dump_actions(dtrace_prog_t *);
+extern void dtrace_dump_ecbs(dtrace_prog_t *);
 /* Output GraphViz .dot representation of a DTrace program's actions. */
 extern void dtrace_graph_program(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, FILE *);
 
