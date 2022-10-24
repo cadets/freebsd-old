@@ -172,13 +172,15 @@ dt_hashmap_create(size_t size)
 
 	hm = malloc(sizeof(dt_hashmap_t));
 	if (hm == NULL)
-		abort();
+		return (NULL);
 
 	hm->dthm_size = size;
 	hm->dthm_nitems = 0;
 	hm->dthm_table = malloc(sizeof(dt_hashbucket_t) * hm->dthm_size);
-	if (hm->dthm_table == NULL)
-		abort();
+	if (hm->dthm_table == NULL) {
+		free(hm);
+		return (NULL);
+	}
 
 	memset(hm->dthm_table, 0, sizeof(dt_hashbucket_t) * hm->dthm_size);
 	return (hm);

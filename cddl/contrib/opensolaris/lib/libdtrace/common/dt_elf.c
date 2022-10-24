@@ -1512,7 +1512,12 @@ dt_elf_create(dtrace_prog_t *dt_prog, int endian, int fd)
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	dtelf_state->s_ecbhash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	if (dtelf_state->s_ecbhash == NULL)
+		abort();
+
 	dtelf_state->s_acthash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	if (dtelf_state->s_acthash == NULL)
+		abort();
 
 	/*
 	 * Initialise the identifier name string table.
@@ -2631,6 +2636,9 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	memset(dtelf_state, 0, sizeof(dt_elf_state_t));
 
 	dtelf_state->s_ecbhash = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	if (dtelf_state->s_ecbhash == NULL)
+		abort();
+
 	dtelf_state->s_rslv = rslv;
 
 	off = lseek(fd, 0, SEEK_SET);
