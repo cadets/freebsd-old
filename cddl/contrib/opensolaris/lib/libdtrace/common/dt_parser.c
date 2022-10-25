@@ -1248,6 +1248,9 @@ dt_node_is_argcompat(const dt_node_t *lp, const dt_node_t *rp)
 	if (dt_node_is_strcompat(lp) && dt_node_is_strcompat(rp))
 		return (1); /* string types are compatible */
 
+	if (dt_node_is_immstack(lp) && dt_node_is_immstack(rp))
+		return (1); /* immstack types are compatible */
+
 	if (dt_node_is_stack(lp) && dt_node_is_stack(rp))
 		return (1); /* stack types are compatible */
 
