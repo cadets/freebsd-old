@@ -1084,6 +1084,7 @@ typedef struct dtrace_actdesc {
 	int dtad_return;			/* non-void return? */
 	int dtad_refcnt;			/* reference count */
 	int dtad_patched;			/* did we patch this? */
+	void *dtad_elfact;			/* serialized version */
 } dtrace_actdesc_t;
 
 typedef struct dtrace_ecbdesc {

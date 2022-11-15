@@ -108,6 +108,7 @@ typedef struct dt_elf_state {
 	uint32_t		s_rflags;
 	int			s_rslv;
 	dtrace_actdesc_t	*s_fstact;
+	dtrace_actdesc_t	*s_lastact;
 } dt_elf_state_t;
 
 char sec_strtab[] =
@@ -591,8 +592,8 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	dt_elf_actdesc_t *eact;
 	dt_elf_eact_list_t *el;
 
-	scn = dt_hashmap_lookup(dtelf_state->s_acthash, ad,
-	    sizeof(dtrace_actdesc_t));
+	scn = dt_hashmap_lookup(dtelf_state->s_acthash, &ad,
+	    sizeof(dtrace_actdesc_t *));
 	if (scn != NULL)
 		return (scn);
 
@@ -670,10 +671,11 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 
 	dt_list_append(&dtelf_state->s_actions, el);
 	if (dt_hashmap_insert(dtelf_state->s_acthash,
-	    ad, sizeof(dtrace_actdesc_t), scn, 0)) {
+	    &ad, sizeof(dtrace_actdesc_t *), scn, 0)) {
 		fprintf(stderr, "Failed to insert actdesc into hashmap.\n");
 		abort();
 	}
+
 	return (scn);
 }
 
@@ -701,15 +703,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	 * next reference in the ELF file, which constructs the "action list" as known
 	 * in DTrace, but in our ELF file.
 	 */
-	for (ad = stmt->dtsd_action; ad != stmt->dtsd_action_last->dtad_next;
-	     ad = ad->dtad_next) {
-		if (ad->dtad_uarg != (uintptr_t)stmt) {
-			fprintf(stderr,
-			    "WARNING:  Skipping action %p (%p != %p)!\n", ad,
-			    (void *)ad->dtad_uarg, stmt);
-			continue;
-		}
-
+	for (ad = stmt->dtsd_action; ad; ad = ad->dtad_next) {
 		scn = dt_elf_new_action(e, ad, sscn);
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
@@ -719,22 +713,28 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 		if (data->d_buf == NULL)
 			errx(EXIT_FAILURE, "data->d_buf must not be NULL.");
 
-		dtelf_state->s_eadprev = data->d_buf;
+		if (ad->dtad_elfact == NULL && dtelf_state->s_eadprev != NULL)
+			dtelf_state->s_eadprev->dtea_next = elf_ndxscn(scn);
+
+		ad->dtad_elfact = data->d_buf;
+		dtelf_state->s_eadprev = ad->dtad_elfact;
 
 		/*
 		 * If this is the first action, we will save it in order to fill in
 		 * the necessary data in the ELF representation of a D program. It needs
-		 * a reference to the first action.
+		 * a reference to the first action. Same with last action.
 		 */
 		if (ad == stmt->dtsd_action)
 			dtelf_state->s_first_act_scn = elf_ndxscn(scn);
+		if (ad == stmt->dtsd_action_last)
+			dtelf_state->s_last_act_scn = elf_ndxscn(scn);
 	}
 
 	/*
 	 * We know that this is the last section that we could have
 	 * created, so we simply set the state variable to it.
 	 */
-	dtelf_state->s_last_act_scn = elf_ndxscn(scn);
+	dtelf_state->s_eadprev = NULL;
 }
 
 static Elf_Scn *
@@ -1448,10 +1448,8 @@ dt_elf_options(Elf *e)
 		buflen += len;
 	}
 
-	if (buflen == 0) {
-		fprintf(stderr, "buflen is 0, returning NULL scn\n");
+	if (buflen == 0)
 		return (NULL);
-	}
 
 	if ((scn = elf_newscn(e)) == NULL)
 		errx(EXIT_FAILURE, "elf_newscn(%p) failed with %s",
@@ -1784,8 +1782,8 @@ dt_elf_get_table(Elf *e, dt_elf_ref_t tabref)
 		return (NULL);
 
 	if ((scn = elf_getscn(e, tabref)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -1818,15 +1816,16 @@ dt_elf_get_difo(Elf *e, dt_elf_ref_t diforef)
 		return (NULL);
 
 	if ((scn = elf_getscn(e, diforef)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
 		    elf_errmsg(-1), __func__);
 
-	assert(data->d_buf != NULL);
 	edifo = data->d_buf;
+	if (edifo == NULL)
+		abort();
 
 	difo = malloc(sizeof(dtrace_difo_t));
 	if (difo == NULL)
@@ -1869,8 +1868,8 @@ dt_elf_get_target(Elf *e, dt_elf_ref_t ecbref)
 	dt_elf_ecbdesc_t *eecb = NULL;
 
 	if ((scn = elf_getscn(e, ecbref)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -1898,7 +1897,6 @@ dt_elf_ecb_find(dt_elf_ref_t ecbref, int *found)
 		return (NULL);
 
 	memset(ecb, 0, sizeof(dtrace_ecbdesc_t));
-	dt_ecbdesc_hold(ecb);
 	return (ecb);
 }
 
@@ -1913,8 +1911,8 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	int found = 0;
 
 	if ((scn = elf_getscn(e, ecbref)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -1964,6 +1962,7 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	dt_elf_eact_list_t *el = NULL;
 	dtrace_actdesc_t *act = NULL;
 	dtrace_ecbdesc_t *edp = NULL;
+	dtrace_actdesc_t *ap;
 
 	assert(stmt != NULL);
 	edp = stmt->dtsd_ecbdesc;
@@ -2082,8 +2081,8 @@ dt_elf_get_eaid(Elf *e, dt_elf_ref_t aidref)
 		return (NULL);
 
 	if ((scn = elf_getscn(e, aidref)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s",
@@ -2162,6 +2161,7 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 	memset(stmt, 0, sizeof(dtrace_stmtdesc_t));
 
 	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
+	dt_ecbdesc_hold(stmt->dtsd_ecbdesc);
 
 	/*
 	 * Get the target name and check if we match it.
@@ -2193,6 +2193,8 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 		for (el = dt_list_next(&dtelf_state->s_actions);
 		    el != NULL; el = dt_list_next(el)) {
 			dtrace_actdesc_t *_ap, *_next, *_prev = NULL;
+			int assign = 0;
+
 			ap = el->act;
 			if (ap == NULL)
 				continue;
@@ -2225,18 +2227,28 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 				for (_ap = dtelf_state->s_fstact; _ap;
 				     _ap = _next) {
 					_next = _ap->dtad_next;
+					assign = 1;
+
 					if (_prev && _ap->dtad_uarg == sscn) {
 						_prev->dtad_next = _next;
 						free(_ap);
 						_ap = _prev;
+						assign = 0;
 					} else if (_prev == NULL &&
 					    _ap->dtad_uarg == sscn) {
-						assert(_ap ==
-						    dtelf_state->s_fstact);
 						dtelf_state->s_fstact = NULL;
 						free(_ap);
+						assign = 0;
 					}
-					_prev = _ap;
+
+					if (assign != 0)
+						_prev = _ap;
+				}
+
+				if (_prev == NULL) {
+					if (dtelf_state->s_fstact)
+						free(dtelf_state->s_fstact);
+					dtelf_state->s_fstact = NULL;
 				}
 
 				assert(ap == _ap);
@@ -2281,23 +2293,20 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 }
 
 static dtrace_actdesc_t *
-dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_stmt_t *estmt,
+dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_actdesc_t *ead,
     dtrace_actdesc_t *prev)
 {
 	dtrace_actdesc_t *ad;
 	dt_elf_eact_list_t *el;
-	Elf_Data *data;
-	dt_elf_actdesc_t *ead;
 
-	if ((data = elf_getdata(scn, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
-		    elf_errmsg(-1), __func__);
-
-	assert(data->d_buf != NULL);
-	ead = data->d_buf;
-
-	if (ead->dtea_uarg != estmt->dtes_self)
+	if (ead == NULL)
 		return (NULL);
+
+	for (el = dt_list_next(&dtelf_state->s_actions); el;
+	     el = dt_list_next(el)) {
+		if (el->eact == ead)
+			return (el->act);
+	}
 
 	ad = malloc(sizeof(dtrace_actdesc_t));
 	if (ad == NULL)
@@ -2339,14 +2348,35 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 	Elf_Scn *scn;
 	Elf_Data *data;
 	dt_elf_actdesc_t *ead;
-	dt_elf_ref_t fst, actref;
+	dt_elf_ref_t fst, actref, lastnext;
+	dtrace_actdesc_t *ap;
+	dt_elf_ref_t eecbref;
+	dt_elf_ecbdesc_t *eecb;
 	dtrace_actdesc_t *prev = NULL;
-	fst = estmt->dtes_action;
+
+	dtelf_state->s_fstact = NULL;
+	dtelf_state->s_lastact = NULL;
+
+	eecbref = estmt->dtes_ecbdesc;
+	if (eecbref == 0)
+		return (NULL);
+
+	if ((scn = elf_getscn(e, eecbref)) == NULL)
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	eecb = data->d_buf;
+	fst = eecb->dtee_action;
 
 	for (actref = fst; actref != 0; actref = ead->dtea_next) {
 		if ((scn = elf_getscn(e, actref)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-			    elf_errmsg(-1));
+			errx(EXIT_FAILURE,
+			    "%s()@%d: elf_getscn() failed with %s", __func__,
+			    __LINE__, elf_errmsg(-1));
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -2355,27 +2385,75 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 		assert(data->d_buf != NULL);
 
 		ead = data->d_buf;
-		prev = dt_elf_alloc_action(e, scn, estmt, prev);
+		prev = dt_elf_alloc_action(e, scn, ead, prev);
+
+		if (actref == estmt->dtes_action)
+			dtelf_state->s_fstact = prev;
+		if (actref == estmt->dtes_action_last)
+			dtelf_state->s_lastact = prev;
 	}
 
-	return (prev);
+	if (dtelf_state->s_fstact != NULL && dtelf_state->s_lastact != NULL)
+		return (dtelf_state->s_fstact);
+
+	prev = NULL;
+
+	assert(estmt->dtes_action != 0);
+	assert(estmt->dtes_action_last != 0);
+
+	if ((scn = elf_getscn(e, estmt->dtes_action_last)) == NULL)
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
+
+	if ((data = elf_getdata(scn, NULL)) == NULL)
+		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+		    elf_errmsg(-1), __func__);
+
+	assert(data->d_buf != NULL);
+	ead = data->d_buf;
+	lastnext = ead->dtea_next;
+
+	for (actref = estmt->dtes_action;
+	     actref != lastnext;
+	     actref = ead->dtea_next) {
+		if ((scn = elf_getscn(e, actref)) == NULL)
+			errx(EXIT_FAILURE,
+			    "%s()@%d: elf_getscn() failed with %s", __func__,
+			    __LINE__, elf_errmsg(-1));
+
+		if ((data = elf_getdata(scn, NULL)) == NULL)
+			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
+			    elf_errmsg(-1), __func__);
+
+		assert(data->d_buf != NULL);
+		ead = data->d_buf;
+		prev = dt_elf_alloc_action(e, scn, ead, prev);
+
+		if (actref == estmt->dtes_action)
+			dtelf_state->s_fstact = prev;
+		if (actref == estmt->dtes_action_last)
+			dtelf_state->s_lastact = prev;
+	}
+
+	return (dtelf_state->s_fstact);
 }
 
 static void
-dt_elf_get_stmts(
-    dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog, dt_elf_ref_t first_stmt_scn)
+dt_elf_get_stmts(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
+    dt_elf_ref_t first_stmt_scn)
 {
 	Elf_Scn *scn;
 	Elf_Data *data;
 	dt_elf_stmt_t *estmt;
 	dt_elf_ref_t scnref;
-	dtrace_actdesc_t *last = NULL;
+	dtrace_actdesc_t *last = NULL, *fst;
 	int rval;
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
 		if ((scn = elf_getscn(e, scnref)) == NULL)
-			errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-			    elf_errmsg(-1));
+			errx(EXIT_FAILURE,
+			    "%s()@%d: elf_getscn() failed with %s", __func__,
+			    __LINE__, elf_errmsg(-1));
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)
 			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
@@ -2384,8 +2462,9 @@ dt_elf_get_stmts(
 		assert(data->d_buf != NULL);
 		estmt = data->d_buf;
 
-		last = dt_elf_alloc_actions(e, estmt);
-		dt_elf_add_stmt(dtp, e, prog, estmt, scnref, last);
+		fst = dt_elf_alloc_actions(e, estmt);
+		dt_elf_add_stmt(dtp, e, prog, estmt, scnref,
+		    dtelf_state->s_lastact);
 	}
 }
 
@@ -2400,8 +2479,8 @@ dt_elf_get_options(dtrace_hdl_t *dtp, Elf *e, dt_elf_ref_t eopts)
 	int err;
 
 	if ((scn = elf_getscn(e, eopts)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
 		errx(EXIT_FAILURE, "elf_getdata() failed with %s",
@@ -2738,8 +2817,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	 * Get the program description.
 	 */
 	if ((scn = elf_getscn(e, DTELF_PROG_SECIDX)) == NULL)
-		errx(EXIT_FAILURE, "elf_getscn() failed with %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		    __func__, __LINE__, elf_errmsg(-1));
 
 	if (gelf_getshdr(scn, &shdr) != &shdr)
 		errx(EXIT_FAILURE, "gelf_getshdr() failed with %s in %s",
