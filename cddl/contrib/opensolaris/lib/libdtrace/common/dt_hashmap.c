@@ -290,3 +290,17 @@ dt_hashmap_free(dt_hashmap_t *hm, int free_managed)
 	free(hm->dthm_table);
 	free(hm);
 }
+
+void
+dt_hashmap_dump(dt_hashmap_t *hm, const char *name)
+{
+	size_t i;
+
+	for (i = 0; i < hm->dthm_size; i++) {
+		if (hm->dthm_table[i].key != NULL)
+			fprintf(stderr, "%s[%zu] = [%p, %zu] => %p\n", name, i,
+			    hm->dthm_table[i].key, hm->dthm_table[i].keysize,
+			    hm->dthm_table[i].data);
+	}
+}
+

@@ -62,5 +62,6 @@ void *dt_hashmap_lookup(dt_hashmap_t *, void *, size_t);
 int dt_hashmap_insert(dt_hashmap_t *, void *, size_t, void *, uint32_t);
 void *dt_hashmap_delete(dt_hashmap_t *, void *, size_t);
 void dt_hashmap_free(dt_hashmap_t *, int);
+void dt_hashmap_dump(dt_hashmap_t *, const char *);
 
 #endif /* _DT_HASHMAP_H_ */
