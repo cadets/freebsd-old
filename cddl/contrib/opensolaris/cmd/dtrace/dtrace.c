@@ -2174,6 +2174,12 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		    "\n");
 	}
 
+	if (g_verbose > 1) {
+		fprintf(stderr, "ECBs from an unrelocated program:\n");
+		dtrace_dump_ecbs(dcp->dc_prog);
+	}
+
+
 	if (dt_prog_apply_rel(g_dtp, dcp->dc_prog) != 0)
 		dfatal("Failed to apply relocations");
 
@@ -2187,6 +2193,12 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		    "=================================================================="
 		    "\n");
 	}
+
+	if (g_verbose > 1) {
+		fprintf(stderr, "ECBs from a relocated program:\n");
+		dtrace_dump_ecbs(dcp->dc_prog);
+	}
+
 
 	if ((prog_exec == DT_PROG_EXEC && g_allow_root_srcident) ||
 	    (prog_exec == DT_PROG_EXEC && g_has_idents)) {
