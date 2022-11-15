@@ -407,7 +407,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 	char fullpath[MAXPATHLEN];
 	int status;
 	size_t l, dirpathlen;
-	char *argv[6] = { 0 };
+	char *argv[7] = { 0 };
 	identlist_t *ident_entry;
 	unsigned char ident_to_delete[DTRACED_PROGIDENTLEN];
 	pidlist_t *pe;
@@ -748,15 +748,19 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			if (argv[3] == NULL)
 				abort();
 
+			argv[4] = strdup("-v");
+			if (argv[4] == NULL)
+				abort();
+
 			if (num_idents > 0) {
-				argv[4] = strdup("-N");
-				if (argv[4] == NULL)
+				argv[5] = strdup("-N");
+				if (argv[5] == NULL)
 					abort();
 
 			} else
-				argv[4] = NULL;
+				argv[5] = NULL;
 
-			argv[5] = NULL;
+			argv[6] = NULL;
 
 			execve("/usr/sbin/dtrace", argv, NULL);
 			exit(EXIT_FAILURE);
