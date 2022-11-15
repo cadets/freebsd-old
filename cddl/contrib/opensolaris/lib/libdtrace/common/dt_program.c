@@ -984,9 +984,10 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase, dtrace_difo_t *dnew,
 				fprintf(stderr, "Base program:\n");
 				fprintf(stderr, "%s ==>\n", base_target);
 				dt_dis(dbase, stderr);
-				fprintf(stderr, "New program:\n");
+				fprintf(stderr, "\nNew program:\n");
 				fprintf(stderr, "%s ==>\n", new_target);
 				dt_dis(dnew, stderr);
+				fprintf(stderr, "\n");
 				fprintf(stderr,
 				    "ibase and inew aren't "
 				    "the same (%x != %x)\n"
@@ -1170,7 +1171,6 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 		    sdbase->dtsd_action == sdbase->dtsd_action_last) {
 			adbase = sdbase->dtsd_action;
 			adnew = sdnew->dtsd_action;
-
 
 			if (adbase && adnew && adbase->dtad_difo &&
 			    adnew->dtad_difo) {
