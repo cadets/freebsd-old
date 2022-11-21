@@ -1964,7 +1964,9 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	dtrace_ecbdesc_t *edp = NULL;
 	dtrace_actdesc_t *ap;
 
-	assert(stmt != NULL);
+	if (stmt == NULL)
+		return;
+
 	edp = stmt->dtsd_ecbdesc;
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
@@ -2177,6 +2179,7 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 
 		dt_elf_free_ecb(stmt->dtsd_ecbdesc);
 		free(stmt);
+		stmt = NULL;
 
 		/*
 		 * Go through the action list to find actions which have
@@ -2276,20 +2279,24 @@ dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 		}
 	}
 
-	dt_elf_add_acts(stmt, estmt->dtes_action, estmt->dtes_action_last);
-	stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
-	stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
-	stmt->dtsd_fmtdata = dt_elf_get_fmtdata(dtp, e, estmt->dtes_fmtdata);
-	stmt->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
+	if (stmt) {
+		dt_elf_add_acts(stmt, estmt->dtes_action,
+		    estmt->dtes_action_last);
+		stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
+		stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
+		stmt->dtsd_fmtdata = dt_elf_get_fmtdata(dtp, e,
+		    estmt->dtes_fmtdata);
+		stmt->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
 
-	stp = malloc(sizeof(dt_stmt_t));
-	if (stp == NULL)
-		errx(EXIT_FAILURE, "failed to malloc stp");
+		stp = malloc(sizeof(dt_stmt_t));
+		if (stp == NULL)
+			errx(EXIT_FAILURE, "failed to malloc stp");
 
-	memset(stp, 0, sizeof(dt_stmt_t));
+		memset(stp, 0, sizeof(dt_stmt_t));
 
-	stp->ds_desc = stmt;
-	dt_list_append(&prog->dp_stmts, stp);
+		stp->ds_desc = stmt;
+		dt_list_append(&prog->dp_stmts, stp);
+	}
 }
 
 static dtrace_actdesc_t *

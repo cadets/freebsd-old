@@ -1183,12 +1183,10 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 			}
 		}
 
-		for (adbase = sdbase->dtsd_action,
-		    adnew = sdnew->dtsd_action;
-		    adbase != sdbase->dtsd_action_last &&
-		    adnew != sdnew->dtsd_action_last;
-		    adbase = adbase->dtad_next,
-		    adnew = adnew->dtad_next) {
+		for (adbase = sdbase->dtsd_action, adnew = sdnew->dtsd_action;
+		     adbase != sdbase->dtsd_action_last->dtad_next &&
+		     adnew != sdnew->dtsd_action_last->dtad_next;
+		     adbase = adbase->dtad_next, adnew = adnew->dtad_next) {
 			if (adbase && adnew && adbase->dtad_difo &&
 			    adnew->dtad_difo) {
 				if (dt_prog_verify_difo(ctx, adbase->dtad_difo,
