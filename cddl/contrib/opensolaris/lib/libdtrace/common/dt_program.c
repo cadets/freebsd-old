@@ -990,10 +990,10 @@ dt_prog_verify_difo(void *_ctx, dtrace_difo_t *dbase, dtrace_difo_t *dnew,
 				fprintf(stderr, "\n");
 				fprintf(stderr,
 				    "ibase and inew aren't "
-				    "the same (%x != %x)\n"
+				    "the same at %zu (%x != %x)\n"
 				    "  opbase = %u\n"
 				    "  opnew = %u\n",
-				    ibase, inew, opbase, opnew);
+				    i, ibase, inew, opbase, opnew);
 				return (1);
 			}
 
