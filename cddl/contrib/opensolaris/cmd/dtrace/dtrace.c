@@ -125,6 +125,7 @@ static dt_benchmark_t *g_e2ebench;
 static char **g_argv;
 static int g_argc;
 static int g_guest = 0;
+static int g_failmsg_needed = 0;
 static char **g_objv;
 static int g_objc;
 static dtrace_cmd_t *g_cmdv;
@@ -2116,8 +2117,10 @@ link_elf(dtrace_cmd_t *dcp, char *progpath)
 	if ((fd = open(progpath, O_RDONLY)) < 0)
 		fatal("failed to open %s with %s", progpath, strerror(errno));
 
-	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL)
+	if ((dcp->dc_prog = dt_elf_to_prog(g_dtp, fd, 1, &err, NULL)) == NULL) {
+		errno = err;
 		fatal("failed to parse the ELF file %s", dcp->dc_arg);
+	}
 
 	prog_exec = dcp->dc_prog->dp_exec;
 	close(fd);
@@ -2779,6 +2782,7 @@ main(int argc, char *argv[])
 				dcp->dc_arg = optarg;
 				g_elf = 1;
 				g_guest = 1;
+				g_failmsg_needed = 1;
 				break;
 
 			case 'M':
@@ -2956,6 +2960,9 @@ main(int argc, char *argv[])
 
 	if (g_elf)
 		dt_enable_hypertrace(g_dtp);
+
+	if (g_failmsg_needed)
+		dt_set_failmsg_needed(g_dtp);
 
 
 #if defined(__i386__)

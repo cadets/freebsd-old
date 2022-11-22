@@ -1405,6 +1405,13 @@ dt_enable_hypertrace(dtrace_hdl_t *dtp)
 	dtp->dt_hypertrace = 1;
 }
 
+void
+dt_set_failmsg_needed(dtrace_hdl_t *dtp)
+{
+
+	dtp->dt_failmsg_needed = 1;
+}
+
 int
 dt_hypertrace_enabled(dtrace_hdl_t *dtp)
 {

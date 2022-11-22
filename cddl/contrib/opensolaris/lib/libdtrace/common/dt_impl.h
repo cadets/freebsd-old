@@ -385,6 +385,7 @@ struct dtrace_hdl {
 	boolean_t dt_hypertrace;	/* are we currently hypertracing? */
 	boolean_t dt_is_guest;	/* is a guest? */
 	dt_list_t dt_compile_idents;	/* acceptable program idents */
+	int dt_failmsg_needed;	/* do we need to send a fail message? */
 };
 
 /*

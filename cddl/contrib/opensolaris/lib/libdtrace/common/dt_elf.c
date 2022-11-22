@@ -2856,6 +2856,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) &&
 	    (memcmp(eprog->dtep_srcident,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0))) {
+		static char msg[] = "FAILFAIL";
 		*err = EAGAIN;
 		errno = *err;
 		memcpy(g_saved_srcident, eprog->dtep_srcident,
@@ -2872,6 +2873,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		    eprog->dtep_srcident[2], oldpgp->dp_ident[0],
 		    oldpgp->dp_ident[1], oldpgp->dp_ident[2]);
 #endif
+		if (dtp->dt_failmsg_needed)
+			write(STDOUT_FILENO, msg, sizeof(msg));
 		return (NULL);
 	}
 
@@ -2896,8 +2899,11 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	}
 
 	if (chk && found == 0) {
+		static char msg[] = "FAILFAIL";
 		*err = ENOENT;
 		errno = *err;
+		if (dtp->dt_failmsg_needed)
+			write(STDOUT_FILENO, msg, sizeof(msg));
 		return (NULL);
 	}
 

@@ -698,6 +698,7 @@ extern int dtrace_is_guest(dtrace_hdl_t *);
 extern int dt_augment_tracing(dtrace_hdl_t *, dtrace_prog_t *);
 extern int dt_vprobes_create(dtrace_hdl_t *, dtrace_prog_t *);
 extern void dt_enable_hypertrace(dtrace_hdl_t *);
+extern void dt_set_failmsg_needed(dtrace_hdl_t *);
 extern int dt_hypertrace_enabled(dtrace_hdl_t *);
 extern int dt_hypertrace_options_update(dtrace_hdl_t *);
 extern int open_dtraced(uint64_t);
