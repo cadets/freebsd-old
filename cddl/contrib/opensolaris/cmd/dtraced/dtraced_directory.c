@@ -117,7 +117,6 @@ write_data(dtd_dir_t *dir, unsigned char *data, size_t nbytes)
 		return (-1);
 	}
 
-	dump_debugmsg("%s(): Create %s", __func__, donename);
 	if (rename(newname, donename)) {
 		dump_errmsg("rename() failed %s -> %s: %m", newname, donename);
 		return (-1);
@@ -182,10 +181,26 @@ static int
 findpath(const char *p, dtd_dir_t *dir)
 {
 	int i;
-	
+
 	for (i = 0; i < dir->efile_len; i++) {
 		if (strcmp(p, dir->existing_files[i]) == 0)
 			return (i);
+	}
+
+	return (-1);
+}
+
+static int
+rmpath(const char *p, dtd_dir_t *dir)
+{
+	int i;
+
+	for (i = 0; i < dir->efile_len; i++) {
+		if (strcmp(p, dir->existing_files[i]) == 0) {
+			free(dir->existing_files[i]);
+			dir->existing_files[i] = NULL;
+			return (0);
+		}
 	}
 
 	return (-1);
@@ -439,6 +454,19 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&dir->dirmtx);
+
+	/*
+	 * Exit early if the file doesn't exist. There is definitely multiple
+	 * race conditions here, but it doesn't really matter as we don't expect
+	 * this to ever happen if communication happens through dtraced itself.
+	 */
+	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+		dump_errmsg("%s%s does not exist", dir->dirpath, f->d_name);
+		rmpath(f->d_name, dir);
+		UNLOCK(&dir->dirmtx);
+		return (-1);
+	}
+
 	idx = findpath(f->d_name, dir);
 	if (idx >= 0) {
 		UNLOCK(&dir->dirmtx);
@@ -624,6 +652,8 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				return (-1);
 			} else if (rv == 0) {
 				/* Timeout */
+				dump_errmsg("%s(): killing %d", __func__,
+				    pid);
 				kill(pid, SIGKILL);
 				waitpid(pid, &status, 0);
 				return (0);
@@ -744,11 +774,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			if (argv[2] == NULL)
 				abort();
 
-			argv[3] = strdup("-v");
+			argv[3] = strdup("-q");
 			if (argv[3] == NULL)
 				abort();
 
-			argv[4] = strdup("-v");
+			argv[4] = strdup("-q");
 			if (argv[4] == NULL)
 				abort();
 
@@ -881,6 +911,19 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&dir->dirmtx);
+
+	/*
+	 * Exit early if the file doesn't exist. There is definitely multiple
+	 * race conditions here, but it doesn't really matter as we don't expect
+	 * this to ever happen if communication happens through dtraced itself.
+	 */
+	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+		dump_errmsg("%s%s does not exist", dir->dirpath, f->d_name);
+		rmpath(f->d_name, dir);
+		UNLOCK(&dir->dirmtx);
+		return (-1);
+	}
+
 	idx = findpath(f->d_name, dir);
 	if (idx >= 0) {
 		UNLOCK(&dir->dirmtx);
@@ -927,7 +970,7 @@ process_base(struct dirent *f, dtd_dir_t *dir)
 		if (argv[0] == NULL)
 			abort();
 
-		argv[1] = strdup("-v");
+		argv[1] = strdup("-q");
 		if (argv[1] == NULL)
 			abort();
 
@@ -1002,6 +1045,19 @@ process_outbound(struct dirent *f, dtd_dir_t *dir)
 		return (0);
 
 	LOCK(&dir->dirmtx);
+
+	/*
+	 * Exit early if the file doesn't exist. There is definitely multiple
+	 * race conditions here, but it doesn't really matter as we don't expect
+	 * this to ever happen if communication happens through dtraced itself.
+	 */
+	if (faccessat(dir->dirfd, f->d_name, F_OK, 0) != 0) {
+		dump_errmsg("%s%s does not exist", dir->dirpath, f->d_name);
+		rmpath(f->d_name, dir);
+		UNLOCK(&dir->dirmtx);
+		return (-1);
+	}
+
 	idx = findpath(f->d_name, dir);
 	UNLOCK(&dir->dirmtx);
 
