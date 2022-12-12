@@ -165,6 +165,13 @@ _hash(const void *data, size_t len)
 	return (mm3_hash(data, len, seed));
 }
 
+static int
+dt_hashmap_flags_valid(uint32_t flags)
+{
+
+	return (!((flags & DTH_MANAGED) && (flags & DTH_POINTER)));
+}
+
 dt_hashmap_t *
 dt_hashmap_create(size_t size)
 {
@@ -176,13 +183,12 @@ dt_hashmap_create(size_t size)
 
 	hm->dthm_size = size;
 	hm->dthm_nitems = 0;
-	hm->dthm_table = malloc(sizeof(dt_hashbucket_t) * hm->dthm_size);
+	hm->dthm_table = calloc(hm->dthm_size, sizeof(dt_hashbucket_t));
 	if (hm->dthm_table == NULL) {
 		free(hm);
 		return (NULL);
 	}
 
-	memset(hm->dthm_table, 0, sizeof(dt_hashbucket_t) * hm->dthm_size);
 	return (hm);
 }
 
@@ -190,13 +196,22 @@ void *
 dt_hashmap_lookup(dt_hashmap_t *hm, void *e, size_t es)
 {
 	uint32_t idx;
+	uint32_t pointer_cmp;
+	int i;
 
 	idx = _hash(e, es) % hm->dthm_size;
 
 	while (hm->dthm_table[idx].key != NULL) {
-		assert(hm->dthm_table[idx].keysize == es);
-		if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
-			break;
+		pointer_cmp = hm->dthm_table[idx].key_pointercmp;
+
+		if (pointer_cmp == 0) {
+			assert(hm->dthm_table[idx].keysize == es);
+			if (memcmp(hm->dthm_table[idx].key, e, es) == 0)
+				break;
+		} else {
+			if (hm->dthm_table[idx].key == e)
+				break;
+		}
 
 		idx++;
 		idx %= hm->dthm_size;
@@ -210,7 +225,11 @@ dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data,
     uint32_t flags)
 {
 	uint32_t idx;
+	size_t i;
 	unsigned char *k;
+
+	if (!dt_hashmap_flags_valid(flags))
+		return (EINVAL);
 
 	idx = _hash(e, es) % hm->dthm_size;
 
@@ -227,14 +246,17 @@ dt_hashmap_insert(dt_hashmap_t *hm, void *e, size_t es, void *data,
 		hm->dthm_nitems++;
 		hm->dthm_table[idx].data = data;
 		if (flags & DTH_MANAGED) {
+			assert((flags & DTH_POINTER) == 0);
 			k = malloc(es);
 			if (k == NULL)
 				return (ENOMEM);
 			memcpy(k, e, es);
 			hm->dthm_table[idx].key_ismanaged = 1;
+			hm->dthm_table[idx].key_pointercmp = 0;
 		} else {
 			k = e;
 			hm->dthm_table[idx].key_ismanaged = 0;
+			hm->dthm_table[idx].key_pointercmp = flags & DTH_POINTER;
 		}
 
 		hm->dthm_table[idx].key = k;

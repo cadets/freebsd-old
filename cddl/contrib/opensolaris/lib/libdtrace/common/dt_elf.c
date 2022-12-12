@@ -592,7 +592,7 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	dt_elf_actdesc_t *eact;
 	dt_elf_eact_list_t *el;
 
-	scn = dt_hashmap_lookup(dtelf_state->s_acthash, &ad,
+	scn = dt_hashmap_lookup(dtelf_state->s_acthash, ad,
 	    sizeof(dtrace_actdesc_t *));
 	if (scn != NULL)
 		return (scn);
@@ -670,8 +670,8 @@ dt_elf_new_action(Elf *e, dtrace_actdesc_t *ad, dt_elf_ref_t sscn)
 	el->eact = eact;
 
 	dt_list_append(&dtelf_state->s_actions, el);
-	if (dt_hashmap_insert(dtelf_state->s_acthash,
-	    &ad, sizeof(dtrace_actdesc_t *), scn, 0)) {
+	if (dt_hashmap_insert(dtelf_state->s_acthash, ad,
+	    sizeof(dtrace_actdesc_t *), scn, DTH_POINTER)) {
 		fprintf(stderr, "Failed to insert actdesc into hashmap.\n");
 		abort();
 	}
@@ -686,6 +686,7 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	Elf32_Shdr *shdr;
 	Elf_Data *data = NULL;
 	dtrace_actdesc_t *ad;
+	dtrace_ecbdesc_t *edp;
 
 	if (stmt->dtsd_action == NULL)
 		return;
@@ -703,7 +704,8 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	 * next reference in the ELF file, which constructs the "action list" as known
 	 * in DTrace, but in our ELF file.
 	 */
-	for (ad = stmt->dtsd_action; ad; ad = ad->dtad_next) {
+	edp = stmt->dtsd_ecbdesc;
+	for (ad = edp->dted_action; ad; ad = ad->dtad_next) {
 		scn = dt_elf_new_action(e, ad, sscn);
 
 		if ((data = elf_getdata(scn, NULL)) == NULL)

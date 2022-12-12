@@ -43,12 +43,14 @@
 #define DT_HASHSIZE_DEFAULT (1 << 16)
 
 #define DTH_MANAGED (1 << 1)
+#define DTH_POINTER (1 << 2)
 
 typedef struct {
 	void *data;
 	void *key;
 	size_t keysize;
 	int key_ismanaged;
+	int key_pointercmp;
 } dt_hashbucket_t;
 
 typedef struct dt_hashmap {
