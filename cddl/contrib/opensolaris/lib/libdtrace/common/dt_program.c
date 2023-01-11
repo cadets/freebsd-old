@@ -1286,7 +1286,9 @@ dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
     dt_stmt_t *ostp, dt_stmt_t *stp)
 {
 	dtrace_stmtdesc_t *sdp, *osdp, *nsdp;
+	dtrace_probedesc_t *pdp;
 	dtrace_actdesc_t *ap, *nap, *next;
+	dtrace_ecbdesc_t *nedp;
 	dt_stmt_t *nstp, *r;
 	int alloc_fail;
 
@@ -1299,10 +1301,22 @@ dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
 	sdp = stp->ds_desc;
 	osdp = ostp->ds_desc;
 	nsdp = NULL;
+	nedp = NULL;
 
-	nsdp = dtrace_stmt_create(dtp, osdp->dtsd_ecbdesc);
-	if (nsdp == NULL)
+	if (osdp->dtsd_ecbdesc == NULL)
+		abort();
+
+	pdp = &osdp->dtsd_ecbdesc->dted_probe;
+	nedp = dt_ecbdesc_create(dtp, pdp);
+	if (nedp == NULL)
 		return (NULL);
+
+	nsdp = dtrace_stmt_create(dtp, nedp);
+	if (nsdp == NULL) {
+		dt_ecbdesc_release(dtp, nedp);
+		dt_free(dtp, nedp);
+		return (NULL);
+	}
 
 	for (ap = sdp->dtsd_action; ap != sdp->dtsd_action_last->dtad_next;
 	     ap = next) {
@@ -1326,6 +1340,8 @@ dt_vprog_reorganize(dtrace_hdl_t *dtp, dt_hashmap_t *hm, dtrace_prog_t *pgp,
 				dt_free(dtp, ap);
 			}
 			dt_free(dtp, nsdp);
+			dt_ecbdesc_release(dtp, nedp);
+			dt_free(dtp, nedp);
 			return (NULL);
 		}
 
@@ -1455,6 +1471,7 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				newact = dtrace_stmt_action(dtp, newstmtdesc);
 				if (newact == NULL)
 					abort();
+
 				curact->dtad_kind = DTRACEACT_PRINTIMMSTACK;
 				newact->dtad_kind = DTRACEACT_IMMSTACK;
 				/*
