@@ -67,10 +67,10 @@ static const char *hypertrace_priv_getname(const void *);
 static int        hypertrace_priv_rmprobe(uint16_t, hypertrace_id_t);
 static int        hypertrace_priv_is_enabled(uint16_t, hypertrace_id_t);
 static int        hypertrace_priv_create_probes(uint16_t, void *, size_t);
-static void       hypertrace_priv_enable(uint16_t, hypertrace_id_t);
-static void       hypertrace_priv_disable(uint16_t, hypertrace_id_t);
-static void       hypertrace_priv_suspend(uint16_t, hypertrace_id_t);
-static void       hypertrace_priv_resume(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_enable(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_disable(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_suspend(uint16_t, hypertrace_id_t);
+static int        hypertrace_priv_resume(uint16_t, hypertrace_id_t);
 
 lwpid_t    (*vmm_gettid)(const void *);
 uint16_t   (*vmm_getid)(const void *);
@@ -207,45 +207,66 @@ hypertrace_priv_is_enabled(uint16_t vmid, hypertrace_id_t id)
 	hypertrace_probe_t *ht_probe;
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (-ESRCH);
+
 	return (ht_probe->htpb_enabled);
 }
 
-static void
+static int
 hypertrace_priv_enable(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (-ESRCH);
+
 	ht_probe->htpb_enabled = 1;
 	ht_probe->htpb_running = 1;
+
+	return (0);
 }
 
-static void
+static int
 hypertrace_priv_disable(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (-ESRCH);
+
 	ht_probe->htpb_running = 0;
 	ht_probe->htpb_enabled = 0;
+
+	return (0);
 }
 
-static void
+static int
 hypertrace_priv_suspend(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (-ESRCH);
+
 	ht_probe->htpb_running = 0;
+	return (0);
 }
 
-static void
+static int
 hypertrace_priv_resume(uint16_t vmid, hypertrace_id_t id)
 {
 	hypertrace_probe_t *ht_probe;
 
 	ht_probe = map_get(hypertrace_map, vmid, id);
+	if (ht_probe == NULL)
+		return (-ESRCH);
+
 	ht_probe->htpb_running = 1;
+	return (0);
 }
 
 void

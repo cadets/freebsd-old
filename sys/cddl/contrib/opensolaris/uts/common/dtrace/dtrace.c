@@ -451,10 +451,10 @@ const char *(*hypertrace_getname)(const void *);
 int        (*hypertrace_rmprobe)(uint16_t, hypertrace_id_t);
 int        (*hypertrace_is_enabled)(uint16_t, hypertrace_id_t);
 int        (*hypertrace_create_probes)(uint16_t, void *, size_t);
-void       (*hypertrace_enable)(uint16_t, hypertrace_id_t);
-void       (*hypertrace_disable)(uint16_t, hypertrace_id_t);
-void       (*hypertrace_suspend)(uint16_t, hypertrace_id_t);
-void       (*hypertrace_resume)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_enable)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_disable)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_suspend)(uint16_t, hypertrace_id_t);
+int        (*hypertrace_resume)(uint16_t, hypertrace_id_t);
 
 /*
  * DTrace Error Hashing
@@ -10729,6 +10729,7 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 	dtrace_probe_t *probe;
 	int _nvprobes;
 	dtrace_probe_t **_vprobes;
+	int rval;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
@@ -10761,9 +10762,15 @@ dtrace_vprobespace_destroy(uint16_t vmid)
 
 		ASSERT(probe->dtpr_vmid == vmid);
 
-		if (hypertrace_is_enabled(probe->dtpr_vmid, probe->dtpr_id)) {
+		rval = hypertrace_is_enabled(probe->dtpr_vmid, probe->dtpr_id);
+		if (rval > 0) {
 			should_free = 0;
 			continue;
+		} else if (rval < 0) {
+			cmn_err(CE_WARN,
+			    "attempting to check status of "
+			    "bogus probe: [%u, %d]\n",
+			    probe->dtpr_vmid, probe->dtpr_id);
 		}
 
 		dtrace_vprobes[vmid][i] = NULL;
@@ -12765,6 +12772,7 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 {
 	dtrace_probe_t *probe = ecb->dte_probe;
 	dtrace_state_t *state = ecb->dte_state;
+	int rval;
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
 	ASSERT(MUTEX_HELD(&dtrace_lock));
@@ -12794,8 +12802,16 @@ dtrace_ecb_enable(dtrace_ecb_t *ecb)
 		if (prov)
 			prov->dtpv_pops.dtps_enable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
-		else if (probe->dtpr_vmid > 0)
-			hypertrace_enable(probe->dtpr_vmid, probe->dtpr_id);
+		else if (probe->dtpr_vmid > 0) {
+			rval = hypertrace_enable(probe->dtpr_vmid,
+			    probe->dtpr_id);
+			if (rval < 0) {
+				cmn_err(CE_WARN,
+				    "attempting to enable bogus "
+				    "probe: [%u, %d]\n",
+				    probe->dtpr_vmid, probe->dtpr_id);
+			}
+		}
 	} else {
 		/*
 		 * This probe is already active.  Swing the last pointer to
@@ -13458,6 +13474,7 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_ecb_t *pecb, *prev = NULL;
 	dtrace_probe_t *probe = ecb->dte_probe;
 	dtrace_state_t *state = ecb->dte_state;
+	int rval;
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
@@ -13511,8 +13528,16 @@ dtrace_ecb_disable(dtrace_ecb_t *ecb)
 		if (prov)
 			prov->dtpv_pops.dtps_disable(prov->dtpv_arg,
 			    probe->dtpr_id, probe->dtpr_arg);
-		else if (probe->dtpr_vmid > 0)
-			hypertrace_disable(probe->dtpr_vmid, probe->dtpr_id);
+		else if (probe->dtpr_vmid > 0) {
+			rval = hypertrace_disable(probe->dtpr_vmid,
+			    probe->dtpr_id);
+			if (rval < 0) {
+				cmn_err(CE_WARN,
+				    "attempting to disable bogus "
+				    "probe: [%u, %d]\n",
+				    probe->dtpr_vmid, probe->dtpr_id);
+			}
+		}
 
 		dtrace_sync();
 	} else {
