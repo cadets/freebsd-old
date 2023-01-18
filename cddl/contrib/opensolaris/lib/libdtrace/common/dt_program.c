@@ -1164,6 +1164,50 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 		if (strcmp(target_base, target_new) != 0)
 			continue;
 
+		if (sdnew->dtsd_action == NULL && sdnew->dtsd_action_last != NULL) {
+			fprintf(stderr,
+			    "sdnew (%p) first action is NULL but last is %p\n",
+			    sdnew, sdnew->dtsd_action_last);
+			return (1);
+		}
+
+		if (sdnew->dtsd_action != NULL && sdnew->dtsd_action_last == NULL) {
+			fprintf(stderr,
+			    "sdnew (%p) first action is %p but last action is NULL\n",
+			    sdnew, sdnew->dtsd_action);
+			return (1);
+		}
+
+		if (sdbase->dtsd_action == NULL && sdbase->dtsd_action_last != NULL) {
+			fprintf(stderr,
+			    "sdbase (%p) first action is NULL but last is %p\n",
+			    sdbase, sdbase->dtsd_action_last);
+			return (1);
+		}
+
+		if (sdbase->dtsd_action != NULL && sdbase->dtsd_action_last == NULL) {
+			fprintf(stderr,
+			    "sdbase (%p) first action is %p but last action is NULL\n",
+			    sdbase, sdbase->dtsd_action);
+			return (1);
+		}
+
+		if ((sdbase->dtsd_action == NULL &&
+		    sdnew->dtsd_action != NULL)           ||
+		    (sdbase->dtsd_action_last == NULL &&
+		    sdnew->dtsd_action_last != NULL)      ||
+		    (sdbase->dtsd_action != NULL &&
+		    sdnew->dtsd_action == NULL)           ||
+		    (sdbase->dtsd_action_last != NULL &&
+		    sdnew->dtsd_action_last == NULL)) {
+			fprintf(stderr,
+			    "statements inconsistent: "
+			    "base = [%p, %p], new = [%p, %p]\n",
+			    sdbase->dtsd_action, sdbase->dtsd_action_last,
+			    sdnew->dtsd_action, sdnew->dtsd_action_last);
+			return (1);
+		}
+
 		/*
 		 * TODO(dstolfa): Some deduplication would be nice here.
 		 */
@@ -1184,6 +1228,7 @@ dt_prog_verify(void *_ctx, dtrace_prog_t *pbase, dtrace_prog_t *pnew)
 		}
 
 		for (adbase = sdbase->dtsd_action, adnew = sdnew->dtsd_action;
+		     sdbase->dtsd_action_last && sdnew->dtsd_action_last &&
 		     adbase != sdbase->dtsd_action_last->dtad_next &&
 		     adnew != sdnew->dtsd_action_last->dtad_next;
 		     adbase = adbase->dtad_next, adnew = adnew->dtad_next) {

@@ -688,8 +688,11 @@ dt_elf_create_actions(Elf *e, dtrace_stmtdesc_t *stmt, dt_elf_ref_t sscn)
 	dtrace_actdesc_t *ad;
 	dtrace_ecbdesc_t *edp;
 
-	if (stmt->dtsd_action == NULL)
+	if (stmt->dtsd_action == NULL) {
+		dtelf_state->s_first_act_scn = 0;
+		dtelf_state->s_last_act_scn = 0;
 		return;
+	}
 
 	/*
 	 * If we have the first action, then we better have the last action as well.
@@ -1969,6 +1972,12 @@ dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
 	if (stmt == NULL)
 		return;
 
+	if (fst == 0) {
+		stmt->dtsd_action = NULL;
+		stmt->dtsd_action_last = NULL;
+		return;
+	}
+
 	edp = stmt->dtsd_ecbdesc;
 
 	for (el = dt_list_next(&dtelf_state->s_actions);
@@ -2380,6 +2389,9 @@ dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
 
 	eecb = data->d_buf;
 	fst = eecb->dtee_action;
+
+	if (fst == 0)
+		return (NULL);
 
 	for (actref = fst; actref != 0; actref = ead->dtea_next) {
 		if ((scn = elf_getscn(e, actref)) == NULL)
