@@ -3524,6 +3524,7 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 {
 	dtrace_reg_t retval;
 	dtrace_reg_t nullretval = {0, NULL};
+	uint64_t numcached = 0;
 
 	/*
 	 * If we're accessing one of the uncached arguments, we'll turn this
@@ -3544,15 +3545,13 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 	case DIF_VAR_ARGS:
 	case DIF_VAR_HARGS:
 		ASSERT(mstate->dtms_present & DTRACE_MSTATE_ARGS);
-		if (ndx >= sizeof (mstate->dtms_arg) /
-		    sizeof (mstate->dtms_arg[0])) {
+		numcached = sizeof(mstate->dtms_arg) /
+		    sizeof(mstate->dtms_arg[0]);
+		if (ndx >= numcached) {
 			int aframes = mstate->dtms_probe->dtpr_aframes + 2;
 			dtrace_provider_t *pv;
 			uint64_t val = 0;
 
-			/*
-			 * FIXME(dstolfa): What about args[5...9]?
-			 */
 			if (mstate->dtms_probe->dtpr_vmid == 0) {
 				pv = (dtrace_provider_t *)
 				    mstate->dtms_probe->dtpr_provider;
@@ -3564,6 +3563,15 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 					    aframes);
 				else
 					val = dtrace_getarg(ndx, aframes);
+			} else {
+				/*
+				 * This is a guest args[5...9]. We need to treat
+				 * it as such.
+				 */
+				retval.dttr_value =
+				    mstate->dtms_htrargs->htr_args[ndx];
+				retval.dttr_vmhdl = mstate->dtms_vmhdl;
+				return (retval);
 			}
 
 			/*
@@ -3575,9 +3583,15 @@ dtrace_dif_variable(dtrace_mstate_t *mstate, dtrace_state_t *state, uint64_t v,
 			 * could be relied upon to _always_ tail-optimize
 			 * the call to dtrace_getarg() -- but it can't.)
 			 */
-			if (mstate->dtms_probe != NULL) {
+			if (mstate->dtms_probe != NULL &&
+			    state->dts_minion == 0) {
 				retval.dttr_value = val;
 				retval.dttr_vmhdl = mstate->dtms_vmhdl;
+				return (retval);
+			} else {
+				retval.dttr_value = 0;
+				retval.dttr_vmhdl = NULL;
+				mstate->dtms_stackarg[ndx - numcached] = val;
 				return (retval);
 			}
 
@@ -7910,11 +7924,11 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 						mstate->dtms_arg[2],
 						mstate->dtms_arg[3],
 						mstate->dtms_arg[4],
-						0,
-						0,
-						0,
-						0,
-						0
+						mstate->dtms_stackarg[0],
+						mstate->dtms_stackarg[1],
+						mstate->dtms_stackarg[2],
+						mstate->dtms_stackarg[3],
+						mstate->dtms_stackarg[4]
 					},
 					.htr_curthread = curthread,
 					.htr_execname = NULL, /* needs check */
@@ -16996,6 +17010,9 @@ dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 			}
 		}
 	}
+
+	if (opt[DTRACEOPT_MINION] != DTRACEOPT_UNSET)
+		state->dts_minion = 1;
 
 	if (opt[DTRACEOPT_SPECSIZE] != DTRACEOPT_UNSET &&
 	    opt[DTRACEOPT_SPECSIZE] != 0) {

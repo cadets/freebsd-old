@@ -489,6 +489,7 @@ dtrace_set_guest(dtrace_hdl_t *dtp)
 {
 
 	dtp->dt_is_guest = 1;
+	(void) dtrace_setopt(dtp, "minion", "yes");
 }
 
 int

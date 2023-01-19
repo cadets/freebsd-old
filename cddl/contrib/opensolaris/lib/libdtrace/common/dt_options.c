@@ -1066,6 +1066,7 @@ static const dt_option_t _dtrace_rtoptions[] = {
 	{ "hypertrace", dt_opt_runtime, DTRACEOPT_HYPERTRACE },
 	{ "immstackframes", dt_opt_runtime, DTRACEOPT_IMMSTACKFRAMES },
 	{ "immstackstrsize", dt_opt_runtime, DTRACEOPT_IMMSTACKSTRSIZE },
+	{ "minion", dt_opt_runtime, DTRACEOPT_MINION },
 	{ NULL, NULL, 0 }
 };
 

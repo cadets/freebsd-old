@@ -956,6 +956,7 @@ typedef struct dtrace_mstate {
 	size_t dtms_scratch_size;		/* scratch size */
 	uint32_t dtms_present;			/* variables that are present */
 	uint64_t dtms_arg[5];			/* cached arguments */
+	uint64_t dtms_stackarg[5];		/* cached stack arguments */
 	dtrace_epid_t dtms_epid;		/* current EPID */
 	uint64_t dtms_timestamp;		/* cached timestamp */
 	hrtime_t dtms_walltimestamp;		/* cached wall timestamp */
@@ -1216,6 +1217,7 @@ struct dtrace_state {
 	int dts_getf;				/* number of getf() calls */
 	uint64_t dts_rstate[NCPU][2];		/* per-CPU random state */
 	dof_hdr_t *dts_dof;			/* DOF used by distributed dtrace */
+	int dts_minion;				/* running in minion mode? */
 };
 
 struct dtrace_dist {

@@ -1208,7 +1208,8 @@ typedef struct dtrace_fmtdesc {
 #define	DTRACEOPT_HYPERTRACE		34	/* are we hypertracing? */
 #define	DTRACEOPT_IMMSTACKSTRSIZE	35	/* immediate stack string size */
 #define	DTRACEOPT_IMMSTACKFRAMES	36	/* number of immediate stack frames */
-#define	DTRACEOPT_MAX			37	/* number of options */
+#define DTRACEOPT_MINION		37	/* run in minion mode */
+#define	DTRACEOPT_MAX			38	/* number of options */
 
 #define	DTRACEOPT_UNSET		(dtrace_optval_t)-2	/* unset option */
 
