@@ -1279,6 +1279,17 @@ process_prog:
 				dabort("failed to create a guest program");
 			}
 
+			if (g_verbose > 1) {
+				fprintf(stderr, "GENERATED PROGRAM:\n");
+				fprintf(stderr,
+				    "=================================================================="
+				    "\n");
+				dtrace_dump_actions(guestpgp);
+				fprintf(stderr,
+				    "=================================================================="
+				    "\n");
+			}
+
 			guestpgp->dp_exec = DT_PROG_EXEC;
 
 			tmpfd = mkstemp(template);
