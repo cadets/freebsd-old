@@ -1270,11 +1270,15 @@ dt_prog_generate_ident(dtrace_prog_t *pgp)
 }
 
 static void
-fill_instructions(dtrace_difo_t *difo)
+fill_instructions(dtrace_difo_t *difo, dif_instr_t *loads, size_t num_loads)
 {
-	difo->dtdo_buf[0] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
-	difo->dtdo_buf[1] = DIF_INSTR_RET(0);
-	difo->dtdo_len = 2;
+	uint_t i;
+
+	i = num_loads;
+
+	memcpy(difo->dtdo_buf, loads, sizeof(dif_instr_t) * num_loads);
+	difo->dtdo_buf[i++] = DIF_INSTR_FMT(DIF_OP_HYPERCALL, 0, 0, 0);
+	difo->dtdo_buf[i++] = DIF_INSTR_RET(0);
 }
 
 typedef struct {
@@ -1460,10 +1464,167 @@ dt_vprog_squash(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	return (0);
 }
 
+static int
+dtrace_ldga_argno(dtrace_difo_t *difo, ssize_t idx)
+{
+	dif_instr_t instr;
+	uint8_t opcode;
+	uint8_t ri, rd;
+	int argno = -1;
+
+	assert(idx < difo->dtdo_len && idx >= 0);
+	instr = difo->dtdo_buf[idx];
+
+	opcode = DIF_INSTR_OP(instr);
+	assert(opcode == DIF_OP_LDGA);
+
+	ri = DIF_INSTR_R1(instr);
+
+	/*
+	 * Since D (and therefore DTrace) expects only constants in %ri, we
+	 * expect it to be set with a 'setx' instruction, as 'const int x' will
+	 * be compiled as 'int' rather than 'integer constant'. Moreover, we
+	 * *assume* that the very first setx instruction we encounter going
+	 * backwards from our ldga instruction will indeed be the one which
+	 * tells us the argument number and there isn't any kind of DIF that
+	 * moves the value around. This is for simplicity reasons rather than
+	 * anything else and is obviously wrong -- but we don't really want to
+	 * actually compute this right now.
+	 */
+	while (idx-- >= 0) {
+		instr = difo->dtdo_buf[idx];
+		opcode = DIF_INSTR_OP(instr);
+		if (opcode != DIF_OP_SETX)
+			continue;
+
+		rd = DIF_INSTR_RD(instr);
+		if (rd == ri)
+			break;
+	}
+
+	if (idx < 0)
+		return (-1);
+
+	argno = DIF_INSTR_INTEGER(instr);
+	return (argno);
+}
+
+static dif_instr_t *
+dt_loads_get(dtrace_hdl_t *dtp, dt_hashmap_t *load_hm, char *target,
+    size_t **num_loads)
+{
+	int rval;
+
+	struct he {
+		size_t *num_loads;
+		dif_instr_t *loads;
+	} *he;
+
+	he = dt_hashmap_lookup(load_hm, target, DTRACE_FULLNAMELEN + 1);
+	if (he != NULL) {
+		*num_loads = he->num_loads;
+		return (he->loads);
+	}
+
+	he = malloc(sizeof(struct he));
+	if (he == NULL)
+		return (NULL);
+
+	he->loads = malloc(sizeof(dif_instr_t) * HYPERTRACE_ARGS_MAX);
+	if (he->loads == NULL) {
+		free(he);
+		return (NULL);
+	}
+
+	he->num_loads = malloc(sizeof(size_t));
+	if (he->num_loads == NULL) {
+		free(he->loads);
+		free(he);
+		return (NULL);
+	}
+
+	*he->num_loads = 0;
+
+	rval = dt_hashmap_insert(load_hm, target, DTRACE_FULLNAMELEN + 1, he,
+	    DTH_MANAGED);
+	if (rval < 0) {
+		free(he->loads);
+		free(he);
+		return (NULL);
+	}
+
+	*num_loads = he->num_loads;
+	return (he->loads);
+}
+
+static size_t
+dtrace_vprog_genargloads(dtrace_difo_t *difo, dif_instr_t *loads,
+    size_t num_loads)
+{
+	size_t n, i, j;
+	uint16_t var;
+	ssize_t argno;
+	dif_instr_t instr, new_instr;
+	uint8_t opcode;
+
+	n = num_loads;
+
+	for (i = 0; i < difo->dtdo_len; i++) {
+		instr = difo->dtdo_buf[i];
+		opcode = DIF_INSTR_OP(instr);
+
+		switch (opcode) {
+		case DIF_OP_LDGS:
+			var = DIF_INSTR_VAR(instr);
+			argno = var - DIF_VAR_ARG0;
+			break;
+		case DIF_OP_LDGA:
+			var = DIF_INSTR_VAR(instr);
+			if (var == DIF_VAR_ARGS)
+				argno = dtrace_ldga_argno(difo, i);
+			/*
+			 * Compute the LDGS-version of ldga args, ri.
+			 */
+			var = DIF_VAR_ARG0 + argno;
+			break;
+		}
+
+		if (argno < 5 || argno > 9)
+			continue;
+
+		/*
+		 * We know we have a load of argno that's between 5 and 9.
+		 */
+		new_instr = DIF_INSTR_LDV(DIF_OP_LDGS, var, 1);
+		for (j = 0; j < n; j++) {
+			if (new_instr == loads[j])
+				break;
+		}
+
+		/*
+		 * Store our new instruction if we didn't actually find it.
+		 */
+		if (j == n)
+			loads[n++] = new_instr;
+		assert(n <= HYPERTRACE_ARGS_MAX);
+	}
+
+	return (n);
+}
+
+int
+dt_free_loads(void *key __unused, size_t ks __unused, void *data,
+    void *arg __unused)
+{
+	free(data);
+	return (0);
+}
+
 static dtrace_prog_t *
 dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 {
 	dtrace_prog_t *newpgp;
+	dt_hashmap_t *load_hm;
 	dt_stmt_t *newstmt, *stmt;
 	dtrace_stmtdesc_t *newstmtdesc, *curstmtdesc;
 	dtrace_ecbdesc_t *newecb, *curecb;
@@ -1472,11 +1633,20 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	dtrace_probedesc_t newpdesc = { 0 }, *pdp;
 	dt_list_t ppds = { 0 };
 	dt_ppd_t *ppd;
+	size_t *num_loads;
+	dif_instr_t *loads;
 	int process;
+	char target[DTRACE_FULLNAMELEN + 1] = { 0 };
 
 	newpgp = dt_program_create(dtp);
 	if (newpgp == NULL)
 		return (NULL);
+
+	load_hm = dt_hashmap_create(DT_HASHSIZE_DEFAULT);
+	if (load_hm == NULL) {
+		dt_program_destroy(dtp, newpgp);
+		return (NULL);
+	}
 
 	for (stmt = dt_list_next(&pgp->dp_stmts);
 	     stmt; stmt = dt_list_next(stmt)) {
@@ -1500,6 +1670,14 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 			strcpy(pdp->dtpd_target, pgp->dp_vmname);
 		}
+
+		sprintf(target, "%s:%s:%s:%s:%s", pdp->dtpd_target,
+		    pdp->dtpd_provider, pdp->dtpd_mod, pdp->dtpd_func,
+		    pdp->dtpd_name);
+
+		loads = dt_loads_get(dtp, load_hm, target, &num_loads);
+		if (loads == NULL)
+			abort();
 
 		newecb = dt_ecbdesc_create(dtp, &newpdesc);
 		if (newecb == NULL)
@@ -1525,6 +1703,16 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 				newact->dtad_arg = curact->dtad_arg;
 				newact->dtad_return = 0;
 			}
+
+			if (curact->dtad_kind == DTRACEACT_DIFEXPR ||
+			    curact->dtad_kind == DTRACEACT_PRINTF) {
+				/*
+				 * Look for any LDGA or LDGS of arg(s).
+				 */
+				*num_loads = dtrace_vprog_genargloads(
+				    curact->dtad_difo, loads, *num_loads);
+				assert(*num_loads <= HYPERTRACE_ARGS_MAX);
+			}
 		}
 
 		newact = dtrace_stmt_action(dtp, newstmtdesc);
@@ -1544,11 +1732,14 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 
 		memset(difo, 0, sizeof(dtrace_difo_t));
 
-		/* 2 instructions: hcall; ret %r0 */
-		difo->dtdo_buf = malloc(sizeof(dif_instr_t) * 2);
-		assert(difo->dtdo_buf != NULL);
+		/* n + 2 instructions: hcall; ret %r0 + all the args[] loads */
+		difo->dtdo_buf = malloc(sizeof(dif_instr_t) * (2 + *num_loads));
+		if (difo->dtdo_buf == NULL)
+			errx(EXIT_FAILURE, "failed to allocate dtdo_buf: %s\n",
+			    strerror(errno));
 
-		fill_instructions(difo);
+		fill_instructions(difo, loads, *num_loads);
+		difo->dtdo_len = 2 + *num_loads;
 		newact->dtad_kind = DTRACEACT_DIFEXPR;
 
 		if (dtrace_stmt_add(dtp, newpgp, newstmtdesc))
@@ -1559,6 +1750,8 @@ dt_vprog_hcalls(dtrace_hdl_t *dtp, dtrace_prog_t *pgp)
 	}
 
 	newpgp->dp_rflags = pgp->dp_rflags;
+	dt_hashmap_iter(load_hm, dt_free_loads, NULL);
+	dt_hashmap_free(load_hm, 1);
 
 	if (dt_vprog_squash(dtp, newpgp)) {
 		dt_free(dtp, newpgp);

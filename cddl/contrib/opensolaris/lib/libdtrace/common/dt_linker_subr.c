@@ -310,8 +310,8 @@ dt_insert_var_by_tup(dtrace_hdl_t *dtp, dtrace_difo_t *difo, uint16_t varid,
 
 	difv = dt_get_variable(difo, varid, scope, kind);
 	if (difv == NULL)
-		errx(EXIT_FAILURE, "failed to find variable (%u, %d, %d)",
-		    varid, scope, kind);
+		errx(EXIT_FAILURE, "%s(): failed to find variable (%u, %d, %d)",
+		    __func__, varid, scope, kind);
 
 	/*
 	 * Allocate a new variable to be put into our list and
@@ -489,8 +489,9 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		case DIF_OP_STGS:
 		case DIF_OP_LDGS:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(dtp, difo, varid,
-			    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
+			if (!dt_var_is_builtin(varid))
+				dt_insert_var_by_tup(dtp, difo, varid,
+				    DIFV_SCOPE_GLOBAL, DIFV_KIND_SCALAR);
 			break;
 
 		case DIF_OP_LDLS:
@@ -510,8 +511,9 @@ dt_populate_varlist(dtrace_hdl_t *dtp, dtrace_difo_t *difo)
 		case DIF_OP_LDGAA:
 		case DIF_OP_STGAA:
 			varid = DIF_INSTR_VAR(instr);
-			dt_insert_var_by_tup(dtp, difo, varid,
-			    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
+			if (!dt_var_is_builtin(varid))
+				dt_insert_var_by_tup(dtp, difo, varid,
+				    DIFV_SCOPE_GLOBAL, DIFV_KIND_ARRAY);
 			break;
 
 		case DIF_OP_LDTAA:
