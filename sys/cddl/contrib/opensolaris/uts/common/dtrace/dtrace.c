@@ -7947,6 +7947,12 @@ dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 					.htr_immstacksize = state->dts_immstacksize,
 				};
 
+				mstate->dtms_stackarg[0] = 0;
+				mstate->dtms_stackarg[1] = 0;
+				mstate->dtms_stackarg[2] = 0;
+				mstate->dtms_stackarg[3] = 0;
+				mstate->dtms_stackarg[4] = 0;
+
 				if (curproc != NULL) {
 					htr_args.htr_execname =
 					    curproc->p_comm;
@@ -8437,9 +8443,11 @@ dtrace_probe_exit(dtrace_icookie_t cookie)
  * subsequent probe-context DTrace activity emanates.
  */
 void
-dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
+dtrace_probe(dtrace_id_t id, uintptr_t _arg0, uintptr_t _arg1, uintptr_t _arg2,
+    uintptr_t _arg3, uintptr_t _arg4)
 {
 	processorid_t cpuid;
+	hypertrace_args_t *htr_args;
 	dtrace_icookie_t cookie;
 	dtrace_probe_t *probe;
 	dtrace_mstate_t mstate;
@@ -8454,6 +8462,7 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 	uintptr_t arg0, arg1, arg2, arg3, arg4;
 	uint16_t vmid;
 	int xlate;
+	const void *vmhdl;
 
 	if (panicstr != NULL)
 		return;
@@ -8467,6 +8476,8 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 	if (((uintptr_t)curthread & 1) || (curthread->t_flag & T_DONTDTRACE))
 		return;
 #endif
+
+	vmhdl = curthread->t_hypertrace_vmhdl;
 
 	/*
 	 * In the case of vmhdl being NULL, hypertrace_getns will return 0
@@ -8485,8 +8496,16 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 				    HYPERTRACE_MAX_VMS);
 			return;
 		}
-	} else
+
+		/*
+		 * If we have a vmhdl, then our first argument is going to be a
+		 * hypertrace_args_t data structure.
+		 */
+		htr_args = (hypertrace_args_t *)_arg0;
+	} else {
 		vmid = 0;
+		htr_args = NULL;
+	}
 
 	dtrace_probes = dtrace_vprobes[vmid];
 	/*
@@ -8560,16 +8579,25 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;
 	mstate.dtms_strtok = 0;
-	arg0 = htr_args->htr_args[0];
-	arg1 = htr_args->htr_args[1];
-	arg2 = htr_args->htr_args[2];
-	arg3 = htr_args->htr_args[3];
-	arg4 = htr_args->htr_args[4];
-	mstate.dtms_arg[0] = htr_args->htr_args[0];
-	mstate.dtms_arg[1] = htr_args->htr_args[1];
-	mstate.dtms_arg[2] = htr_args->htr_args[2];
-	mstate.dtms_arg[3] = htr_args->htr_args[3];
-	mstate.dtms_arg[4] = htr_args->htr_args[4];
+	if (htr_args) {
+		arg0 = mstate.dtms_arg[0] = htr_args->htr_args[0];
+		arg1 = mstate.dtms_arg[1] = htr_args->htr_args[1];
+		arg2 = mstate.dtms_arg[2] = htr_args->htr_args[2];
+		arg3 = mstate.dtms_arg[3] = htr_args->htr_args[3];
+		arg4 = mstate.dtms_arg[4] = htr_args->htr_args[4];
+	} else {
+		arg0 = mstate.dtms_arg[0] = _arg0;
+		arg1 = mstate.dtms_arg[1] = _arg1;
+		arg2 = mstate.dtms_arg[2] = _arg2;
+		arg3 = mstate.dtms_arg[3] = _arg3;
+		arg4 = mstate.dtms_arg[4] = _arg4;
+	}
+
+	mstate.dtms_stackarg[0] = 0;
+	mstate.dtms_stackarg[1] = 0;
+	mstate.dtms_stackarg[2] = 0;
+	mstate.dtms_stackarg[3] = 0;
+	mstate.dtms_stackarg[4] = 0;
 	mstate.dtms_vmhdl = vmhdl;
 	mstate.dtms_htrargs = htr_args;
 
@@ -9276,19 +9304,6 @@ dtrace_vprobe(const void *vmhdl, dtrace_id_t id, hypertrace_args_t *htr_args)
 
 	dtrace_probe_exit(cookie);
 }
-
-void
-dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
-    uintptr_t arg2, uintptr_t arg3, uintptr_t arg4)
-{
-
-	hypertrace_args_t htr_args = {
-		{ arg0, arg1, arg2, arg3, arg4, 0, 0, 0, 0 },
-	};
-
-	dtrace_vprobe(NULL, id, &htr_args);
-}
-
 
 /*
  * DTrace Probe Hashing Functions
@@ -11404,9 +11419,11 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 	int kcheckload;
 	uint_t pc;
 	int maxglobal = -1, maxlocal = -1, maxtlocal = -1;
+	dtrace_state_t *state;
 
+	state = vstate->dtvs_state;
 	kcheckload = cr == NULL ||
-	    (vstate->dtvs_state->dts_cred.dcr_visible & DTRACE_CRV_KERNEL) == 0;
+	    (state->dts_cred.dcr_visible & DTRACE_CRV_KERNEL) == 0;
 
 	dp->dtdo_destructive = 0;
 
@@ -11647,8 +11664,8 @@ dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate, uint_t nregs,
 				 * and will be caught (slightly later) when
 				 * the helper is validated.
 				 */
-				if (vstate->dtvs_state != NULL)
-					vstate->dtvs_state->dts_getf++;
+				if (state != NULL)
+					state->dts_getf++;
 			}
 
 			break;

@@ -57,6 +57,7 @@
 
 #include <machine/vmm.h>
 
+#include "dtrace_cddl.h"
 #include "hypertrace.h"
 
 static MALLOC_DEFINE(M_HYPERTRACE, "HyperTrace", "");
@@ -281,8 +282,11 @@ hypertrace_probe(const void *vmhdl, hypertrace_id_t id, hypertrace_args_t *dtv_a
 	if (ht_probe == NULL)
 		return;
 
-	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1)
-		dtrace_vprobe(vmhdl, id, dtv_args);
+	if (ht_probe->htpb_enabled != 0 && ht_probe->htpb_running == 1) {
+		curthread->t_hypertrace_vmhdl = vmhdl;
+		dtrace_probe(id, (uintptr_t)dtv_args, 0, 0, 0, 0);
+		curthread->t_hypertrace_vmhdl = NULL;
+	}
 }
 
 /*

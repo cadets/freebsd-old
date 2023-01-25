@@ -2350,7 +2350,6 @@ extern void dtrace_vprobespace_destroy(uint16_t);
 extern void *dtrace_probe_arg(dtrace_provider_id_t, dtrace_id_t);
 extern void dtrace_probe(dtrace_id_t, uintptr_t arg0, uintptr_t arg1,
     uintptr_t arg2, uintptr_t arg3, uintptr_t arg4);
-extern void dtrace_vprobe(const void *, dtrace_id_t, struct hypertrace_args *);
 
 /*
  * DTrace Meta Provider API

@@ -12,7 +12,7 @@ SRCS+=		vnode_if.h
 
 
 CFLAGS+=	${OPENZFS_CFLAGS}
-CFLAGS+=	-I${SYSDIR}/cddl/dev/hypertrace
+CFLAGS+=	-I${SYSDIR}/cddl/dev/hypertrace -I${SYSDIR}/cddl/dev/dtrace
 
 .include <bsd.kmod.mk>
 
