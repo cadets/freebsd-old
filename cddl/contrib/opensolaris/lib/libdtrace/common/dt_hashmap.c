@@ -326,3 +326,22 @@ dt_hashmap_dump(dt_hashmap_t *hm, const char *name)
 	}
 }
 
+int
+dt_hashmap_iter(dt_hashmap_t *hm, dt_hashmap_fn_t fn, void *arg)
+{
+	size_t i;
+	int rval;
+	dt_hashbucket_t *e;
+
+	for (i = 0; i < hm->dthm_size; i++) {
+		if (hm->dthm_table[i].key != NULL) {
+			e = &hm->dthm_table[i];
+			rval = fn(e->key, e->keysize, e->data, arg);
+			if (rval < 0)
+				return (rval);
+		}
+	}
+
+	return (0);
+}
+
