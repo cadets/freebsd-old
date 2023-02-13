@@ -1961,45 +1961,6 @@ dt_elf_get_ecbdesc(Elf *e, dt_elf_ref_t ecbref)
 	return (ecb);
 }
 
-static void
-dt_elf_add_acts(dtrace_stmtdesc_t *stmt, dt_elf_ref_t fst, dt_elf_ref_t last)
-{
-	dt_elf_eact_list_t *el = NULL;
-	dtrace_actdesc_t *act = NULL;
-	dtrace_ecbdesc_t *edp = NULL;
-	dtrace_actdesc_t *ap;
-
-	if (stmt == NULL)
-		return;
-
-	if (fst == 0) {
-		stmt->dtsd_action = NULL;
-		stmt->dtsd_action_last = NULL;
-		return;
-	}
-
-	edp = stmt->dtsd_ecbdesc;
-
-	for (el = dt_list_next(&dtelf_state->s_actions);
-	    el != NULL; el = dt_list_next(el)) {
-		act = el->act;
-
-		if (el->eact_ndx == fst)
-			stmt->dtsd_action = act;
-
-		if (act->dtad_patched == 0) {
-			act->dtad_uarg = (uintptr_t)stmt;
-			act->dtad_patched = 1;
-		}
-
-		if (el->eact_ndx == last) {
-			stmt->dtsd_action_last = act;
-			break;
-		}
-
-	}
-}
-
 static dt_pfargd_t *
 dt_elf_get_pfd(Elf *e, dt_elf_ref_t epfd_ref)
 {
@@ -2147,316 +2108,109 @@ dt_elf_in_actlist(dtrace_actdesc_t *find)
 
 static void
 dt_elf_add_stmt(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
-    dt_elf_stmt_t *estmt, dt_elf_ref_t sscn, dtrace_actdesc_t *prev)
+    dtrace_stmtdesc_t *sdp, dt_elf_stmt_t *estmt)
 {
-	dtrace_stmtdesc_t *stmt;
 	dt_stmt_t *stp;
-	dtrace_actdesc_t *ap, *nextap, *prevap;
-	dt_elf_eact_list_t *el, *rm_el;
-	const char *target;
-	int retval = 0;
 
-	stmt = NULL;
-	stp = NULL;
-	ap = NULL;
-	nextap = NULL;
-	prevap = NULL;
-	el = NULL;
-	rm_el = NULL;
-	target = NULL;
+	sdp->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
+	sdp->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
+	sdp->dtsd_fmtdata = dt_elf_get_fmtdata(dtp, e, estmt->dtes_fmtdata);
+	sdp->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
+
+	stp = dt_zalloc(dtp, sizeof(dt_stmt_t));
+	if (stp == NULL)
+		errx(EXIT_FAILURE, "failed to dt_zalloc stp");
+
+	stp->ds_desc = sdp;
+	dt_list_append(&prog->dp_stmts, stp);
+}
+
+static dtrace_stmtdesc_t *
+dt_elf_stmtalloc(dtrace_hdl_t *dtp, Elf *e, dt_elf_stmt_t *estmt)
+{
+	dtrace_ecbdesc_t *edp;
 
 	assert(estmt != NULL);
 
-	stmt = malloc(sizeof(dtrace_stmtdesc_t));
-	if (stmt == NULL)
-		errx(EXIT_FAILURE, "failed to malloc stmt");
+	edp = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
+	dt_ecbdesc_hold(edp);
 
-	memset(stmt, 0, sizeof(dtrace_stmtdesc_t));
+	return (dtrace_stmt_create(dtp, edp));
+}
 
-	stmt->dtsd_ecbdesc = dt_elf_get_ecbdesc(e, estmt->dtes_ecbdesc);
-	dt_ecbdesc_hold(stmt->dtsd_ecbdesc);
+static dtrace_stmtdesc_t *
+dt_elf_rslv_filter(dtrace_hdl_t *dtp, dtrace_stmtdesc_t *sdp, dt_elf_stmt_t *estmt)
+{
+	char *target;
 
-	/*
-	 * Get the target name and check if we match it.
-	 */
-	target = stmt->dtsd_ecbdesc->dted_probe.dtpd_target;
-	if (dtelf_state->s_rslv &&
-	    dt_resolve(target, dtelf_state->s_rflags) != 0) {
-		/*
-		 * We won't be needing the ECB nor the statement.
-		 */
+	if (dtelf_state->s_rslv == 0)
+		return (sdp);
+
+	target = sdp->dtsd_ecbdesc->dted_probe.dtpd_target;
+	if (dt_resolve(target, dtelf_state->s_rflags) != 0) {
 		(void)dt_hashmap_delete(dtelf_state->s_ecbhash,
 		    &estmt->dtes_ecbdesc, sizeof(dt_elf_ref_t));
-
-		dt_elf_free_ecb(stmt->dtsd_ecbdesc);
-		free(stmt);
-		stmt = NULL;
-
-		/*
-		 * Go through the action list to find actions which have
-		 * this statement as their "dtad_uarg" in order to properly
-		 * free them and remove them from the action list. This
-		 * ensures that we don't end up in a situation where the action
-		 * is packed into the DOF later on as a stray action, not really
-		 * belonging to any statement, as DOF generates an "actions"
-		 * section with all the actions. If actions that do not belong
-		 * to this target machine are left in the action list (i.e.
-		 * they have an action in a statement where one of the next
-		 * pointers is that action), they will get put into DOF.
-		 */
-		for (el = dt_list_next(&dtelf_state->s_actions);
-		    el != NULL; el = dt_list_next(el)) {
-			dtrace_actdesc_t *_ap, *_next, *_prev = NULL;
-			int assign = 0;
-
-			ap = el->act;
-			if (ap == NULL)
-				continue;
-
-			if (ap->dtad_uarg == sscn) {
-				/*
-				 * While we have 'sscn' as the uarg in the
-				 * current action, we will keep removing them
-				 * from the list and freeing them, as they are
-				 * not meant for this target machine.
-				 */
-				while (ap && ap->dtad_uarg == sscn) {
-					nextap = ap->dtad_next;
-
-					rm_el = dt_elf_in_actlist(ap);
-					assert(rm_el != NULL);
-
-
-					rm_el->act = NULL;
-
-					if (ap == prev)
-						retval = 1;
-
-					dt_list_delete(
-					    &dtelf_state->s_actions, rm_el);
-
-					ap = nextap;
-				}
-
-				for (_ap = dtelf_state->s_fstact; _ap;
-				     _ap = _next) {
-					_next = _ap->dtad_next;
-					assign = 1;
-
-					if (_prev && _ap->dtad_uarg == sscn) {
-						_prev->dtad_next = _next;
-						free(_ap);
-						_ap = _prev;
-						assign = 0;
-					} else if (_prev == NULL &&
-					    _ap->dtad_uarg == sscn) {
-						dtelf_state->s_fstact = NULL;
-						free(_ap);
-						assign = 0;
-					}
-
-					if (assign != 0)
-						_prev = _ap;
-				}
-
-				if (_prev == NULL) {
-					if (dtelf_state->s_fstact)
-						free(dtelf_state->s_fstact);
-					dtelf_state->s_fstact = NULL;
-				}
-
-				assert(ap == _ap);
-
-				/*
-				 * If this is not the first action, we simply
-				 * set the previous action's next pointer (the
-				 * one that actually belongs to this target) to
-				 * the current action (even if NULL).
-				 */
-				if (prevap != NULL)
-					prevap->dtad_next = ap;
-
-				/*
-				 * Under the assumption that the actions were
-				 * parsed correctly, (ap == NULL) ==> empty list
-				 * so we simply exit out, we don't need to check
-				 * anything further.
-				 */
-				if (ap == NULL)
-					return;
-			}
-
-			prevap = ap;
-		}
-	}
-
-	if (stmt) {
-		dt_elf_add_acts(stmt, estmt->dtes_action,
-		    estmt->dtes_action_last);
-		stmt->dtsd_descattr = estmt->dtes_descattr.dtea_attr;
-		stmt->dtsd_stmtattr = estmt->dtes_stmtattr.dtea_attr;
-		stmt->dtsd_fmtdata = dt_elf_get_fmtdata(dtp, e,
-		    estmt->dtes_fmtdata);
-		stmt->dtsd_aggdata = dt_elf_get_eaid(e, estmt->dtes_aggdata);
-
-		stp = malloc(sizeof(dt_stmt_t));
-		if (stp == NULL)
-			errx(EXIT_FAILURE, "failed to malloc stp");
-
-		memset(stp, 0, sizeof(dt_stmt_t));
-
-		stp->ds_desc = stmt;
-		dt_list_append(&prog->dp_stmts, stp);
-	}
-}
-
-static dtrace_actdesc_t *
-dt_elf_alloc_action(Elf *e, Elf_Scn *scn, dt_elf_actdesc_t *ead,
-    dtrace_actdesc_t *prev)
-{
-	dtrace_actdesc_t *ad;
-	dt_elf_eact_list_t *el;
-
-	if (ead == NULL)
+		dt_elf_free_ecb(sdp->dtsd_ecbdesc);
+		dt_free(dtp, sdp);
 		return (NULL);
-
-	for (el = dt_list_next(&dtelf_state->s_actions); el;
-	     el = dt_list_next(el)) {
-		if (el->eact == ead)
-			return (el->act);
 	}
 
-	ad = malloc(sizeof(dtrace_actdesc_t));
-	if (ad == NULL)
-		errx(EXIT_FAILURE, "failed to malloc ad");
-
-	memset(ad, 0, sizeof(dtrace_actdesc_t));
-
-	ad->dtad_difo = dt_elf_get_difo(e, ead->dtea_difo);
-	ad->dtad_next = NULL; /* Filled in later */
-	ad->dtad_kind = ead->dtea_kind;
-	ad->dtad_ntuple = ead->dtea_ntuple;
-	ad->dtad_arg = ead->dtea_arg;
-	ad->dtad_uarg = ead->dtea_uarg;
-	ad->dtad_return = ead->dtea_return;
-
-	el = malloc(sizeof(dt_elf_eact_list_t));
-	if (el == NULL)
-		errx(EXIT_FAILURE, "failed to malloc el");
-
-	memset(el, 0, sizeof(dt_elf_eact_list_t));
-
-	el->eact_ndx = elf_ndxscn(scn);
-	el->act = ad;
-	el->eact = ead;
-
-	dt_list_append(&dtelf_state->s_actions, el);
-
-	if (prev)
-		prev->dtad_next = ad;
-	else
-		dtelf_state->s_fstact = ad;
-
-	return (ad);
+	return (sdp);
 }
 
-static dtrace_actdesc_t *
-dt_elf_alloc_actions(Elf *e, dt_elf_stmt_t *estmt)
+static dt_elf_actdesc_t *
+dt_elf_alloc_action(dtrace_hdl_t *dtp, Elf *e, dtrace_stmtdesc_t *sdp,
+    dt_elf_ref_t ar)
 {
+	dtrace_actdesc_t *ap;
 	Elf_Scn *scn;
 	Elf_Data *data;
 	dt_elf_actdesc_t *ead;
-	dt_elf_ref_t fst, actref, lastnext;
-	dtrace_actdesc_t *ap;
-	dt_elf_ref_t eecbref;
-	dt_elf_ecbdesc_t *eecb;
-	dtrace_actdesc_t *prev = NULL;
 
-	dtelf_state->s_fstact = NULL;
-	dtelf_state->s_lastact = NULL;
-
-	eecbref = estmt->dtes_ecbdesc;
-	if (eecbref == 0)
+	if (ar == 0)
 		return (NULL);
 
-	if ((scn = elf_getscn(e, eecbref)) == NULL)
+	if ((scn = elf_getscn(e, ar)) == NULL)
 		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
 		    __func__, __LINE__, elf_errmsg(-1));
 
 	if ((data = elf_getdata(scn, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
-		    elf_errmsg(-1), __func__);
-
-	eecb = data->d_buf;
-	fst = eecb->dtee_action;
-
-	if (fst == 0)
-		return (NULL);
-
-	for (actref = fst; actref != 0; actref = ead->dtea_next) {
-		if ((scn = elf_getscn(e, actref)) == NULL)
-			errx(EXIT_FAILURE,
-			    "%s()@%d: elf_getscn() failed with %s", __func__,
-			    __LINE__, elf_errmsg(-1));
-
-		if ((data = elf_getdata(scn, NULL)) == NULL)
-			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
-			    elf_errmsg(-1), __func__);
-
-		assert(data->d_buf != NULL);
-
-		ead = data->d_buf;
-		prev = dt_elf_alloc_action(e, scn, ead, prev);
-
-		if (actref == estmt->dtes_action)
-			dtelf_state->s_fstact = prev;
-		if (actref == estmt->dtes_action_last)
-			dtelf_state->s_lastact = prev;
-	}
-
-	if (dtelf_state->s_fstact != NULL && dtelf_state->s_lastact != NULL)
-		return (dtelf_state->s_fstact);
-
-	prev = NULL;
-
-	assert(estmt->dtes_action != 0);
-	assert(estmt->dtes_action_last != 0);
-
-	if ((scn = elf_getscn(e, estmt->dtes_action_last)) == NULL)
-		errx(EXIT_FAILURE, "%s()@%d: elf_getscn() failed with %s",
+		errx(EXIT_FAILURE, "%s()@%d: elf_getdata() failed with %s",
 		    __func__, __LINE__, elf_errmsg(-1));
 
-	if ((data = elf_getdata(scn, NULL)) == NULL)
-		errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
-		    elf_errmsg(-1), __func__);
-
-	assert(data->d_buf != NULL);
 	ead = data->d_buf;
-	lastnext = ead->dtea_next;
+	if (ead == NULL)
+		return (NULL);
 
-	for (actref = estmt->dtes_action;
-	     actref != lastnext;
-	     actref = ead->dtea_next) {
-		if ((scn = elf_getscn(e, actref)) == NULL)
-			errx(EXIT_FAILURE,
-			    "%s()@%d: elf_getscn() failed with %s", __func__,
-			    __LINE__, elf_errmsg(-1));
+	ap = dtrace_stmt_action(dtp, sdp);
+	if (ap == NULL)
+		abort();
 
-		if ((data = elf_getdata(scn, NULL)) == NULL)
-			errx(EXIT_FAILURE, "elf_getdata() failed with %s in %s",
-			    elf_errmsg(-1), __func__);
+	ap->dtad_difo = dt_elf_get_difo(e, ead->dtea_difo);
+	ap->dtad_kind = ead->dtea_kind;
+	ap->dtad_ntuple = ead->dtea_ntuple;
+	ap->dtad_arg = ead->dtea_arg;
+	ap->dtad_return = ead->dtea_return;
 
-		assert(data->d_buf != NULL);
-		ead = data->d_buf;
-		prev = dt_elf_alloc_action(e, scn, ead, prev);
+	return (ead);
+}
 
-		if (actref == estmt->dtes_action)
-			dtelf_state->s_fstact = prev;
-		if (actref == estmt->dtes_action_last)
-			dtelf_state->s_lastact = prev;
+static void
+dt_elf_alloc_actions(dtrace_hdl_t *dtp, Elf *e, dtrace_stmtdesc_t *sdp,
+    dt_elf_stmt_t *estmt)
+{
+	dtrace_actdesc_t *ap;
+	dt_elf_actdesc_t *ead = NULL;
+	dt_elf_ref_t ar;
+
+	for (ar = estmt->dtes_action; ar != estmt->dtes_action_last;
+	     ar = ead->dtea_next) {
+		ead = dt_elf_alloc_action(dtp, e, sdp, ar);
+		if (ead == NULL)
+			return;
 	}
 
-	return (dtelf_state->s_fstact);
+	(void)dt_elf_alloc_action(dtp, e, sdp, ar);
 }
 
 static void
@@ -2467,8 +2221,7 @@ dt_elf_get_stmts(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 	Elf_Data *data;
 	dt_elf_stmt_t *estmt;
 	dt_elf_ref_t scnref;
-	dtrace_actdesc_t *last = NULL, *fst;
-	int rval;
+	dtrace_stmtdesc_t *sdp;
 
 	for (scnref = first_stmt_scn; scnref != 0; scnref = estmt->dtes_next) {
 		if ((scn = elf_getscn(e, scnref)) == NULL)
@@ -2483,9 +2236,16 @@ dt_elf_get_stmts(dtrace_hdl_t *dtp, Elf *e, dtrace_prog_t *prog,
 		assert(data->d_buf != NULL);
 		estmt = data->d_buf;
 
-		fst = dt_elf_alloc_actions(e, estmt);
-		dt_elf_add_stmt(dtp, e, prog, estmt, scnref,
-		    dtelf_state->s_lastact);
+		sdp = dt_elf_stmtalloc(dtp, e, estmt);
+		if (sdp == NULL)
+			abort();
+
+		sdp = dt_elf_rslv_filter(dtp, sdp, estmt);
+		if (sdp == NULL)
+			continue;
+
+		dt_elf_alloc_actions(dtp, e, sdp, estmt);
+		dt_elf_add_stmt(dtp, e, prog, sdp, estmt);
 	}
 }
 
