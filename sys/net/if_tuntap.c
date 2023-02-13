@@ -1754,7 +1754,6 @@ tunread(struct cdev *dev, struct uio *uio, int flag)
 				   some zeroes at the start. */
 				memcpy(&mid, &m->m_pkthdr.mbufid,
 				    sizeof(mbufid_t));
-				mbufid_assert_sanity(&mid);
 			}
 			error = uiomove((void *)&mid, sizeof(mbufid_t), uio);
 		}
@@ -1939,7 +1938,6 @@ tunwrite(struct cdev *dev, struct uio *uio, int flag)
 
 	if ((tp->tun_flags & TUN_PROPAGATE_TAG) == TUN_PROPAGATE_TAG) {
 		memcpy(&m->m_pkthdr.mbufid, &mid, sizeof(mbufid_t));
-		mbufid_assert_sanity(&m->m_pkthdr.mbufid);
 		SDT_PROBE1(ddtrace, , tap, send, &mid);
 	}
 

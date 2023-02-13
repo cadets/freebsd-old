@@ -52,7 +52,7 @@ mbufid_assert_sanity(mbufid_t *mbufidp)
 			 __func__, mbufidp->mid_magic, MBUFID_MAGIC_NUMBER));
 }
 #else
-void
+__inline void
 mbufid_assert_sanity(mbufid_t *mbufidp __unused)
 {
 }
@@ -73,6 +73,7 @@ mbufid_generate(mbufid_t *mbufidp)
 	mbufidp->mid_magic = MBUFID_MAGIC_NUMBER;
 
 	SDT_PROBE1(ddtrace, , pkttag, gen, mbufidp);
+	mbufid_assert_sanity(mbufidp);
 }
 
 int

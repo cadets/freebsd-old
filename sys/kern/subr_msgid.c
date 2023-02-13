@@ -111,6 +111,9 @@ msgid_generate(msgid_t *msgidp)
 	MSGID_SETCPU(id, (uint64_t)curcpu);
 	/* Save the msgid in network byte order */
 	*msgidp = htobe64(id);
+	KASSERT(msgid_isvalid(msgidp),
+	    ("%s: generated msgid is invalid: %ju [CPU %u]", __func__, *msgidp,
+	    curcpu));
 }
 
 /*
