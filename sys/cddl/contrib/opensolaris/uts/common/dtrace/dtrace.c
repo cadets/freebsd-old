@@ -8414,12 +8414,8 @@ dtrace_probe_enter(uint16_t vmid, dtrace_id_t id)
 	 * resulting in unexpected output. If there is an exception to this
 	 * assertion, a new case should be added.
 	 */
-	if (vmid == 0) {
-		if (curthread->t_dtrace_inprobe != 0 &&
-		    id != dtrace_probeid_error)
-			panic("Recursing into dtrace_probe().");
-	} else if (curthread->t_dtrace_inprobe != 0)
-		panic("Recursing into dtrace_probe with vmid = %d\n", vmid);
+	if (curthread->t_dtrace_inprobe != 0 && id != dtrace_probeid_error)
+		panic("Recursing into dtrace_probe().");
 
 	curthread->t_dtrace_inprobe = 1;
 
