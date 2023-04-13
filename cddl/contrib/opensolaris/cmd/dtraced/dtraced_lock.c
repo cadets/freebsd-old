@@ -46,6 +46,7 @@
 #include "dtraced_errmsg.h"
 #include "dtraced_lock.h"
 
+#if defined(DTRACED_DEBUG) || defined(DTRACED_ROBUST)
 void
 LOCK(mutex_t *m)
 {
@@ -90,7 +91,7 @@ UNLOCK(mutex_t *m)
 	}
 
 }
-
+#endif
 
 int
 mutex_init(mutex_t *m, const pthread_mutexattr_t *restrict attr,
