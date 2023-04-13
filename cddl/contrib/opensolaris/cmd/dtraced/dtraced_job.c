@@ -80,7 +80,8 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		 */
 		job = malloc(sizeof(struct dtraced_job));
 		if (job == NULL) {
-			dump_errmsg("malloc() failed with: %m");
+			ERR("%d: %s(): malloc() failed with: %m", __LINE__,
+			    __func__);
 			abort();
 		}
 
@@ -92,7 +93,8 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		dt_list_prepend(&s->dispatched_jobs, job);
 		UNLOCK(&s->dispatched_jobsmtx);
 
-		dump_debugmsg("Dispatching EVFILT_READ on %d", ev->ident);
+		DEBUG("%d: %s(): Dispatching EVFILT_READ on %d", __LINE__,
+		    __func__, ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
@@ -115,13 +117,15 @@ dispatch_event(struct dtraced_state *s, struct kevent *ev)
 		/*
 		 * Signal the workers to pick up our dispatched jobs.
 		 */
-		dump_debugmsg("Dispatching EVFILT_WRITE on %d", ev->ident);
+		DEBUG("%d: %s(): Dispatching EVFILT_WRITE on %d", __LINE__,
+		    __func__, ev->ident);
 		LOCK(&s->joblistcvmtx);
 		SIGNAL(&s->joblistcv);
 		UNLOCK(&s->joblistcvmtx);
 	} else {
 		free(job);
-		dump_errmsg("unexpected event flags: %d", ev->flags);
+		ERR("%d: %s(): Unexpected event flags: %d", __LINE__, __func__,
+		    ev->flags);
 		return (-1);
 	}
 
@@ -169,9 +173,11 @@ process_joblist(void *_s)
 		UNLOCK(&s->dispatched_jobsmtx);
 
 		if (curjob->job >= 0 && curjob->job <= JOB_LAST)
-			dump_debugmsg("Job: %s", jobname[curjob->job]);
+			DEBUG("%d: %s(): Job: %s", __LINE__, __func__,
+			    jobname[curjob->job]);
 		else
-			dump_errmsg("Job %u out of bounds", curjob->job);
+			ERR("%d: %s(): Job %u out of bounds", __LINE__,
+			    __func__, curjob->job);
 
 		switch (curjob->job) {
 		case READ_DATA:
@@ -195,7 +201,8 @@ process_joblist(void *_s)
 			break;
 
 		default:
-			dump_errmsg("Unknown job: %d", curjob->job);
+			ERR("%d: %s(): Unknown job: %d", __LINE__, __func__,
+			    curjob->job);
 			abort();
 		}
 

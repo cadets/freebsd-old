@@ -64,7 +64,7 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 	size_t n_entries = curjob->j.cleanup.n_entries;
 	
 	fd = dfd->fd;
-	dump_debugmsg("    CLEANUP to %d", fd);
+	DEBUG("%d: %s(): CLEANUP to %d", __LINE__, __func__, fd);
 	assert(fd != -1);
 
 	DTRACED_MSG_TYPE(header) = DTRACED_MSG_CLEANUP;
@@ -72,7 +72,8 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	if ((r = send(fd, &header, DTRACED_MSGHDRSIZE, 0)) < 0) {
 		if (errno != EPIPE)
-			dump_errmsg("Failed to write to %d: %m", fd);
+			ERR("%d: %s(): Failed to write to %d: %m", __LINE__,
+			    __func__, fd);
 		return;
 	}
 
@@ -89,13 +90,15 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 		 */
 		if (_send && send(fd, &buflen, sizeof(buflen), 0) < 0) {
 			if (errno != EPIPE)
-				dump_errmsg("Failed to write to %d: %m", fd);
+				ERR("%d: %s(): Failed to write to %d: %m",
+				    __LINE__, __func__, fd);
 			_send = 0;
 		}
 
 		if (_send && send(fd, entries[i], buflen, 0) < 0) {
 			if (errno != EPIPE)
-				dump_errmsg("Failed to write to %d: %m", fd);
+				ERR("%d: %s(): Failed to write to %d: %m",
+				    __LINE__, __func__, fd);
 			_send = 0;
 		}
 
@@ -103,5 +106,6 @@ handle_cleanup(struct dtraced_state *s, struct dtraced_job *curjob)
 	}
 
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		dump_errmsg("%s(): reenable_fd() failed with: %m", __func__);
+		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
+		    __func__);
 }

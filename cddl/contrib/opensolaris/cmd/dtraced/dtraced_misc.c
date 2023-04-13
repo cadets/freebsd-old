@@ -77,7 +77,8 @@ gen_filename(const char *dir)
 
 	filename = malloc(len);
 	if (filename == NULL) {
-		dump_errmsg("failed to malloc filename: %m");
+		ERR("%d: %s(): Failed to malloc filename: %m", __LINE__,
+		    __func__);
 		abort();
 	}
 
@@ -87,7 +88,8 @@ gen_filename(const char *dir)
 
 	elfpath = malloc(MAXPATHLEN);
 	if (elfpath == NULL) {
-		dump_errmsg("failed to malloc elfpath: %m");
+		ERR("%d: %s(): Failed to malloc elfpath: %m", __LINE__,
+		    __func__);
 		abort();
 	}
 
@@ -133,7 +135,8 @@ cleanup_pidfile(struct pidfh **pfh)
 
 	if (*pfh)
 		if (pidfile_remove(*pfh))
-			dump_errmsg("Could not remove pidfile: %m");
+			ERR("%d: %s(): Could not remove pidfile: %m", __LINE__,
+			    __func__);
 }
 
 void

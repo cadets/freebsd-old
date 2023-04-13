@@ -94,20 +94,22 @@ retry:
 		UNLOCK(&s->inbounddir->dirmtx);
 
 		if (path == NULL) {
-			dump_errmsg("gen_filename() failed with %s",
-			    strerror(errno));
+			ERR("%d: %s(): gen_filename() failed with %s", __LINE__,
+			    __func__, strerror(errno));
 			goto retry;
 		}
 		fd = open(path, O_CREAT | O_WRONLY, 0600);
 
 		if (fd == -1) {
-			dump_errmsg("Failed to open %s: %m", path);
+			ERR("%d: %s(): Failed to open %s: %m", __LINE__,
+			    __func__, path);
 			return;
 		}
 
 		elf = malloc(e->u.elf.totallen);
 		if (elf == NULL) {
-			dump_errmsg("failed to malloc elf: %m");
+			ERR("%d: %s(): Failed to malloc elf: %m", __LINE__,
+			    __func__);
 			abort();
 		}
 
@@ -117,8 +119,8 @@ retry:
 
 	assert(offs < len && "Assertion happens if file was not created");
 	if (offs + e->u.elf.len > len) {
-		dump_errmsg("%s(): offs + elflen (%zu) > len (%zu)", __func__,
-		    offs + e->u.elf.len, len);
+		ERR("%d: %s(): offs + elflen (%zu) > len (%zu)", __LINE__,
+		    __func__, offs + e->u.elf.len, len);
 		return;
 	}
 
@@ -132,7 +134,8 @@ retry:
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			dump_errmsg("Failed to write data to %s: %m", path);
+			ERR("%d: %s(): Failed to write data to %s: %m",
+			    __LINE__, __func__, path);
 		}
 
 		donepathlen = strlen(path) - 1;
@@ -143,8 +146,8 @@ retry:
 		    donepathlen - dirlen);
 
 		if (rename(path, donepath)) {
-			dump_errmsg("Failed to move %s to %s: %m",
-			    path, donepath);
+			ERR("%d: %s(): Failed to move %s to %s: %m", __LINE__,
+			    __func__, path, donepath);
 		}
 
 		free(elf);
@@ -164,7 +167,8 @@ dtt_kill(struct dtraced_state *s, dtt_entry_t *e)
 
 	kill_entry = malloc(sizeof(pidlist_t));
 	if (kill_entry == NULL) {
-		dump_errmsg("failed to malloc kill_entry: %m");
+		ERR("%d: %s(): failed to malloc kill_entry: %m", __LINE__,
+		    __func__);
 		abort();
 	}
 
@@ -186,7 +190,7 @@ dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 	size_t i;
 
 	/* Clean up all of the dtraced state */
-	dump_debugmsg("Got cleanup message.");
+	DEBUG("%d: %s(): Got cleanup message.", __LINE__, __func__);
 
 	LOCK(&s->joblistmtx);
 	while (job = dt_list_next(&s->joblist)) {
@@ -212,7 +216,8 @@ dtt_cleanup(struct dtraced_state *s, dtt_entry_t *e)
 			break;
 
 		default:
-			dump_errmsg("Unknown job: %d", job->job);
+			ERR("%d: %s(): Unknown job: %d", __LINE__, __func__,
+			    job->job);
 		}
 		free(job);
 	}
@@ -242,7 +247,8 @@ setup_connection(struct dtraced_state *s)
 
 	sockfd = socket(PF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		dump_errmsg("Failed creating a socket: %m");
+		ERR("%d: %s(): Failed creating a socket: %m", __LINE__,
+		    __func__);
 		return (-1);
 	}
 
@@ -251,8 +257,8 @@ setup_connection(struct dtraced_state *s)
 
 	l = strlcpy(addr.sun_path, DTRACED_SOCKPATH, sizeof(addr.sun_path));
 	if (l >= sizeof(addr.sun_path)) {
-		dump_errmsg("Failed setting addr.sun_path"
-			    " to /var/ddtrace/sub.sock");
+		ERR("%d: %s(): Failed setting addr.sun_path to /var/ddtrace/sub.sock",
+		    __LINE__, __func__);
 		close(sockfd);
 		return (-1);
 	}
@@ -260,7 +266,8 @@ setup_connection(struct dtraced_state *s)
 	SEMWAIT(&s->socksema);
 
 	if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-		dump_errmsg("connect to /var/ddtrace/sub.sock failed: %m");
+		ERR("%d: %s(): connect to /var/ddtrace/sub.sock failed: %m",
+		    __LINE__, __func__);
 		close(sockfd);
 		return (-1);
 	}
@@ -272,7 +279,8 @@ setup_connection(struct dtraced_state *s)
 	}
 
 	if (initmsg.kind != DTRACED_KIND_DTRACED) {
-		dump_errmsg("Expected dtraced kind, got %d", initmsg.kind);
+		ERR("%d: %s(): Expected dtraced kind, got %d", __LINE__,
+		    __func__, initmsg.kind);
 		close(sockfd);
 		return (-1);
 	}
@@ -281,7 +289,8 @@ setup_connection(struct dtraced_state *s)
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = DTD_SUB_ELFWRITE;
 	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
-		dump_errmsg("Failed to write initmsg to sockfd: %m");
+		ERR("%d: %s(): Failed to write initmsg to sockfd: %m", __LINE__,
+		    __func__);
 		close(sockfd);
 		return (-1);
 	}
@@ -312,7 +321,8 @@ listen_dttransport(void *_s)
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			dump_errmsg("Failed to read an entry: %m");
+			ERR("%d: %s(): Failed to read an entry: %m", __LINE__,
+			    __func__);
 			continue;
 		}
 
@@ -330,8 +340,8 @@ listen_dttransport(void *_s)
 			break;
 
 		default:
-			dump_errmsg("got unknown event (%d) from dttransport",
-			    e.event_kind);
+			ERR("%d: %s(): got unknown event (%d) from dttransport",
+			    __LINE__, __func__, e.event_kind);
 			break;
 		}
 	}
@@ -365,13 +375,14 @@ write_dttransport(void *_s)
 			if (errno == EINTR)
 				pthread_exit(s);
 
-			dump_errmsg("Failed to recv from sub.sock: %m");
+			ERR("%d: %s(): Failed to recv from sub.sock: %m",
+			    __LINE__, __func__);
 			continue;
 		}
 
 		if (DTRACED_MSG_TYPE(header) != DTRACED_MSG_ELF) {
-			dump_errmsg("Received unknown message type: %lu",
-			    DTRACED_MSG_TYPE(header));
+			ERR("%d: %s(): Received unknown message type: %lu",
+			    __LINE__, __func__, DTRACED_MSG_TYPE(header));
 			atomic_store(&s->shutdown, 1);
 			pthread_exit(NULL);
 		}
@@ -379,7 +390,8 @@ write_dttransport(void *_s)
 		len = DTRACED_MSG_LEN(header);
 		msg = malloc(len);
 		if (msg == NULL) {
-			dump_errmsg("Failed to allocate a new message: %m");
+			ERR("%d: %s(): Failed to allocate a new message: %m",
+			    __LINE__, __func__);
 			abort();
 		}
 
@@ -391,7 +403,8 @@ write_dttransport(void *_s)
 				if (errno == EINTR)
 					pthread_exit(s);
 
-				dump_errmsg("Exiting write_dttransport(): %m");
+				ERR("%d: %s(): Exiting write_dttransport(): %m",
+				    __LINE__, __func__);
 				atomic_store(&s->shutdown, 1);
 				pthread_exit(NULL);
 			}

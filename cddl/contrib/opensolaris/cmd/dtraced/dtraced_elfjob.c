@@ -79,7 +79,8 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	dir = curjob->j.notify_elfwrite.dir;
 	_nosha = curjob->j.notify_elfwrite.nosha;
 
-	dump_debugmsg("    %s%s to %d", dir->dirpath, path, fd);
+	DEBUG("%d: %s(): %s%s to %d", __LINE__, __func__, dir->dirpath, path,
+	    fd);
 	/*
 	 * Sanity assertions.
 	 */
@@ -91,12 +92,14 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 
 	elffd = openat(dir->dirfd, path, O_RDONLY);
 	if (elffd == -1) {
-		dump_errmsg("Failed to open %s: %m", path);
+		ERR("%d: %s(): Failed to open %s: %m", __LINE__, __func__,
+		    path);
 		return;
 	}
 
 	if (fstat(elffd, &stat) != 0) {
-		dump_errmsg("Failed to fstat %s: %m", path);
+		ERR("%d: %s(): Failed to fstat %s: %m", __LINE__, __func__,
+		    path);
 		return;
 	}
 
@@ -104,7 +107,7 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	msglen = _nosha ? elflen : elflen + SHA256_DIGEST_LENGTH;
 	msg = malloc(msglen);
 	if (msg == NULL) {
-		dump_errmsg("failed to malloc msg: %m");
+		ERR("%d: %s(): Failed to malloc msg: %m", __LINE__, __func__);
 		abort();
 	}
 
@@ -115,28 +118,31 @@ handle_elfwrite(struct dtraced_state *s, struct dtraced_job *curjob)
 	contents = _nosha ? msg : msg + SHA256_DIGEST_LENGTH;
 
 	if ((r = read(elffd, contents, elflen)) < 0) {
-		dump_errmsg("Failed to read ELF contents: %m");
+		ERR("%d: %s(): Failed to read ELF contents: %m", __LINE__,
+		    __func__);
 		return;
 	}
 
 	if (_nosha == 0 && SHA256(contents, elflen, msg) == NULL) {
-		dump_errmsg("Failed to create a SHA256 of the file");
+		ERR("%d: %s(): Failed to create a SHA256 of the file", __LINE__,
+		    __func__);
 		return;
 	}
 
 	if (send(fd, &header, DTRACED_MSGHDRSIZE, 0) < 0) {
-		dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
-		    path, pathlen);
+		ERR("%d: %s(): Failed to write to %d (%s, %zu): %m", __LINE__,
+		    __func__, fd, path, pathlen);
 		return;
 	}
 
 	if ((r = send(fd, msg, msglen, 0)) < 0) {
-		dump_errmsg("Failed to write to %d (%s, %zu): %m", fd,
-		    path, pathlen);
+		ERR("%d: %s(): Failed to write to %d (%s, %zu): %m", __LINE__,
+		    __func__, fd, path, pathlen);
 		return;
 	}
 
-	dump_debugmsg("    Re-enabling %d", fd);
+	DEBUG("%d: %s(): Re-enabling %d", __LINE__, __func__, fd);
 	if (reenable_fd(s->kq_hdl, fd, EVFILT_WRITE))
-		dump_errmsg("%s(): reenable_fd() failed with: %m", __func__);
+		ERR("%d: %s(): reenable_fd() failed with: %m", __LINE__,
+		    __func__);
 }

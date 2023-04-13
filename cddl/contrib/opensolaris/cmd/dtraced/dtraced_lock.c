@@ -53,7 +53,8 @@ LOCK(mutex_t *m)
 
 	err = pthread_mutex_lock(&(m)->_m);
 	if (err != 0) {
-		dump_errmsg("Failed to lock mutex: %m");
+		ERR("%d: %s(): Failed to lock mutex: %s", __LINE__, __func__,
+		    strerror(err));
 		exit(EXIT_FAILURE);
 	}
 
@@ -70,9 +71,9 @@ UNLOCK(mutex_t *m)
 	if (m->_checkowner != CHECKOWNER_NO) {
 		self = pthread_self();
 		if (pthread_equal(atomic_load(&m->_owner), self) == 0) {
-			dump_errmsg(
-			    "attempted unlock of %s by thread %p (!= %p)",
-			    m->_name, self, atomic_load(&m->_owner));
+			ERR("%d: %s(): Attempted unlock of %s by thread %p (!= %p)",
+			    __LINE__, __func__, m->_name, self,
+			    atomic_load(&m->_owner));
 			dump_backtrace();
 			exit(EXIT_FAILURE);
 		}
@@ -83,7 +84,8 @@ UNLOCK(mutex_t *m)
 
 	err = pthread_mutex_unlock(&(m)->_m);
 	if (err != 0) {
-		dump_errmsg("Failed to unlock mutex: %m");
+		ERR("%d: %s(): Failed to unlock mutex: %s", __LINE__, __func__,
+		    strerror(err));
 		return;
 	}
 

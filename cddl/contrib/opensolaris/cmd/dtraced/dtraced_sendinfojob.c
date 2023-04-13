@@ -84,12 +84,14 @@ handle_sendinfo(struct dtraced_state *s, struct dtraced_job *curjob)
 	hdr.info.count = info_count;
 
 	if (send(fd, &hdr, DTRACED_MSGHDRSIZE, 0) < 0) {
-		dump_errmsg("Failed to write header to %d : %m", fd);
+		ERR("%d: %s(): Failed to write header to %d : %m", __LINE__,
+		    __func__, fd);
 		return;
 	}
 
 	if (send(fd, imsgs, info_count * sizeof(dtraced_infomsg_t), 0) < 0) {
-		dump_errmsg("Failed to write imsgs to %d: %m", fd);
+		ERR("%d: %s(): Failed to write imsgs to %d: %m", __LINE__,
+		    __func__, fd);
 		return;
 	}
 }
