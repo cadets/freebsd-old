@@ -308,7 +308,6 @@ fatal(const char *fmt, ...)
 	pthread_mutex_unlock(&g_dtpmtx);
 
 	pthread_mutex_destroy(&g_dtpmtx);
-	sleep(10);
 	exit(E_ERROR);
 }
 
@@ -363,7 +362,7 @@ dfatal(const char *fmt, ...)
 	dtrace_close(g_dtp);
 	g_dtp = NULL;
 	pthread_mutex_unlock(&g_dtpmtx);
-	
+
 	pthread_mutex_destroy(&g_dtpmtx);
 
 	exit(E_ERROR);
@@ -999,7 +998,7 @@ listen_dtraced(void *arg)
 	dtrace_prog_t *hostpgp, *guestpgp;
 	int fd;
 	int err;
-	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
+	char template[] = "/tmp/ddtrace-elf.XXXXXXXXXXXX";
 	int tmpfd;
 	char vm_name[VM_MAX_NAMELEN] = { 0 };
 	char *name;
@@ -1155,7 +1154,9 @@ process_prog:
 		if (fd == -1)
 			dabort("failed to create a temporary file (%s)",
 			    strerror(errno));
-		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
+
+		unlink(template);
+		strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
 
 		lentowrite = novm ?
 		    elflen :
@@ -1216,6 +1217,8 @@ process_prog:
 
 		__dt_bench_snapshot_time(bench);
 
+		close(fd);
+
 		newprog->dp_vmid = vmid;
 		memcpy(newprog->dp_vmname, vm_name, size);
 
@@ -1247,6 +1250,7 @@ process_prog:
 		 * is someone else.
 		 */
 		if (newpgpl->vmid != 0 && (newpgpl->vmid != vmid)) {
+			pthread_mutex_unlock(&g_pgplistmtx);
 			syslog(LOG_SECURITY, "vmid (%u) is claiming to be %u\n",
 			    vmid, newpgpl->vmid);
 			fprintf(stderr, "vmid (%u) is claiming to be %u\n",
@@ -1293,10 +1297,10 @@ process_prog:
 			guestpgp->dp_exec = DT_PROG_EXEC;
 
 			tmpfd = mkstemp(template);
-			if (tmpfd == -1) {
+			if (tmpfd == -1)
 				dabort("failed to mkstemp()");
-			}
-			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXX");
+
+			unlink(template);
 
 			dt_elf_create(guestpgp, ELFDATA2LSB, tmpfd);
 			if (fsync(tmpfd)) {
@@ -1317,7 +1321,9 @@ process_prog:
 			__dt_bench_snapshot_time(bench);
 
 			err = dtrace_send_elf_async(guestpgp, tmpfd,
-			    wx_sockfd, "outbound", 0);
+			    wx_sockfd, template, "outbound", 0);
+			strcpy(template, "/tmp/ddtrace-elf.XXXXXXXXXXXX");
+
 			if (err) {
 				fprintf(stderr,
 				    "failed to dtrace_send_elf(): %s\n",
@@ -1706,6 +1712,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 			if (tmpfd == -1)
 				fatal("failed to mkstemp()");
 
+
 			/*
 			 * In this case we don't really send anything, we just
 			 * create the ELF file for debugging purposes and output
@@ -1760,6 +1767,7 @@ exec_prog(const dtrace_cmd_t *dcp)
 		tmpfd = mkstemp(template);
 		if (tmpfd == -1)
 			fatal("failed to mkstemp()");
+		unlink(template);
 		strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 
 		if (g_verbose) {
@@ -1787,7 +1795,6 @@ exec_prog(const dtrace_cmd_t *dcp)
 			fatal("failed to dtrace_send_elf()");
 
 		close(tmpfd);
-
 
 		dtd_arg = malloc(sizeof(dtd_arg_t));
 		if (dtd_arg == NULL)
@@ -2213,7 +2220,6 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 		dtrace_dump_ecbs(dcp->dc_prog);
 	}
 
-
 	if ((prog_exec == DT_PROG_EXEC && g_allow_root_srcident) ||
 	    (prog_exec == DT_PROG_EXEC && g_has_idents)) {
 		if (dtrace_program_exec(g_dtp, dcp->dc_prog, &dpi) == -1) {
@@ -2242,6 +2248,8 @@ process_elf_hypertrace(dtrace_cmd_t *dcp)
 	tmpfd = mkstemp(template);
 	if (tmpfd == -1)
 		fatal("mkstemp() failed (%s)", template);
+
+	unlink(template);
 	strcpy(template, "/tmp/dtrace-process-elf.XXXXXXXX");
 
 	dt_elf_create(dcp->dc_prog, ELFDATA2LSB, tmpfd);
