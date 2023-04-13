@@ -38,8 +38,10 @@
  * SUCH DAMAGE.
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <pthread_np.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,6 +299,13 @@ destroy_state(struct dtraced_state *s)
 	size_t i;
 	struct dtraced_job *j, *next;
 	struct dtraced_state *retval;
+	struct timespec ts;
+
+	/*
+	 * Timespec for join timeout.
+	 */
+	memset(&ts, 0, sizeof(ts));
+	ts.tv_sec = 5;
 
 	/*
 	 * Give all the threads a chance to stop, but we don't really care if
@@ -304,33 +313,87 @@ destroy_state(struct dtraced_state *s)
 	 * only give us an ESRCH (which means the thread's already gone and we
 	 * don't care), or EINVAL for an invalid signal, which we never send.
 	 * Therefore, we can safely just ignore all of the return codes and
-	 * expect the pthread_join() to behave sanely.
+	 * expect the pthread_timedjoin_np() to behave sanely. If our thread is
+	 * stuck and doesn't join in time, we simply report the error and
+	 * continue destroying the other threads. We are exiting after this, so
+	 * it's unlikely that a stuck thread is going to cause more chaos than
+	 * it already has.
 	 */
 	(void) pthread_kill(s->socktd, SIGTERM);
-	(void) pthread_join(s->socktd, (void **)&retval);
+	if (pthread_timedjoin_np(s->socktd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): socktd join timed out", __LINE__, __func__);
+		abort();
+	}
+
 	(void) pthread_kill(s->dtt_listentd, SIGTERM);
-	(void) pthread_join(s->dtt_listentd, (void **)&retval);
+	if (pthread_timedjoin_np(s->dtt_listentd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): dtt_listentd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
+
 	(void) pthread_kill(s->dtt_writetd, SIGTERM);
-	(void) pthread_join(s->dtt_writetd, (void **)&retval);
+	if (pthread_timedjoin_np(s->dtt_writetd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): dtt_writetd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
+
 	(void) pthread_kill(s->inboundtd, SIGTERM);
-	(void) pthread_join(s->inboundtd, (void **)&retval);
+	if (pthread_timedjoin_np(s->inboundtd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): inboundtd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
+
 	(void) pthread_kill(s->basetd, SIGTERM);
-	(void) pthread_join(s->basetd, (void **)&retval);
+	if (pthread_timedjoin_np(s->basetd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): basetd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
 
 	LOCK(&s->joblistcvmtx);
 	BROADCAST(&s->joblistcv);
 	UNLOCK(&s->joblistcvmtx);
 
-	for (i = 0; i < s->threadpool_size; i++)
-		(void) pthread_join(s->workers[i], (void **)&retval);
+	for (i = 0; i < s->threadpool_size; i++) {
+		if (pthread_timedjoin_np(s->workers[i],
+		    (void **)&retval, &ts) == ETIMEDOUT) {
+			ERR("%d: %s(): worker %ju join timed out", __LINE__,
+			    __func__, (uintmax_t)i);
+			abort();
+		}
+	}
 
 	(void) pthread_kill(s->killtd, SIGTERM);
+	if (pthread_timedjoin_np(s->killtd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): killtd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
 
-	(void )pthread_join(s->killtd, (void **)&retval);
 	(void) pthread_kill(s->reaptd, SIGTERM);
-	(void) pthread_join(s->reaptd, (void **)&retval);
+	if (pthread_timedjoin_np(s->reaptd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): reaptd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
+
 	(void) pthread_kill(s->closetd, SIGTERM);
-	(void) pthread_join(s->closetd, (void **)&retval);
+	if (pthread_timedjoin_np(s->closetd,
+	    (void **)&retval, &ts) == ETIMEDOUT) {
+		ERR("%d: %s(): closetd join timed out", __LINE__,
+		    __func__);
+		abort();
+	}
 
 	LOCK(&s->joblistmtx);
 	for (j = dt_list_next(&s->joblist); j; j = next) {
