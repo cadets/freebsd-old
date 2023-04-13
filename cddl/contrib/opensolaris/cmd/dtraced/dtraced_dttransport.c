@@ -288,6 +288,8 @@ setup_connection(struct dtraced_state *s)
 	memset(&initmsg, 0, sizeof(initmsg));
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = DTD_SUB_ELFWRITE;
+	snprintf(initmsg.ident, DTRACED_FDIDENTLEN, "dtraced-dttransport-%d", getpid());
+
 	if (send(sockfd, &initmsg, sizeof(initmsg), 0) < 0) {
 		ERR("%d: %s(): Failed to write initmsg to sockfd: %m", __LINE__,
 		    __func__);
