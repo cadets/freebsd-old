@@ -112,21 +112,28 @@ void *
 close_filedescs(void *_s)
 {
 	struct dtraced_state *s = _s;
-	dtraced_fd_t *dfd;
+	dtraced_fd_t *dfd, *next;
 
 	while (atomic_load(&s->shutdown) == 0) {
 		sleep(5);
 		LOCK(&s->deadfdsmtx);
-		while ((dfd = dt_list_next(&s->deadfds)) != NULL) {
+		next = dt_list_next(&s->deadfds);
+		while ((dfd = next) != NULL) {
 			/*
 			 * If it's still referenced somewhere, we don't close
 			 * it. We'll pick it up on the next run.
 			 */
-			if (atomic_load(&dfd->__count) != 0)
+			if (atomic_load(&dfd->__count) != 0) {
+				next = dt_list_next(dfd);
 				continue;
+			}
+
 			dt_list_delete(&s->deadfds, dfd);
 			assert(atomic_load(&dfd->__count) == 0);
+			DEBUG("%d: %s(): Destroying fd (%p, %d)", __LINE__,
+			    __func__, dfd, dfd->fd);
 			close(dfd->fd);
+			next = dt_list_next(dfd);
 			free(dfd);
 		}
 		UNLOCK(&s->deadfdsmtx);
@@ -302,18 +309,24 @@ process_consumers(void *_s)
 
 		for (i = 0; i < new_events; i++) {
 			dfd = event[i].udata;
+			if (dfd)
+				fd_acquire(dfd);
+
 			efd = event[i].ident;
 
 			if (event[i].flags & EV_ERROR) {
+				assert(dfd != NULL && "dfd should not be NULL");
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
 				if (disable_fd(s->kq_hdl, efd, EVFILT_WRITE)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
@@ -331,16 +344,19 @@ process_consumers(void *_s)
 				     _dfd = dt_list_next(_dfd))
 					if (_dfd == dfd)
 						break;
+
 				if (_dfd == NULL)
 					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
 
+				fd_release(dfd);
 				ERR("%d: %s(): event error: %m", __LINE__,
 				    __func__);
 				continue;
 			}
 
 			if (event[i].flags & EV_EOF) {
+				assert(dfd != NULL && "dfd should not be NULL");
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
@@ -367,16 +383,21 @@ process_consumers(void *_s)
 				     _dfd = dt_list_next(_dfd))
 					if (_dfd == dfd)
 						break;
+
 				if (_dfd == NULL)
 					dt_list_append(&s->deadfds, dfd);
 				UNLOCK(&s->deadfdsmtx);
+
+				fd_release(dfd);
 				continue;
 			}
 
 			if (efd == s->sockfd) {
 				/*
-				 * New connection incoming
+				 * New connection incoming. dfd is NULL so we
+				 * don't have to release it.
 				 */
+				assert(dfd == NULL && "dfd must NULL");
 				if (accept_new_connection(s))
 					pthread_exit(NULL);
 				continue;
@@ -390,6 +411,7 @@ process_consumers(void *_s)
 				if (disable_fd(s->kq_hdl, efd, EVFILT_READ)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
@@ -403,15 +425,18 @@ process_consumers(void *_s)
 					     "READDATA, but "
 					     "is not subscribed (%lx)",
 					    __LINE__, __func__, efd, dfd->subs);
+					fd_release(dfd);
 					continue;
 				}
 
 				if (dispatch_event(s, &event[i])) {
 					ERR("%d: %s(): dispatch_event() failed",
 					    __LINE__, __func__);
+					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
+				fd_release(dfd);
 				continue;
 			}
 
@@ -419,6 +444,7 @@ process_consumers(void *_s)
 				if (disable_fd(kq, efd, EVFILT_WRITE)) {
 					ERR("%d: %s(): disable_fd() failed with: %m",
 					    __LINE__, __func__);
+					fd_release(dfd);
 					pthread_exit(NULL);
 				}
 
@@ -441,12 +467,20 @@ process_consumers(void *_s)
 					if (dispatch_event(s, &event[i])) {
 						ERR("%d: %s(): dispatch_event() failed",
 						    __LINE__, __func__);
+						fd_release(dfd);
 						pthread_exit(NULL);
 					}
 
+					fd_release(dfd);
 					continue;
 				}
 			}
+
+			/*
+			 * Release dfd as we are ending the loop here.
+			 */
+			if (dfd)
+				fd_release(dfd);
 		}
 	}
 
