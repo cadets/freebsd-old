@@ -368,6 +368,8 @@ dt_set_progerr(dtrace_hdl_t *dtp, dtrace_prog_t *pgp, const char *fmt, ...)
 	tmpfd = mkstemp(template);
 	if (tmpfd == -1)
 		errx(EXIT_FAILURE, "mkstemp() failed: %s\n", strerror(errno));
+
+	unlink(template);
 	strcpy(template, "/tmp/ddtrace-set-prog-err.XXXXXXX");
 
 	dt_elf_create(pgp, ELFDATA2LSB, tmpfd);
