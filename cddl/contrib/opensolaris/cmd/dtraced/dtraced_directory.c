@@ -609,6 +609,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			return (-1);
 		} else if (pid > 0) {
 			size_t current;
+			int wait_for_pid = 0;
 			struct timespec timeout = { 0 };
 			int remove = 1, rv = 0;
 			char msg[] = "DEL ident";
@@ -702,6 +703,13 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 			}
 
 			msg[sizeof(msg) - 1] = '\0';
+
+			if (strcmp(msg, "FAIL FAIL") == 0) {
+				remove = 0;
+				wait_for_pid = 1;
+				goto failmsg;
+			}
+
 			if (strcmp(msg, "DEL ident") != 0) {
 				kill(pid, SIGKILL);
 				WARN("%d: %s(): Expected DEL ident, but got %s",
@@ -729,6 +737,7 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				return (0);
 			}
 
+failmsg:
 			close(stdout_rdr[0]);
 
 			/*
@@ -752,8 +761,11 @@ process_inbound(struct dirent *f, dtd_dir_t *dir)
 				UNLOCK(&s->identlistmtx);
 			}
 
-			if (num_idents == 0)
+			if (num_idents == 0 || wait_for_pid != 0) {
+				DEBUG("%d: %s(): waitpid(%d)", __LINE__, __func__, pid);
 				waitpid(pid, &status, 0);
+				DEBUG("%d: %s(): joined %d, status %d", __LINE__, __func__, pid, status);
+			}
 			else {
 				pe = malloc(sizeof(pidlist_t));
 				if (pe == NULL)
