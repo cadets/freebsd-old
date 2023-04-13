@@ -54,4 +54,12 @@ CFLAGS+=	-fsanitize=thread
 LDFLAGS+=	-fsanitize=thread
 .endif
 
+.if ${MK_DTRACED_ROBUST} != "no"
+CFLAGS+=	-DDTRACED_ROBUST
+.endif
+
+.if ${MK_DTRACED_DEBUG} != "no"
+CFLAGS+=	-DDTRACED_DEBUG
+.endif
+
 .include <bsd.prog.mk>
