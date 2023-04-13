@@ -126,16 +126,6 @@ CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/usb/controller
 CFLAGS+= -I${BHYVE_SYSDIR}/sys/dev/virtio/dtrace
 CFLAGS+= -I${SRCTOP}/cddl/contrib/opensolaris/cmd/dtraced
 
-# FIXME: Rename...? Currently hooked into DTRACE things, but maybe it should
-# just be HYPERTRACE variables?
-.if ${MK_DTRACE_DEBUG_ASAN} != "no"
-CFLAGS+=	-fsanitize=address -fsanitize=undefined
-LDFLAGS+=	-fsanitize=address -fsanitize=undefined
-.elif ${MK_DTRACE_DEBUG_TSAN} != "no"
-CFLAGS+=	-fsanitize=thread
-LDFLAGS+=	-fsanitize=thread
-.endif
-
 .if ${MK_BHYVE_SNAPSHOT} != "no"
 CFLAGS+= -I${SRCTOP}/contrib/libucl/include
 
