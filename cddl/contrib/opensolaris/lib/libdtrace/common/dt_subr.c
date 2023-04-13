@@ -1200,6 +1200,7 @@ typedef struct {
 	int tofd;
 	char *location;
 	int send_ident;
+	char *filepath;
 } dtrace_elfqueue_t;
 
 static pthread_mutex_t _elf_async_mtx;
@@ -1233,6 +1234,8 @@ _dtrace_send_elf_async(void *arg __unused)
 		assert(entry != NULL);
 		dtrace_send_elf(entry->pgp, entry->fromfd, entry->tofd,
 		    entry->location, entry->send_ident);
+		unlink(entry->filepath);
+		free(entry->filepath);
 		free(entry->location);
 		close(entry->fromfd);
 		free(entry);
@@ -1265,13 +1268,14 @@ dtrace_async_teardown()
 		dt_list_delete(&_elf_async_queue, entry);
 		close(entry->fromfd);
 		free(entry->location);
+		free(entry->filepath);
 		free(entry);
 	}
 }
 
 int
 dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
-    const char *location, int send_ident)
+    char *filepath, const char *location, int send_ident)
 {
 	dtrace_elfqueue_t *entry_to_send;
 
@@ -1297,6 +1301,7 @@ dtrace_send_elf_async(dtrace_prog_t *pgp, int fromfd, int tofd,
 	entry_to_send->tofd = tofd;
 	entry_to_send->location = strdup(location);
 	entry_to_send->send_ident = send_ident;
+	entry_to_send->filepath = strdup(filepath);
 
 	pthread_mutex_lock(&_elf_async_mtx);
 	dt_list_append(&_elf_async_queue, entry_to_send);

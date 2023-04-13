@@ -703,7 +703,7 @@ extern int dt_hypertrace_enabled(dtrace_hdl_t *);
 extern int dt_hypertrace_options_update(dtrace_hdl_t *);
 extern int open_dtraced(uint64_t);
 extern int dtrace_send_elf(dtrace_prog_t *, int, int, const char *, int);
-extern int dtrace_send_elf_async(dtrace_prog_t *, int, int, const char *, int);
+extern int dtrace_send_elf_async(dtrace_prog_t *, int, int, char *, const char *, int);
 extern char *dt_get_srcident(char *);
 
 extern const char *const _dtrace_version;
