@@ -173,6 +173,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		memset(entries, 0, sizeof(char *) * n_entries);
 	}
 
+	LOCK(&s->socklistmtx);
 	for (dfd = dt_list_next(&s->sockfds); dfd; dfd = dt_list_next(dfd)) {
 		fd_acquire(dfd);
 		if (dfd->kind != DTRACED_KIND_FORWARDER) {
@@ -252,6 +253,7 @@ handle_cleanupmsg(struct dtraced_state *s, dtraced_hdr_t *h)
 		dt_list_append(&s->joblist, job);
 		UNLOCK(&s->joblistmtx);
 	}
+	UNLOCK(&s->socklistmtx);
 
 	for (i = 0; i < n_entries; i++)
 		free(entries[i]);
