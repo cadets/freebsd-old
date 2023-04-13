@@ -186,6 +186,8 @@ open_dtraced(const char *sockpath)
 
 	initmsg.kind = DTRACED_KIND_FORWARDER;
 	initmsg.subs = DTD_SUB_READDATA;
+	snprintf(initmsg.ident, DTRACED_FDIDENTLEN, "dtracedctl-%d", getpid());
+
 	if (send(sock, &initmsg, sizeof(initmsg), 0) < 0) {
 		fprintf(stderr, "send() failed: %s", strerror(errno));
 		abort();
