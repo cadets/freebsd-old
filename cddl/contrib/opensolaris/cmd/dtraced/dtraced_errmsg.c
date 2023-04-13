@@ -40,19 +40,21 @@
 
 #include <err.h>
 #include <execinfo.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
-#include <time.h>
 
 #include "dtraced_errmsg.h"
 #include "dtraced_misc.h"
 
 #define DTRACED_BACKTRACELEN    128
+#define DTRACED_SYSLOG
 
 static int quiet;
+static pthread_mutex_t printmtx = PTHREAD_MUTEX_INITIALIZER;
 
 void
 be_quiet(void)
@@ -61,85 +63,77 @@ be_quiet(void)
 	quiet = 1;
 }
 
-__NOSANITIZE_THREAD void
+void
 dump_errmsg(const char *msg, ...)
 {
 	va_list ap;
-	time_t __time;
-	char *__time_s;
-
-	if (quiet)
-		return;
-
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
 	if (msg) {
-		fprintf(stderr, "ERROR(%s):    ", __time_s);
+		pthread_mutex_lock(&printmtx);
+		fprintf(stderr, "ERROR: ");
 		va_start(ap, msg);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
+		pthread_mutex_unlock(&printmtx);
+#ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_ERR, msg, ap);
 		va_end(ap);
+#endif /* DTRACED_SYSLOG */
 	}
 }
 
-__NOSANITIZE_THREAD void
+void
 dump_warnmsg(const char *msg, ...)
 {
 	va_list ap;
-	time_t __time;
-	char *__time_s;
 
 	if (quiet)
 		return;
 
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
 	if (msg) {
-		fprintf(stderr, "WARNING(%s):  ", __time_s);
+		pthread_mutex_lock(&printmtx);
+		fprintf(stderr, "WARNING: ");
 		va_start(ap, msg);
 		vfprintf(stderr, msg, ap);
 		va_end(ap);
 		fprintf(stderr, "\n");
+		pthread_mutex_unlock(&printmtx);
+#ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_WARNING, msg, ap);
 		va_end(ap);
+#endif /* DTRACED_SYSLOG */
 	}
 }
 
-__NOSANITIZE_THREAD void
+#ifdef DTRACED_DEBUG
+void
 dump_debugmsg(const char *msg, ...)
 {
 	va_list ap;
-	time_t __time;
-	char *__time_s;
 
 	if (quiet)
 		return;
 
-	__time = time(NULL);
-	__time_s = asctime(localtime(&__time));
-	__time_s[strlen(__time_s) - 1] = '\0';
-
 	if (msg) {
-		fprintf(stdout, "DEBUG(%s):    ", __time_s);
+		pthread_mutex_lock(&printmtx);
+		fprintf(stdout, "DEBUG: ");
 		va_start(ap, msg);
 		vfprintf(stdout, msg, ap);
 		va_end(ap);
 		fprintf(stdout, "\n");
+		pthread_mutex_unlock(&printmtx);
+#ifdef DTRACED_SYSLOG
 		va_start(ap, msg);
 		vsyslog(LOG_DEBUG, msg, ap);
 		va_end(ap);
+#endif /* DTRACED_SYSLOG */
 	}
 }
+#endif /* DTRACED_DEBUG */
 
-__NOSANITIZE_THREAD void
+void
 dump_backtrace(void)
 {
 	int nptrs;
@@ -150,12 +144,15 @@ dump_backtrace(void)
 	strings = backtrace_symbols(buffer, nptrs);
 
 	if (strings == NULL) {
-		dump_errmsg("Failed to get backtrace symbols: %m");
+		dump_errmsg("%s@%d(): Failed to get backtrace symbols: %m",
+		    __func__, __LINE__);
 		exit(EXIT_FAILURE);
 	}
 
+	pthread_mutex_lock(&printmtx);
 	for (int j = 0; j < nptrs; j++)
 		dump_errmsg("%s", strings[j]);
+	pthread_mutex_unlock(&printmtx);
 
 	free(strings);
 }

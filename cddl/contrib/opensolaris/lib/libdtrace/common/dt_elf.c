@@ -2379,7 +2379,8 @@ dump_buf(const char *path, char *buf, size_t size)
 }
 
 static int
-dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
+dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd, char *filename,
+    size_t filename_sz)
 {
 	char *buf;
 	struct stat st;
@@ -2388,6 +2389,9 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 	char template[] = "/tmp/ddtrace-elf.XXXXXXXX";
 	int i, elf_fd;
 	ssize_t r = 0;
+
+	if (filename_sz < sizeof(template))
+		return (-1);
 
 	chk[64] = '\0';
 	memset(elf_checksum, 0, sizeof(elf_checksum));
@@ -2442,9 +2446,13 @@ dt_elf_verify_file(char checksum[SHA256_DIGEST_LENGTH], int fd)
 	if (elf_fd == -1)
 		errx(EXIT_FAILURE, "Failed to create a temporary file");
 
+	unlink(template);
+
 	if (write(elf_fd, buf, st.st_size - SHA256_DIGEST_LENGTH) < 0)
 		errx(EXIT_FAILURE, "Failed to write ELF contents into tmp");
 	
+	memcpy(filename, template, sizeof(template));
+	strcpy(template, "/tmp/dtrace-execprog.XXXXXXXX");
 	return (elf_fd);
 }
 
@@ -2478,6 +2486,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	dt_identlist_t *ident_entry;
 	int i, found, chk;
 	char msg[] = "DEL ident";
+	char filename[256] = { 0 };
 
 	needsclosing = 0;
 
@@ -2524,7 +2533,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 			errx(EXIT_FAILURE, "lseek() failed with %s",
 			    strerror(errno));
 
-		fd = dt_elf_verify_file(checksum, fd);
+		fd = dt_elf_verify_file(checksum, fd, filename,
+		    sizeof(filename));
 		if (fd == -1)
 			errx(EXIT_FAILURE, "Failed to create a "
 			    "temporary ELF file: %s", strerror(errno));
@@ -2630,7 +2640,7 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0) &&
 	    (memcmp(eprog->dtep_srcident,
 	    oldpgp->dp_ident, DT_PROG_IDENTLEN) != 0))) {
-		static char msg[] = "FAILFAIL";
+		static char msg[] = "FAIL FAIL";
 		*err = EAGAIN;
 		errno = *err;
 		memcpy(g_saved_srcident, eprog->dtep_srcident,
@@ -2663,6 +2673,9 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		ident = ident_entry->dtil_ident;
 		assert(ident != NULL);
 
+		fprintf(stderr, "cmp %hhx%hhx%hhx with %hhx%hhx%hhx\n",
+		    ident[0], ident[1], ident[2], eprog->dtep_srcident[0],
+		    eprog->dtep_srcident[1], eprog->dtep_srcident[2]);
 		if (memcmp(ident, eprog->dtep_srcident,
 		    DT_PROG_IDENTLEN) == 0) {
 			found = 1;
@@ -2673,8 +2686,8 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	}
 
 	if (chk && found == 0) {
-		static char msg[] = "FAILFAIL";
-		*err = ENOENT;
+		static char msg[] = "FAIL FAIL";
+		*err = ESRCH;
 		errno = *err;
 		if (dtp->dt_failmsg_needed)
 			write(STDOUT_FILENO, msg, sizeof(msg));
@@ -2711,8 +2724,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		free(dtelf_state);
 		elf_end(e);
 
-		if (needsclosing)
+		if (needsclosing) {
+			unlink(filename);
 			close(fd);
+		}
 		fprintf(stderr, "The program has no statements\n");
 		return (NULL);
 	}
@@ -2723,8 +2738,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 		free(dtelf_state);
 		elf_end(e);
 
-		if (needsclosing)
+		if (needsclosing) {
+			unlink(filename);
 			close(fd);
+		}
 
 		fprintf(stderr, "Failed to get options\n");
 		return (NULL);
@@ -2750,8 +2767,10 @@ dt_elf_to_prog(dtrace_hdl_t *dtp, int fd,
 	free(dtelf_state);
 	(void) elf_end(e);
 
-	if (needsclosing)
+	if (needsclosing) {
+		unlink(filename);
 		close(fd);
+	}
 
 	return (prog);
 }
